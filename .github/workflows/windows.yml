@@ -36,8 +36,16 @@ jobs:
             artifacts/**
           if-no-files-found: warn
           retention-days: 14
+      - name: Expose smoke failure details
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f artifacts/electron-smoke-error.txt ]; then
+            message=$(head -c 50000 artifacts/electron-smoke-error.txt)
+            echo "::error title=Electron smoke failure::${message//$'\n'/%0A}"
+          fi
       - name: Publish downloadable Windows release
-        if: success() && github.event_name == 'workflow_dispatch'
+        if: success()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
