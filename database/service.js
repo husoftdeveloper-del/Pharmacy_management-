@@ -213,7 +213,7 @@ class PharmacyService {
     const limit = Math.min(500,integer(query.limit||200,'limit'));
     const table = config[0];
     let sql = `SELECT * FROM ${table}`;
-    const dateField = ['sales','purchases','payments','transfers','adjustments','stock_counts','audit_logs'].includes(type) ? (type==='audit_logs'?'created_at':'date') : 'date';
+    const dateField = type==='audit' ? 'created_at' : 'date';
     sql += ` WHERE date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`;
     const rows = this.all(sql,from,to,limit);
     return rows.map(row => {
