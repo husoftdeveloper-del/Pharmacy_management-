@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('pharmacy', Object.freeze({
     }
     if (channel === 'logout' || result.code === 'SESSION_EXPIRED') sessionToken = null;
     if (!result.ok) { const error = new Error(result.error || 'Operation failed.'); error.code = result.code; throw error; }
+    if (Array.isArray(result.data)) return result.data;
     const { token, ...data } = result.data || {};
     return data;
   }
