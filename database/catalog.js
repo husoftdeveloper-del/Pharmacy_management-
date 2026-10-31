@@ -48,6 +48,7 @@ function cleanEntity(entity, input, editing = false) {
     if (type === 'barcode' && value && !/^[A-Za-z0-9-]{4,64}$/.test(value)) throw new Error('Barcode must contain 4–64 letters, digits or hyphens.');
     result[field] = value;
   }
+  if (entity === 'medicines' && !result.barcode) result.barcode = null;
   if (entity === 'medicines' && !result.sku) throw new Error('SKU is required.');
   if (entity === 'offers') {
     if (!['percent','fixed'].includes(result.kind)) throw new Error('Invalid offer type.');

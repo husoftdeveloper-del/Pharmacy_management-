@@ -94,3 +94,7 @@ test('audit immutability, SQL search escaping and barcode checksum',(t)=>{
 test('online backup is consistent and validates before restore',async(t)=>{
  const {s,admin,directory}=fixture(t);stock(s,admin);const filename=path.join(directory,'backup.sqlite');await backupDatabase(s.db,filename);validateBackup(filename);assert.throws(()=>validateBackup(path.join(directory,'missing.sqlite')),/not found/);assert.ok(fs.statSync(filename).size>10000);
 });
+
+test('multiple medicines can omit optional barcodes', (t) => {
+ const {s,admin}=fixture(t);s.saveEntity(admin,'medicines',{name:'One',sku:'ONE',unit:'piece',price:1});s.saveEntity(admin,'medicines',{name:'Two',sku:'TWO',unit:'piece',price:2});assert.equal(s.list(admin,'medicines').total,2);
+});
