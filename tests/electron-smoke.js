@@ -10,11 +10,11 @@ app.setPath('sessionData',path.join(directory,'session'));
 const artifacts=path.join(__dirname,'..','artifacts');fs.mkdirSync(artifacts,{recursive:true});
 require('../main');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function until(fn,label){for(let i=0;i<100;i++){try{if(await fn())return;}catch{}await pause(100);}throw new Error('Timed out: '+label);}
+async function until(fn,label){let last;for(let i=0;i<100;i++){try{if(await fn())return;}catch(error){last=error.message;}await pause(100);}let body='';try{body=await BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript('document.body.innerText')}catch{}throw new Error('Timed out: '+label+'; '+last+'; '+body);}
 app.whenReady().then(async()=>{
   let win;await until(async()=>{win=BrowserWindow.getAllWindows()[0];return win&&await win.webContents.executeJavaScript('!!window.pharmacy');},'preload');
   const run=code=>win.webContents.executeJavaScript(`(async()=>{${code}})())`);
-  const errors=[];win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
+  const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>run("return !!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
