@@ -12,7 +12,7 @@ const entities = {
   offers: { permission: 'offers', fields: { name: 'text!', kind: 'text!', value: 'money!', min_total: 'money', starts: 'date!', ends: 'date!', active: 'bool' } },
   accounts: { permission: 'banking', fields: { code: 'text!', name: 'text!', type: 'text!', active: 'bool' } }
 };
-const modules = ['dashboard','pos','sales','customers','inventory','barcodes','purchases','suppliers','finance','staff','register','prescriptions','categories','patients','manufacturers','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
+const modules = ['dashboard','pos','sales','customers','inventory','barcodes','purchases','suppliers','finance','staff','register','prescriptions','categories','patients','manufacturers','locations','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
 const rolePermissions = {
   admin: modules,
   pharmacist: ['dashboard','pos','sales','customers','inventory','barcodes','purchases','suppliers','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],

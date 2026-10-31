@@ -108,7 +108,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 │   ├── barcode.js               Local CODE128-B generator
 │   └── pdf.js                   Electron printToPDF (no PDF framework)
 ├── src/
-│   ├── pages/                   25 module HTML files + matching JavaScript modules
+│   ├── pages/                   26 module HTML files + matching JavaScript modules
 │   ├── components/              Reusable Vanilla JS forms, tables, dialogs, documents
 │   ├── styles/                  Shared design system and per-page stylesheet files
 │   ├── scripts/                 Shell, API adapter, navigation, translations
