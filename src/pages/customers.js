@@ -1,0 +1,5 @@
+import {api} from '../scripts/api.js';
+import {openPayment} from '../components/documents.js';
+import {run,toast} from '../components/ui.js';
+import {renderRecords} from '../components/records.js';
+export async function render(root,params){const target=root.querySelector('[data-view]');const cleanup=await renderRecords(target,'customers',params);const enhance=()=>{target.querySelectorAll('[data-edit]').forEach(b=>{if(b.parentElement.querySelector('[data-payment]'))return;const pay=document.createElement('button');pay.className='btn btn-ghost btn-sm';pay.dataset.payment=b.dataset.edit;pay.textContent='Payment';pay.onclick=()=>run(async()=>{const data=await api('list',{entity:'customers',limit:200});const party=data.rows.find(r=>r.id===Number(b.dataset.edit));openPayment('customer',party,()=>toast('Payment saved'));});b.parentElement.append(pay);});};enhance();const observer=new MutationObserver(enhance);observer.observe(target,{childList:true,subtree:true});return ()=>{cleanup?.();observer.disconnect();};}
