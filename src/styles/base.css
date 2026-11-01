@@ -10,3 +10,5 @@
 @media(max-width:650px){.content{padding:22px 16px}.topbar{padding:0 14px;height:65px;gap:8px}.topbar-search{display:none}.topbar-tools{margin-inline-start:auto;gap:6px}.profile{padding-inline-start:8px}.page-heading{align-items:flex-start;flex-direction:column;gap:15px}h1{font-size:25px}.stat-grid{gap:10px}.stat-card{padding:15px}.stat-value{font-size:23px}.stat-label{font-size:10px}.stat-icon{width:30px;height:30px}.dashboard-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.modal-backdrop{padding:12px}.modal-body{padding:18px}.permissions-grid{grid-template-columns:1fr 1fr}.table-toolbar,.filter-bar{flex-wrap:wrap}.app-footer{gap:15px}.heading-actions{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 [dir=rtl]{--font:Tahoma,'Segoe UI',sans-serif}[dir=rtl] h1{letter-spacing:0}[dir=rtl] .nav-group{letter-spacing:0}[dir=rtl] .eyebrow{letter-spacing:0}[dir=rtl] .chart-wrap{direction:ltr}[dir=rtl] .nav-item.active:before{border-radius:3px 0 0 3px}
+
+.field[hidden]{display:none!important}

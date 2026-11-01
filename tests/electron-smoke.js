@@ -28,6 +28,74 @@ app.whenReady().then(async()=>{
     assert.ok(!text.includes('Something went wrong'),page+': '+text);
     if(['dashboard','pos','inventory','reports'].includes(page)){const image=await win.webContents.capturePage();fs.writeFileSync(path.join(artifacts,`electron-${page}.png`),image.toPNG());}
   }
+  // Regression: submit the actual Purchase form, not only the camelCase IPC API.
+  await run("const {refreshOptions}=await import('../components/ui.js');await refreshOptions();return true;");
+  await run("document.querySelector('[data-page=purchases]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#new-purchase')"),'purchase page');
+  await run("document.querySelector('#new-purchase').click();return true;");
+  await until(()=>run("return !!document.querySelector('#purchase-lines .purchase-line')"),'purchase form');
+  await run(`
+    const modal=document.querySelector('#modal-root');
+    const supplier=[...modal.querySelector('[name=supplier_id]').options].find(o=>o.textContent==='Kabul Health Supplies');
+    const medicine=[...modal.querySelector('[name=medicine_id]').options].find(o=>o.textContent==='Paracetamol 500mg');
+    if(!supplier||!medicine)throw new Error('Purchase options missing');
+    modal.querySelector('[name=supplier_id]').value=supplier.value;
+    modal.querySelector('[name=invoice_no]').value='PUR-UI-CREDIT';
+    modal.querySelector('[name=medicine_id]').value=medicine.value;
+    modal.querySelector('[name=location_id]').value='1';
+    modal.querySelector('[name=batch_no]').value='B-UI-CREDIT';
+    modal.querySelector('[name=expiry]').value='2030-12-31';
+    modal.querySelector('[name=quantity]').value='5';
+    modal.querySelector('[name=cost]').value='6';
+    modal.querySelector('[name=method]').value='credit';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal') && document.querySelector('#purchase-rows').innerText.includes('PUR-UI-CREDIT')"),'credit purchase saved through form');
+  const creditPurchase=await run("const rows=await window.pharmacy.invoke('documents',{type:'purchases'});return rows.find(r=>r.invoice_no==='PUR-UI-CREDIT');");
+  assert.ok(creditPurchase&&creditPurchase.supplier_id>0);assert.equal(creditPurchase.total,30);assert.equal(creditPurchase.paid,0);
+  await run("document.querySelector('#new-purchase').click();return true;");
+  await until(()=>run("return !!document.querySelector('#purchase-lines .purchase-line')"),'cash purchase form');
+  await run(`
+    const modal=document.querySelector('#modal-root');
+    const supplier=[...modal.querySelector('[name=supplier_id]').options].find(o=>o.textContent==='Kabul Health Supplies');
+    const medicine=[...modal.querySelector('[name=medicine_id]').options].find(o=>o.textContent==='Paracetamol 500mg');
+    modal.querySelector('[name=supplier_id]').value=supplier.value;
+    modal.querySelector('[name=invoice_no]').value='PUR-UI-CASH';
+    modal.querySelector('[name=medicine_id]').value=medicine.value;
+    modal.querySelector('[name=location_id]').value='1';
+    modal.querySelector('[name=batch_no]').value='B-UI-CASH';
+    modal.querySelector('[name=expiry]').value='2030-12-31';
+    modal.querySelector('[name=quantity]').value='2';
+    modal.querySelector('[name=cost]').value='6';
+    modal.querySelector('[name=method]').value='cash';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    if(modal.querySelector('[name=account_id]').value!=='1')throw new Error('Cash account was not selected');
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal') && document.querySelector('#purchase-rows').innerText.includes('PUR-UI-CASH')"),'cash purchase saved through form');
+  const cashPurchase=await run("const rows=await window.pharmacy.invoke('documents',{type:'purchases'});return rows.find(r=>r.invoice_no==='PUR-UI-CASH');");
+  assert.ok(cashPurchase);assert.equal(cashPurchase.total,12);assert.equal(cashPurchase.paid,12);assert.equal(cashPurchase.payment_method,'cash');
+  await run("document.querySelector('#new-purchase').click();return true;");
+  await until(()=>run("return !!document.querySelector('#purchase-lines .purchase-line')"),'bank purchase form');
+  await run(`
+    const modal=document.querySelector('#modal-root');
+    const supplier=[...modal.querySelector('[name=supplier_id]').options].find(o=>o.textContent==='Kabul Health Supplies');
+    const medicine=[...modal.querySelector('[name=medicine_id]').options].find(o=>o.textContent==='Paracetamol 500mg');
+    modal.querySelector('[name=supplier_id]').value=supplier.value;
+    modal.querySelector('[name=invoice_no]').value='PUR-UI-BANK';
+    modal.querySelector('[name=medicine_id]').value=medicine.value;
+    modal.querySelector('[name=location_id]').value='1';
+    modal.querySelector('[name=batch_no]').value='B-UI-BANK';
+    modal.querySelector('[name=expiry]').value='2030-12-31';
+    modal.querySelector('[name=quantity]').value='1';
+    modal.querySelector('[name=cost]').value='6';
+    modal.querySelector('[name=method]').value='bank';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    if(modal.querySelector('[name=account_id]').value!=='2')throw new Error('Bank account was not selected');
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal') && document.querySelector('#purchase-rows').innerText.includes('PUR-UI-BANK')"),'bank purchase saved through form');
+  const bankPurchase=await run("const rows=await window.pharmacy.invoke('documents',{type:'purchases'});return rows.find(r=>r.invoice_no==='PUR-UI-BANK');");
+  assert.ok(bankPurchase);assert.equal(bankPurchase.total,6);assert.equal(bankPurchase.paid,6);assert.equal(bankPurchase.payment_method,'bank');
+  const purchaseShot=await win.webContents.capturePage();fs.writeFileSync(path.join(artifacts,'electron-purchase-form.png'),purchaseShot.toPNG());
   await run("document.querySelector('[data-page=barcodes]').click();return true;");
   await until(()=>run("return !!document.querySelector('#generate-barcode')"),'barcode generator icon');
   await run("document.querySelector('#generate-barcode').click();return true;");
@@ -47,7 +115,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
