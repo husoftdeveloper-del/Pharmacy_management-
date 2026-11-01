@@ -47,6 +47,6 @@ export async function navigate(page,params={}){
 }
 window.addEventListener('session-expired',()=>authScreen(false));
 document.addEventListener('keydown',ev=>{if((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ev.preventDefault();app.querySelector('#global-search')?.focus();}if(ev.key==='F2'&&state.user)navigate('pos');});
-async function boot(){try{const info=await api('bootstrap');if(!info.initialized)await authScreen(true);else await authScreen(false);}catch(error){app.innerHTML=`<main class="auth-panel"><div class="auth-form-wrap"><h2>Pharmacy Management</h2><p>${e(error.message)}</p><p>Install dependencies with npm install, then launch with npm start.</p></div></main>`;}}
+async function boot(){try{const info=await api('bootstrap');if(!info.initialized){await authScreen(true);return;}try{const session=await api('session');await startSession(session);}catch{await authScreen(false);}}catch(error){app.innerHTML=`<main class="auth-panel"><div class="auth-form-wrap"><h2>Pharmacy Management</h2><p>${e(error.message)}</p><p>Install dependencies with npm install, then launch with npm start.</p></div></main>`;}}
 boot();
 window.addEventListener('navigate',event=>navigate(event.detail));

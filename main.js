@@ -17,6 +17,9 @@ const devWatchers = [];
 let devReloadTimer = null;
 let devRestartTimer = null;
 let devRestarting = false;
+const devSignatures = new Map();
+const devWatchExt = /\.(html|css|js|mjs|json|svg|png|ico|woff2?)$/i;
+const devRestartExt = /\.(js|mjs|json|sql)$/i;
 protocol.registerSchemesAsPrivileged([{ scheme: 'pharmacy', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 app.setName('Pharmacy Management');
 if (isDev) {
@@ -46,6 +49,42 @@ function reloadDevRenderer(reason) {
   console.log(`[dev] reload: ${reason}`);
   mainWindow.webContents.reloadIgnoringCache();
 }
+function devSignature(file) {
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile()) return null;
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return null;
+  }
+}
+function seedDevSignatures(target, recursive, filter) {
+  try {
+    const stat = fs.statSync(target);
+    if (stat.isFile()) {
+      if (filter(path.basename(target))) devSignatures.set(target, devSignature(target));
+      return;
+    }
+    if (!stat.isDirectory()) return;
+    for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+      const full = path.join(target, entry.name);
+      if (entry.isDirectory()) {
+        if (recursive) seedDevSignatures(full, true, filter);
+      } else if (filter(entry.name)) {
+        devSignatures.set(full, devSignature(full));
+      }
+    }
+  } catch {}
+}
+function devFileChanged(file, filter) {
+  if (!filter(path.basename(file))) return false;
+  const next = devSignature(file);
+  const previous = devSignatures.get(file) || null;
+  if (next === previous) return false;
+  if (next === null) devSignatures.delete(file);
+  else devSignatures.set(file, next);
+  return true;
+}
 function watchDevPath(target, onChange, recursive = false) {
   try {
     const watcher = fs.watch(target, { recursive }, (event, filename) => onChange(event, filename || ''));
@@ -58,21 +97,33 @@ function watchDevPath(target, onChange, recursive = false) {
 function startDevLiveReload() {
   if (!isDev) return;
   const srcRoot = path.join(__dirname, 'src');
+  const srcFilter = name => devWatchExt.test(name) && !/pharmacy-setup\.exe$/i.test(name);
+  seedDevSignatures(srcRoot, true, srcFilter);
   watchDevPath(srcRoot, (event, filename) => {
-    if (!/\.(html|css|js|mjs|json|svg|png|ico|woff2?)$/i.test(filename)) return;
-    if (/pharmacy-setup\.exe$/i.test(filename)) return;
+    const name = filename || '';
+    if (!srcFilter(path.basename(name))) return;
+    const full = path.join(srcRoot, name);
+    // Windows can emit watch events for file reads/access. Only reload when the
+    // file signature actually changes, otherwise opening pages logs the user out.
+    if (!devFileChanged(full, srcFilter)) return;
     clearTimeout(devReloadTimer);
-    devReloadTimer = setTimeout(() => reloadDevRenderer(filename || event), 180);
+    devReloadTimer = setTimeout(() => reloadDevRenderer(name || event), 180);
   }, true);
-  const restart = filename => {
-    if (!/\.(js|mjs|json|sql)$/i.test(filename)) return;
+  const restartFilter = name => devRestartExt.test(name);
+  const restart = (target, filename) => {
+    const full = path.isAbsolute(filename) ? filename : path.join(target, filename || path.basename(target));
+    if (!devFileChanged(full, restartFilter)) return;
     clearTimeout(devRestartTimer);
     devRestartTimer = setTimeout(() => restartDevApp(filename), 250);
   };
-  watchDevPath(path.join(__dirname, 'main.js'), restart);
-  watchDevPath(path.join(__dirname, 'preload.js'), restart);
-  watchDevPath(path.join(__dirname, 'package.json'), restart);
-  watchDevPath(path.join(__dirname, 'database'), restart, true);
+  for (const file of ['main.js', 'preload.js', 'package.json']) {
+    const full = path.join(__dirname, file);
+    seedDevSignatures(full, false, restartFilter);
+    watchDevPath(full, (event, filename) => restart(full, filename || file));
+  }
+  const dbRoot = path.join(__dirname, 'database');
+  seedDevSignatures(dbRoot, true, restartFilter);
+  watchDevPath(dbRoot, (event, filename) => restart(dbRoot, filename || ''), true);
   console.log('[dev] live reload enabled. Edit src/ to refresh; main/preload/database changes restart the app.');
 }
 
@@ -212,6 +263,17 @@ app.whenReady().then(()=>{
       console.error('[application]',error.message);
       return {ok:false,error:safe,code:error.code||'OPERATION_FAILED'};
     }
+  });
+  ipcMain.handle('pharmacy:dev-resume',async(event)=>{
+    if(!isDev)return {ok:false};
+    try{
+      senderWindow(event);
+      const session=sessions.get(event.sender.id);
+      if(!session||Date.now()>session.expires)return {ok:false};
+      const user=service.get('SELECT * FROM users WHERE id=? AND active=1',session.userId);
+      if(!user)return {ok:false};
+      return {ok:true,data:{token:session.token}};
+    }catch{return {ok:false};}
   });
   createWindow();
   startDevLiveReload();
