@@ -1,0 +1,41 @@
+{
+  "name": "pharmacy-management-system",
+  "version": "1.0.0",
+  "description": "Offline pharmacy management with Electron and SQLite",
+  "main": "main.js",
+  "private": true,
+  "author": "HK Developer",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.js",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis portable --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.hkdeveloper.pharmacy",
+    "productName": "Pharmacy Management",
+    "artifactName": "Pharmacy-${version}-${arch}.${ext}",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "database/**/*", "src/**/*", "!src/pages/*.exe", "package.json"],
+    "asar": true,
+    "npmRebuild": false,
+    "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico", "signAndEditExecutable": false },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pharmacy Management",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": { "artifactName": "Pharmacy-${version}-Portable.exe" }
+  }
+}
