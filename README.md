@@ -45,7 +45,7 @@ On Windows you can also double-click `dev.bat`; it installs dependencies if need
 
 While `npm run dev` is running:
 
-- Save changes in `src/` (HTML, CSS, JavaScript, images) and the open window refreshes automatically after a short debounce.
+- Save changes in `src/` (HTML, CSS, JavaScript, images) and the open window refreshes automatically after a short debounce. Read-only file access events are ignored, and the dev session is resumed after a renderer refresh, so normal page navigation does not log you out.
 - Save changes to `main.js`, `preload.js`, `package.json`, or `database/` and the Electron app restarts automatically.
 - Press `F5` or `Ctrl+R` to force a renderer refresh; press `F12` to toggle DevTools.
 - Development mode uses a separate database folder, `Pharmacy Management Dev`, so experiments do not modify the installed production database. Complete first-run setup again in that dev profile if it is empty.
