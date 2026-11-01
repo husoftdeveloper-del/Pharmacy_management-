@@ -24,7 +24,7 @@ The application does not need internet access after installation. Do not delete 
 Requires **Node.js 22.13 or newer** and npm. Electron 39.8.10 is pinned in the lockfile. SQLite is provided by Electron/Node's built-in `node:sqlite`; there is no native third-party database addon to rebuild.
 
 ```powershell
-git clone --branch arena/f53501dc-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
+git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
 cd .\Pharmacy_management-
 npm ci
 npm start
