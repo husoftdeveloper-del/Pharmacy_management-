@@ -12,3 +12,5 @@
 [dir=rtl]{--font:Tahoma,'Segoe UI',sans-serif}[dir=rtl] h1{letter-spacing:0}[dir=rtl] .nav-group{letter-spacing:0}[dir=rtl] .eyebrow{letter-spacing:0}[dir=rtl] .chart-wrap{direction:ltr}[dir=rtl] .nav-item.active:before{border-radius:3px 0 0 3px}
 
 .field[hidden]{display:none!important}
+
+.app-build{display:block;font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.04em}.auth-privacy .app-build{margin-top:8px}.app-build-info{font-size:11px;color:var(--muted);margin-bottom:12px}

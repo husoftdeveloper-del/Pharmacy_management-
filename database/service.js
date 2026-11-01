@@ -4,7 +4,7 @@ const { hashPassword, verifyPassword, transaction, audit } = require('./database
 const crypto = require('node:crypto');
 const round = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const fail = message => { throw new Error(message); };
-const id = v => { const n = Number(v); if (!Number.isSafeInteger(n) || n < 1) fail('Invalid record ID.'); return n; };
+const id = (v,label='record') => { const n = Number(v); if (!Number.isSafeInteger(n) || n < 1) fail(`Invalid ${label} ID.`); return n; };
 const number = (v, label, min = 0, max = 1e10) => { const n = Number(v); if (!Number.isFinite(n) || n < min || n > max) fail(`Invalid ${label}.`); return n; };
 const integer = (v, label, min = 1) => { const n = number(v, label, min, 1000000); if (!Number.isSafeInteger(n)) fail(`${label} must be a whole number.`); return n; };
 const text = (v, label, required = false, max = 2000) => { const s = String(v ?? '').trim(); if ((required && !s) || s.length > max) fail(`Invalid ${label}.`); return s; };
@@ -40,7 +40,7 @@ class PharmacyService {
     return Number(result.lastInsertRowid);
   }
   paymentAccount(value, paymentMethod) {
-    const account = this.get('SELECT * FROM accounts WHERE id=? AND active=1 AND type=?', id(value || (paymentMethod === 'bank' ? 2 : 1)), 'asset');
+    const account = this.get('SELECT * FROM accounts WHERE id=? AND active=1 AND type=?', id(value || (paymentMethod === 'bank' ? 2 : 1),'cash/bank account'), 'asset');
     if (!account || !['1000','1010'].includes(account.code) && !account.code.startsWith('101')) fail('Choose a cash or bank account.');
     if (account.id === 1 || account.code === '1000') {
       if (paymentMethod !== 'cash') fail('Cash account requires cash payment.');
@@ -237,7 +237,7 @@ class PharmacyService {
   }
   receivePurchase(user,input) {
     this.require(user,'purchases',true);
-    const supplier = this.party('supplier',input.supplierId);
+    const supplier = this.party('supplier',id(input.supplierId,'supplier'));
     const invoice = text(input.invoiceNo,'invoice number',true,80);
     const payment = method(input.paymentMethod);
     if (!Array.isArray(input.items)||!input.items.length||input.items.length>100) fail('Add purchase items.');
@@ -246,10 +246,10 @@ class PharmacyService {
       const purchaseSubtotal=round(input.items.reduce((a,i)=>a+integer(i.quantity,'quantity')*round(number(i.cost,'cost',0.01)),0));
       if(purchaseDiscount>purchaseSubtotal)fail('Discount exceeds subtotal.');
       const items = input.items.map(item=>{
-        const medicine=this.get('SELECT * FROM medicines WHERE id=? AND active=1',id(item.medicineId));
+        const medicine=this.get('SELECT * FROM medicines WHERE id=? AND active=1',id(item.medicineId,'medicine'));
         if(!medicine) fail('Medicine not found.');
         const expiry=date(item.expiry); if(expiry<=new Date().toISOString().slice(0,10)) fail('Expiry must be in the future.');
-        return {medicine,location:id(item.locationId||1),batch:text(item.batchNo,'batch number',true,80),expiry,quantity:integer(item.quantity,'quantity'),grossCost:round(number(item.cost,'cost',0.01)),cost:round(number(item.cost,'cost',0.01)*(1-purchaseDiscount/purchaseSubtotal))};
+        return {medicine,location:id(item.locationId||1,'location'),batch:text(item.batchNo,'batch number',true,80),expiry,quantity:integer(item.quantity,'quantity'),grossCost:round(number(item.cost,'cost',0.01)),cost:round(number(item.cost,'cost',0.01)*(1-purchaseDiscount/purchaseSubtotal))};
       });
       const subtotal=round(items.reduce((a,i)=>a+i.quantity*i.cost,0));
       const discount=round(number(input.discount||0,'discount')); if(discount>subtotal) fail('Discount exceeds subtotal.');

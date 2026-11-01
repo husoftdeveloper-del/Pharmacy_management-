@@ -31,7 +31,7 @@ test('purchase form names are translated to the secure IPC contract and saved', 
   assert.equal(saved.items[0].quantity, 5);
   assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n, 5);
   // The old raw form payload must still be rejected; validation is not weakened.
-  assert.throws(() => s.receivePurchase(user, { ...data, items: lines }), /Invalid record ID/);
+  assert.throws(() => s.receivePurchase(user, { ...data, items: lines }), /Invalid supplier ID/);
 });
 
 test('transaction form helpers preserve IDs, accounts and optional salary gross', async () => {
