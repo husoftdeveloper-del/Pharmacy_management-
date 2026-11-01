@@ -2,33 +2,36 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.12**
+Verified release: **v1.0.0-build.13**
 
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.12
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.12/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.12/Pharmacy-1.0.0-Portable.exe
+- Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.13
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.13/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.13/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-1dfa7f6fd5dbdaef5f8f12ed4923b8e7679726ac0a05e5bf5bc271fc19f2432d  Pharmacy-1.0.0-x64.exe
-e0dbb4d890806d8ebdfd12a8dbcf5f6cd9d94225ba2e300351b4032a96ddf38e  Pharmacy-1.0.0-Portable.exe
+4e4bffb72185194c0d543ada4edcc6dd559acb72b6d2227fb3cae53b31dfd62b  Pharmacy-1.0.0-x64.exe
+13982e0fc246d2157a177549ab76729e54e18c094d9c76e4d82522ac15a2fd9f  Pharmacy-1.0.0-Portable.exe
 ```
+
+`src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
 
 Check in PowerShell:
 
 ```powershell
-Get-FileHash .\Pharmacy-1.0.0-x64.exe -Algorithm SHA256
+Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 ```
 
 ## Source
 
-Complete source is on branch `arena/f53501dc-pharmacy-management`, commit `77ded0269e1038d37d6eb1b01e4c881fce07bec9`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `aca039c9f8410b6c1692c3f694854f33cfddbf6b`. The branch also contains the refreshed installer commit `de7d43f`.
 
 ```powershell
-git clone --branch arena/f53501dc-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
+git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
 cd .\Pharmacy_management-
 npm ci
 npm start
@@ -36,13 +39,17 @@ npm start
 
 See `README.md` for architecture, all modules, security boundaries, operating instructions, build commands and known limitations.
 
+## Barcode update
+
+Barcode Management now has an icon button inside the barcode input. Clicking it generates a unique `MED-…` barcode through the secure main process, fills the input, and shows the CODE128-B preview immediately. Choose a medicine and press Save to assign it; Print remains available after preview. The action is permission-checked in the main process and covered by database and Electron smoke tests.
+
 ## Verification completed
 
-- 14 database/business-rule tests passed.
+- 15 database/business-rule tests passed, including one-click barcode uniqueness and permission checks.
 - JavaScript syntax and strict technology checks passed.
-- Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
+- Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/41199829101
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/41282337671
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
