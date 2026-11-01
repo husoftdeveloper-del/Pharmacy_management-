@@ -6,13 +6,16 @@
   "private": true,
   "author": "HK Developer",
   "license": "UNLICENSED",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
     "check": "node scripts/check.js",
     "pack": "electron-builder --dir",
-    "dist:win": "electron-builder --win nsis portable --x64 --publish never"
+    "dist:win": "electron-builder --win nsis portable --x64 --publish never",
+    "dev": "electron . --dev"
   },
   "devDependencies": {
     "electron": "39.8.10",
@@ -22,11 +25,28 @@
     "appId": "com.hkdeveloper.pharmacy",
     "productName": "Pharmacy Management",
     "artifactName": "Pharmacy-${version}-${arch}.${ext}",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "database/**/*", "src/**/*", "!src/pages/*.exe", "package.json"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "database/**/*",
+      "src/**/*",
+      "!src/pages/*.exe",
+      "package.json"
+    ],
     "asar": true,
     "npmRebuild": false,
-    "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico", "signAndEditExecutable": false },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -36,6 +56,8 @@
       "shortcutName": "Pharmacy Management",
       "deleteAppDataOnUninstall": false
     },
-    "portable": { "artifactName": "Pharmacy-${version}-Portable.exe" }
+    "portable": {
+      "artifactName": "Pharmacy-${version}-Portable.exe"
+    }
   }
 }

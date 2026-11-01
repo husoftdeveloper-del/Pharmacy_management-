@@ -32,6 +32,25 @@ npm start
 
 `npm ci` downloads Electron from GitHub, so installation requires internet access. On a managed network, allow the official Electron download host or configure your organization's approved Electron mirror. Do not disable TLS verification.
 
+### Live-reload development mode
+
+Install dependencies once, then start the app in development mode:
+
+```powershell
+npm ci
+npm run dev
+```
+
+On Windows you can also double-click `dev.bat`; it installs dependencies if needed and starts live-reload mode.
+
+While `npm run dev` is running:
+
+- Save changes in `src/` (HTML, CSS, JavaScript, images) and the open window refreshes automatically after a short debounce.
+- Save changes to `main.js`, `preload.js`, `package.json`, or `database/` and the Electron app restarts automatically.
+- Press `F5` or `Ctrl+R` to force a renderer refresh; press `F12` to toggle DevTools.
+- Development mode uses a separate database folder, `Pharmacy Management Dev`, so experiments do not modify the installed production database. Complete first-run setup again in that dev profile if it is empty.
+- Live reload is disabled in packaged Setup/Portable EXEs. To deliver a change to an installed app, build a new EXE with `npm run dist:win` and install it over the old one; application data is preserved.
+
 ### Build Windows EXEs
 
 On Windows x64:

@@ -12,11 +12,69 @@ let db, service, mainWindow;
 const sessions = new Map();
 const attempts = new Map();
 const lockSeconds = 15 * 60;
+const isDev = !app.isPackaged && process.argv.includes('--dev');
+const devWatchers = [];
+let devReloadTimer = null;
+let devRestartTimer = null;
+let devRestarting = false;
 protocol.registerSchemesAsPrivileged([{ scheme: 'pharmacy', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
-if (!app.requestSingleInstanceLock()) app.quit();
 app.setName('Pharmacy Management');
+if (isDev) {
+  // Keep live-reload experiments away from the installed production database.
+  app.setPath('userData', path.join(app.getPath('appData'), 'Pharmacy Management Dev'));
+}
+if (!app.requestSingleInstanceLock()) app.quit();
 app.enableSandbox();
 Menu.setApplicationMenu(null);
+
+function closeDevWatchers() {
+  while (devWatchers.length) {
+    try { devWatchers.pop().close(); } catch {}
+  }
+}
+function restartDevApp(reason) {
+  if (!isDev || devRestarting) return;
+  devRestarting = true;
+  console.log(`[dev] restarting: ${reason}`);
+  closeDevWatchers();
+  try { if (db) { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); db.close(); db = null; } } catch {}
+  app.relaunch();
+  app.exit(0);
+}
+function reloadDevRenderer(reason) {
+  if (!isDev || devRestarting || !mainWindow || mainWindow.isDestroyed()) return;
+  console.log(`[dev] reload: ${reason}`);
+  mainWindow.webContents.reloadIgnoringCache();
+}
+function watchDevPath(target, onChange, recursive = false) {
+  try {
+    const watcher = fs.watch(target, { recursive }, (event, filename) => onChange(event, filename || ''));
+    watcher.on('error', error => console.warn(`[dev] watcher error: ${error.message}`));
+    devWatchers.push(watcher);
+  } catch (error) {
+    console.warn(`[dev] cannot watch ${target}: ${error.message}`);
+  }
+}
+function startDevLiveReload() {
+  if (!isDev) return;
+  const srcRoot = path.join(__dirname, 'src');
+  watchDevPath(srcRoot, (event, filename) => {
+    if (!/\.(html|css|js|mjs|json|svg|png|ico|woff2?)$/i.test(filename)) return;
+    if (/pharmacy-setup\.exe$/i.test(filename)) return;
+    clearTimeout(devReloadTimer);
+    devReloadTimer = setTimeout(() => reloadDevRenderer(filename || event), 180);
+  }, true);
+  const restart = filename => {
+    if (!/\.(js|mjs|json|sql)$/i.test(filename)) return;
+    clearTimeout(devRestartTimer);
+    devRestartTimer = setTimeout(() => restartDevApp(filename), 250);
+  };
+  watchDevPath(path.join(__dirname, 'main.js'), restart);
+  watchDevPath(path.join(__dirname, 'preload.js'), restart);
+  watchDevPath(path.join(__dirname, 'package.json'), restart);
+  watchDevPath(path.join(__dirname, 'database'), restart, true);
+  console.log('[dev] live reload enabled. Edit src/ to refresh; main/preload/database changes restart the app.');
+}
 
 function senderWindow(event) {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -119,7 +177,7 @@ async function dispatch(event, request) {
   throw new Error('Unknown operation.');
 }
 function createWindow() {
-  mainWindow=new BrowserWindow({width:1440,height:960,minWidth:1024,minHeight:700,backgroundColor:'#f4f7fb',title:'Pharmacy Management',icon:path.join(__dirname,'build','icon.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,spellcheck:false}});
+  mainWindow=new BrowserWindow({width:1440,height:960,minWidth:1024,minHeight:700,backgroundColor:'#f4f7fb',title:isDev?'Pharmacy Management · DEV':'Pharmacy Management',icon:path.join(__dirname,'build','icon.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.js'),additionalArguments:isDev?['--pharmacy-dev']:[],contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,spellcheck:false}});
   mainWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   mainWindow.webContents.on('will-navigate',event=>event.preventDefault());
   mainWindow.webContents.on('will-attach-webview',event=>event.preventDefault());
@@ -128,6 +186,15 @@ function createWindow() {
   mainWindow.webContents.on('destroyed',()=>sessions.delete(mainWindow?.webContents.id));
   mainWindow.loadURL('pharmacy://app/pages/index.html');
   mainWindow.on('closed',()=>{sessions.clear();mainWindow=null;});
+  if (isDev) {
+    mainWindow.webContents.on('before-input-event',(event,input)=>{
+      if (input.type==='keyDown' && (input.key==='F5' || (input.control && input.key.toLowerCase()==='r'))) {
+        event.preventDefault();
+        reloadDevRenderer('manual shortcut');
+      }
+      if (input.type==='keyDown' && input.key==='F12') mainWindow.webContents.toggleDevTools();
+    });
+  }
 }
 app.whenReady().then(()=>{
   protocol.handle('pharmacy', request => {
@@ -147,8 +214,9 @@ app.whenReady().then(()=>{
     }
   });
   createWindow();
+  startDevLiveReload();
 }).catch(error=>{dialog.showErrorBox('Pharmacy cannot start',error.message);app.quit();});
 app.on('second-instance',()=>{if(mainWindow){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.focus();}});
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{if(db){db.exec('PRAGMA wal_checkpoint(TRUNCATE)');db.close();db=null;}});
+app.on('before-quit',()=>{closeDevWatchers();if(db){db.exec('PRAGMA wal_checkpoint(TRUNCATE)');db.close();db=null;}});
 process.on('uncaughtException',error=>{console.error(error);if(app.isReady())dialog.showErrorBox('Application error',error.message);});
