@@ -22,8 +22,14 @@
 .insight-meta{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--muted);margin-top:6px;min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .insight-meta svg{color:var(--primary);flex-shrink:0}
 .insight-list{list-style:none;margin:12px 0 0;padding:0;border-top:1px solid var(--border);flex:1}
-.insight-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;min-width:0}
+.insight-list li{list-style:none}
+.insight-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 6px;margin:0 -6px;border:0;border-bottom:1px solid var(--border);border-radius:7px;background:none;color:inherit;font:inherit;font-size:11px;min-width:0;width:calc(100% + 12px);text-align:start;cursor:pointer;transition:background .15s,padding-inline .15s}
 .insight-row:last-child{border-bottom:0}
+.insight-row:hover,.insight-row:focus-visible{background:var(--primary-soft);outline:none}
+.insight-row:hover .row-main strong,.insight-row:hover .row-main{color:var(--primary)}
+.insight-row svg{color:var(--muted);opacity:0;transition:opacity .15s,transform .15s;flex-shrink:0}
+.insight-row:hover svg,.insight-row:focus-visible svg{opacity:.85;transform:translateX(2px)}
+[dir=rtl] .insight-row:hover svg,[dir=rtl] .insight-row:focus-visible svg{transform:translateX(-2px)}
 .insight-row .row-main{min-width:0;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .insight-row .row-main small{display:block;font-size:9px;font-weight:400;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .insight-row .row-side{flex-shrink:0;font-size:10px;color:var(--muted);white-space:nowrap}
@@ -35,6 +41,10 @@
 .insight-card:hover .insight-foot svg{transform:translateX(3px)}
 [dir=rtl] .insight-card:hover .insight-foot svg{transform:translateX(-3px)}
 .trend-card{margin-bottom:22px}
+/* A record opened from a dashboard row is highlighted in its destination table. */
+tr.row-focus{background:color-mix(in srgb,var(--primary-soft) 75%,transparent);box-shadow:inset 3px 0 0 var(--primary)}
+tr.row-focus td{font-weight:600}
+[dir=rtl] tr.row-focus{box-shadow:inset -3px 0 0 var(--primary)}
 /* Keep all four in one row as long as the cards can still breathe. */
 @media(max-width:1180px){.insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.insight-grid{grid-template-columns:1fr;gap:11px}.insight-card{padding:15px 15px 0}.insight-value{font-size:21px}}
