@@ -235,7 +235,7 @@ app.whenReady().then(async()=>{
   assert.ok(await run("return document.querySelector('[data-filter=out]').classList.contains('active')"),'out of stock chip becomes active');
   assert.ok(await run("return !document.querySelector('#inventory-rows').innerText.includes('Paracetamol 500mg')"),'out of stock hides medicines with stock');
   assert.ok(await run("return document.querySelector('#inventory-rows').innerText.includes('Empty Shelf')"),'out of stock keeps exhausted medicines');
-  assert.ok(await run("return document.querySelector('#inventory-rows').innerText.includes('0 tablet')"),'out of stock shows a zero quantity');
+  assert.match(await run("return document.querySelector('#inventory-rows').innerText"),/0 Tablet/i,'out of stock shows a zero quantity');
   await run("document.querySelector('[data-filter=low]').click();return true;");
   await pause(200);
   assert.ok(await run("return document.querySelector('#inventory-rows').innerText.includes('Amoxicillin 250mg')"),'low stock lists medicines under their reorder level');
