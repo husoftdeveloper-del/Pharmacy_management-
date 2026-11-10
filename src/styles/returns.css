@@ -1,0 +1,4 @@
+/* Sales returns page: one card with a date filter and the returns table.
+   Shared table, card and filter styles come from base.css. */
+#returns-total{font-size:11px;font-weight:600;color:var(--text)}
+#returns-rows .table-footer{margin-top:0}
