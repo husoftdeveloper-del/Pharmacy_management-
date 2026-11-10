@@ -1,13 +1,14 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { pathToFileURL } = require('node:url');
 const { openDatabase, transaction, audit, backupDatabase, validateBackup } = require('./database/database');
 const { PharmacyService } = require('./database/service');
 const { escapeXml } = require('./database/barcode');
 const { renderPDF } = require('./database/pdf');
+const rendererTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.ico':'image/x-icon'};
+function rendererType(filename){return rendererTypes[path.extname(filename).toLowerCase()]||'application/octet-stream';}
 let db, service, mainWindow;
 const sessions = new Map();
 const attempts = new Map();
@@ -235,7 +236,10 @@ function createWindow() {
   mainWindow.webContents.session.setPermissionRequestHandler((wc,permission,callback)=>callback(false));
   mainWindow.webContents.session.setPermissionCheckHandler(()=>false);
   mainWindow.webContents.on('destroyed',()=>sessions.delete(mainWindow?.webContents.id));
-  mainWindow.loadURL('pharmacy://app/pages/index.html');
+  /* A packaged update replaces the app files, so start every launch from a clean cache. */
+  mainWindow.webContents.session.clearCache().catch(()=>{}).finally(()=>{
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL('pharmacy://app/pages/index.html');
+  });
   mainWindow.on('closed',()=>{sessions.clear();mainWindow=null;});
   if (isDev) {
     mainWindow.webContents.on('before-input-event',(event,input)=>{
@@ -253,7 +257,11 @@ app.whenReady().then(()=>{
     const root = path.join(__dirname, 'src');
     const filename = path.resolve(root, '.' + decodeURIComponent(url.pathname));
     if (url.host !== 'app' || !filename.startsWith(root + path.sep)) return new Response('Not found', { status: 404 });
-    return net.fetch(pathToFileURL(filename).toString());
+    /* Serve from disk every time: Chromium must never reuse an older build of a
+       renderer file after an update. */
+    return fs.promises.readFile(filename)
+      .then(data => new Response(data, { headers: { 'content-type': rendererType(filename), 'cache-control': 'no-store, no-cache, max-age=0' } }))
+      .catch(() => new Response('Not found', { status: 404 }));
   });
   db=openDatabase(app.getPath('userData'));service=new PharmacyService(db);
   ipcMain.handle('pharmacy:request',async(event,request)=>{
