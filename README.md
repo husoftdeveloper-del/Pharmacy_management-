@@ -86,7 +86,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Customer payments | Four totals (credit sales, paid, returned, owed), **Balances** view with per-customer credit sales/paid/returned/balance/last payment plus search and “only with dues”, **History** view of every payment with allocation and user, and a Record Payment form |
 | Medicines | Name, barcode and barcode type, generic name, brand, company, category, dosage form, unit, cost/price, reorder level and reorder quantity, Rx flag, storage instructions, active/inactive status, and an opening stock block (quantity, expiry, purchase price, selling price) that creates the first batch when the medicine is created |
 | Price list | A printable list of every active medicine with its shelf quantity, purchase price, selling price and profit per unit, searchable, with a one-click local PDF export |
-| Inventory | Batch-level stock: medicine, batch number, expiry, location, quantity, cost and value, with totals for batches, stock value, low stock and near-expiry items, plus an expiring-only filter |
+| Inventory | Shelf stock per medicine with barcode search/scan, quantity, nearest expiry, and All stock / Low Stock / Out of Stock / Expiring Soon filters |
 | Barcode | One-click unique barcode generation from the icon beside the input, instant preview, unique assignment, local CODE128-B SVG with checksum, printable PDF; keyboard-wedge scanner input in POS |
 | Purchases | Supplier invoices, multi-item receiving, batch/expiry/cost/location, discounts, cash/bank/credit payment, purchase returns |
 | Suppliers | Contacts, opening balances, payables, payments and purchase history |
