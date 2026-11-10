@@ -205,7 +205,7 @@ class PharmacyService {
     });
   }
   documents(user, type, query = {}) {
-    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], purchases:['purchases','purchases'], purchasereturns:['purchase_returns','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
+    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], customerpayments:['payments','customerpayments'], purchases:['purchases','purchases'], purchasereturns:['purchase_returns','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
     if (!config) fail('Unknown history.');
     this.require(user,config[1]);
     const from = query.from ? date(query.from) : '0000-01-01';
@@ -216,7 +216,7 @@ class PharmacyService {
     let sql = `SELECT * FROM ${table}`;
     const dateField = type==='audit' ? 'created_at' : 'date';
     sql += ` WHERE date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`;
-    const rows = this.all(sql,from,to,limit);
+    const rows = type==='customerpayments' ? this.all(`SELECT * FROM payments WHERE party_type='customer' AND date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`,from,to,limit) : this.all(sql,from,to,limit);
     return rows.map(row => {
       if (type==='sales') return {...row,customer:this.get('SELECT name FROM customers WHERE id=?',row.customer_id)?.name||'Walk-in',returns:this.get('SELECT COALESCE(SUM(total),0) AS n FROM sale_returns WHERE sale_id=?',row.id).n};
       if (type==='salereturns') {
@@ -228,6 +228,7 @@ class PharmacyService {
         return {...row,invoice_no:purchase?.invoice_no||'',supplier:purchase?.supplier_id?this.get('SELECT name FROM suppliers WHERE id=?',purchase.supplier_id)?.name||'':'',items:this.get('SELECT COALESCE(SUM(quantity),0) AS n FROM purchase_return_items WHERE return_id=?',row.id).n,user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||''};
       }
       if (type==='purchases') return {...row,supplier:this.get('SELECT name FROM suppliers WHERE id=?',row.supplier_id)?.name};
+      if (type==='customerpayments') return {...row,customer:this.get('SELECT name FROM customers WHERE id=?',row.party_id)?.name||'',account:this.get('SELECT name FROM accounts WHERE id=?',row.account_id)?.name||'',user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||'',allocated:this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payment_allocations WHERE payment_id=?',row.id).n};
       if (type==='payments') return {...row,party:this.get(`SELECT name FROM ${row.party_type==='customer'?'customers':'suppliers'} WHERE id=?`,row.party_id)?.name};
       if (['advances','salaries'].includes(type)) return {...row,staff:this.get('SELECT name FROM staff WHERE id=?',row.staff_id)?.name};
       if (type==='prescriptions') return {...row,patient:this.get('SELECT name FROM patients WHERE id=?',row.patient_id)?.name,attachment:undefined};

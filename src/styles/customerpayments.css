@@ -1,0 +1,5 @@
+/* Customer payments page: one card with a date filter, the payments table and
+   a footer total. Shared card, table and filter styles come from base.css. */
+#payment-total{font-size:11px;font-weight:600;color:var(--text)}
+#payment-count{font-size:11px}
+@media(max-width:650px){#payment-total,#payment-count{display:block;line-height:1.8}}

@@ -42,7 +42,8 @@ test('credit limits, customer payment allocation and receivable balance',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin);const customer=s.saveEntity(admin,'customers',{name:'Patient Customer',opening_balance:20,credit_limit:100,active:1}).id;
  assert.throws(()=>s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:10}],paymentMethod:'credit'}),/credit limit/);
  s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:5}],paymentMethod:'credit'});assert.equal(s.party('customer',customer).balance,70);
- s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:70,method:'cash',accountId:1});assert.equal(s.party('customer',customer).balance,0);assert.equal(s.get('SELECT SUM(amount) AS n FROM payment_allocations').n,50);assert.throws(()=>s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:1,method:'cash'}),/exceeds/);balanced(s);
+ s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:70,method:'cash',accountId:1});assert.equal(s.party('customer',customer).balance,0);
+ const cpay=s.documents(admin,'customerpayments');assert.equal(cpay.length,1);assert.equal(cpay[0].customer,'Patient Customer');assert.equal(cpay[0].amount,70);assert.equal(cpay[0].allocated,50);assert.equal(cpay[0].account,'Cash');assert.equal(s.documents(admin,'customerpayments',{from:'2000-01-01',to:'2000-01-02'}).length,0);assert.equal(s.get('SELECT SUM(amount) AS n FROM payment_allocations').n,50);assert.throws(()=>s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:1,method:'cash'}),/exceeds/);balanced(s);
 });
 test('sales returns restore stock only when requested and respect original quantities',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin);const sale=s.sale(admin,{items:[{medicineId:m.id,quantity:5}],paymentMethod:'cash',discount:10});
