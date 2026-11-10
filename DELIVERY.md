@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.36**
+Verified release: **v1.0.0-build.37**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.36
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.36/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.36/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.37
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.37/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.37/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-9139650bc4d877e7939821dcc40ae2dbe70c1a947ed5382b3988bb42d86b100d  Pharmacy-1.0.0-x64.exe
-3af8d04bf76bc5513cf21ff96078dc89b19d9cf5c99cf72db5cfc17ea2dbce49  Pharmacy-1.0.0-Portable.exe
+918b689a73b3d3f4a7b34e2ffba6908c60b1ffd17e13464ce74377904d166826  Pharmacy-1.0.0-x64.exe
+28bb8f06085029d6b000c54aa969ed171413277eb86ca0a6c8f10f677bc0b6f4  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `70ed418`. The branch also contains the refreshed installer commit `9986aae`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `4702742`. The branch also contains the refreshed installer commit `352927f`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -86,10 +86,12 @@ The **New Medicine** dialog now follows the reference layout:
 | 4 | **Company** (manufacturer) · **Category** |
 | 5 | **Dosage Form** (tablet, capsule, syrup, suspension, injection, cream, ointment, drops, inhaler, sachet, powder, spray, other) · **Unit** (piece, tablet, capsule, bottle, box, strip, sachet, ml, g, tube, vial, ampoule) |
 | 6 | **Reorder Level** (with the hint “Alert when total stock falls to or below this quantity.”) · **Reorder Qty** |
-| 7 | **Purchase Price** · **Selling Price** (kept because the table and the point of sale need them) |
-| 8 | **Opening Stock** collapsible: quantity, batch number, expiry and stock location |
+| 7 | **Storage instructions** |
+| 8 | **Opening Stock** collapsible: **Quantity**, **Expiry**, **Purchase Price**, **Selling Price** |
 
 Footer: **Cancel · Save & New · Save**. *Save & New* stores the medicine, refreshes the table and clears the form for the next entry.
+
+Build 37 trimmed the Opening Stock block to the four fields asked for — Quantity, Expiry, Purchase Price and Selling Price — and moved both prices there for a new medicine. Opening stock no longer asks for a batch number (it is stored as `OPEN-1`) or a location (it goes to the default Main pharmacy). The purchase price becomes the batch cost and the medicine's cost; the selling price becomes the medicine's price, so the catalogue and the point of sale show the same numbers. When editing an existing medicine both prices stay editable in the main grid, because there is no opening stock at that point.
 
 Supporting changes:
 
@@ -151,7 +153,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.36` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.37` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -173,7 +175,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42800330900
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42802459817
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
