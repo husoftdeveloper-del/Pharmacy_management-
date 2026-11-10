@@ -78,9 +78,10 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Area | Working functionality |
 |---|---|
 | Authentication | First-run administrator creation, salted scrypt password hashes, login throttling, 15-minute inactivity expiry, logout, active-user checks |
-| Dashboard | Sales totals, seven-day chart, stock value, plus four clickable boxes side by side in one row — expenses this month, low stock, expiring soon and recent sales — each with the latest records — every detail row is clickable and opens that exact invoice, expense, medicine or expiry report; boxes appear only for the permissions the signed-in role has |
+| Dashboard | Sales totals, seven-day chart, stock value, plus four clickable boxes side by side in one row (expenses this month, low stock, expiring soon, recent sales) that show a headline figure and open their module on click; boxes appear only for the permissions the signed-in role has |
 | POS | Medicine/barcode/SKU search, stock-aware cart, FEFO batch allocation, prescription checks, server-calculated discounts/tax, cash/bank/credit sales, receipt PDF |
-| Sales history | Date filters, invoice details, quantity-limited returns, restock/damaged choice, cash/bank refund or customer credit, PDF receipts |
+| Sales history | Date filters, invoice details, quantity-limited returns (restock/damaged choice, cash/bank refund or customer credit), PDF receipts, amount already returned per invoice |
+| Returns | Separate module: every sales return with its invoice, returned quantity, negative amount, refund method and reason; View the original invoice or start another return |
 | Customers | Contact records, opening balances, credit limits, outstanding balances, payments and invoice allocation |
 | Medicines | SKU/barcode, generic name, category/manufacturer, unit, cost/price, reorder level, Rx flag, storage instructions, active/inactive status |
 | Barcode | One-click unique barcode generation from the icon beside the input, instant preview, unique assignment, local CODE128-B SVG with checksum, printable PDF; keyboard-wedge scanner input in POS |
