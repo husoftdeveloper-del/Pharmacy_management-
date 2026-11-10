@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.30**
+Verified release: **v1.0.0-build.31**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.30
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.30/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.30/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.31
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.31/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.31/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-0b10756db1dd5103f1202ce4d29b8babebc6c3884a425647d7b4b6ec89594f6f  Pharmacy-1.0.0-x64.exe
-2d6efbd0ea912d6bb54a4d7cb5e521e4f0a84aa08e527f695160203f654783df  Pharmacy-1.0.0-Portable.exe
+cd3683391766d4dbcd0cf63a21ca64d449b32649c45ceedaa0346afcc9fc5844  Pharmacy-1.0.0-x64.exe
+2179f1a7a383e0900e20fdfb9091e0d43f4d042592b49d44cc094ba0536adb1e  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `a248704`. The branch also contains the refreshed installer commit `48e1d6e`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `3e3e6e0`. The branch also contains the refreshed installer commit `460c4a1`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -58,6 +58,15 @@ The new **Customer payments** module (`customerpayments`, sidebar right below Cu
 
 **Record payment** opens the same validated form as the Finance page (customer, amount, cash/bank account, reference) and refreshes the customer list first, so a customer added on another page can be paid immediately. Payments are stored in the existing `payments` table and allocated to the oldest open invoices by the main process; the server requires the `customers` permission for customer payments, so pharmacists, cashiers and accountants can use the page without gaining finance access.
 
+## Customer payments layout (build 31)
+
+The page now opens with four totals — **Total Credit Sales, Total Paid, Total Returned, Total Owed** (owed in red) — then two views:
+
+- **Balances** — one row per active customer with name/phone, credit sales, paid, returned, balance and last payment, plus a customer search box and an **Only with dues** toggle. When nothing is owed it shows “No customer balances — Balances will appear once you record credit sales.”
+- **History** — every recorded payment with amount, method, reference, allocated amount and the user who recorded it, filtered by the same search box.
+
+All figures come from the new permission-checked `customerAccounts` IPC call (aggregates over `sales`, `sale_returns` and `payments`, with each balance computed from the customer ledger), so the totals always match the Finance report. **Record Payment** keeps the validated cash/bank form and refreshes the customer list first.
+
 ## Renderer caching fixed in build 24
 
 The app loads its screens through a custom `pharmacy://` protocol. Chromium was allowed to cache those responses, so after an update the window could keep rendering the previous build (for example the old dashboard with record lists inside the boxes).
@@ -84,7 +93,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.30` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.31` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -106,7 +115,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42784269380
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42786147454
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
