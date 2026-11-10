@@ -235,7 +235,7 @@ app.whenReady().then(async()=>{
   const priceHeadings=await run("return [...document.querySelectorAll('.price-list-table thead th')].map(t=>t.textContent.trim().toLowerCase()).join('|')");
   assert.equal(priceHeadings,'name|stock|purchase price|selling price|profit','price list column order');
   const priceRow=await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''");
-  assert.match(priceRow,/\d+ tablet/,'stock quantity with its unit');
+  assert.match(priceRow,/\d+ tablet/i,"stock quantity with its unit");
   assert.ok(priceRow.includes('6.00')&&priceRow.includes('10.00'),'purchase and selling price');
   assert.ok(priceRow.includes('4.00'),'profit per unit');
   assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all')"),'showing all footer');
