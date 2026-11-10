@@ -4,7 +4,7 @@ const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 let count=0;
-function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){if(['node_modules','.git','release','artifacts'].includes(entry.name))continue;const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file);else if(entry.name.endsWith('.js')){const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status!==0)throw new Error(result.stderr);count++;}}}
+function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){if(['node_modules','.git','release','artifacts'].includes(entry.name))continue;const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file);else if(entry.name.endsWith('.js')){const relative=path.relative(root,file).split(path.sep).join('/');/* Renderer files are ES modules even though they use a .js extension, so they must be parsed as modules. */const esm=relative.startsWith('src/');const result=esm?spawnSync(process.execPath,['--check','--input-type=module'],{encoding:'utf8',input:fs.readFileSync(file,'utf8')}):spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status!==0)throw new Error(`${relative}: ${result.stderr}`);count++;}}}
 walk(root);
 const pages=fs.readdirSync(path.join(root,'src','pages')).filter(f=>f.endsWith('.html')&&f!=='index.html');
 for(const page of pages){const base=page.slice(0,-5);for(const ext of ['js','html'])if(!fs.existsSync(path.join(root,'src','pages',base+'.'+ext)))throw new Error(`Missing ${base}.${ext}`);if(!fs.existsSync(path.join(root,'src','styles',base+'.css')))throw new Error(`Missing stylesheet ${base}`);}
