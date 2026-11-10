@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.27**
+Verified release: **v1.0.0-build.28**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.27
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.27/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.27/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.28
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.28/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.28/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-2458943c1f980b9e6a2c2b579d04535768707bc6ab2a6a91937a288e9aaa2a7b  Pharmacy-1.0.0-x64.exe
-80346510d9a7e4842d410370bc360643a500df433804fdf1f63a28c9661c9f68  Pharmacy-1.0.0-Portable.exe
+b075801f709b97d0cae1f280c0a7631ebbdd5f1b08fa3fa4b89d6d8d6da65642  Pharmacy-1.0.0-x64.exe
+bab088c5894a8ff51be3a38a48a151bb1a901537764b0ab8745308af622bd1c3  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `cb0016b`. The branch also contains the refreshed installer commit `56d80bf`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `87c57b9`. The branch also contains the refreshed installer commit `c9360cf`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -44,7 +44,7 @@ See `README.md` for architecture, all modules, security boundaries, operating in
 The **Sales & returns** module now has two tabs:
 
 - **Sales history** (`sales`) — its own sidebar entry: invoices with customer, total, paid, date, status and the amount already returned per invoice, plus View / Return / PDF per row and a footer total.
-- **Returns** (`returns`) — a separate sidebar entry under Overview: every sales return with the date, original invoice, customer, returned quantity, negative amount, refund method and reason, with View (opens the original invoice) and Return (starts another return for that invoice) per row, a footer total and the same date filter.
+- **Returns** (`returns`) — a separate sidebar entry under Overview with two buttons: **Sales return** and **Purchase return**. Each list shows the date, original invoice, the customer or supplier, returned quantity, negative amount, refund method and reason, with View (opens the original invoice) and Return (starts another return for that document) per row, a footer total and the same date filter. Purchase returns are served by a `purchasereturns` history on the existing `purchases` permission.
 
 Returns are still created from the sales history (Return) or from an invoice's detail dialog. The `returns` module is a real permission: it is granted to administrator, pharmacist, cashier and accountant by default and can be toggled per user on the Users page. Returns are still created from a sale row (**Return**) or from an invoice's detail dialog. The returns list is served by a permission-checked `salereturns` history on the existing `sales` permission, and is covered by database tests and the Windows Electron smoke test.
 
@@ -74,7 +74,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.27` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.28` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -96,7 +96,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42780214135
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42781663804
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
