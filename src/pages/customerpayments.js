@@ -1,6 +1,6 @@
 import {api,state,money,escapeHTML as e,dateTime} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
-import {pageHeader,button,table,empty,modal,form,field,bindForm,toast,run,dateFilters,bindDates} from '../components/ui.js';
+import {pageHeader,button,table,empty,modal,form,field,bindForm,toast,run,dateFilters,bindDates,refreshOptions} from '../components/ui.js';
 import {paymentPayload} from '../scripts/payloads.js';
 import {bindPaymentAccount} from '../components/payment-fields.js';
 /* Customer payments: money received from customers, newest first, with the
@@ -26,7 +26,8 @@ export async function render(root,params={}){
     bindPaymentAccount(m.root);
     bindForm(m.root,async data=>{await api('payment',{...paymentPayload({...data,party_type:'customer'})});toast(t('recordSaved'));await load();},m.close);
   };
-  root.querySelector('#record-payment').onclick=openPayment;
+  /* Reload the customer list first, so a customer added in another page can be paid immediately. */
+  root.querySelector('#record-payment').onclick=()=>run(async()=>{await refreshOptions();openPayment();});
   bindDates(root,query=>{range.from=query.from;range.to=query.to;return load();});
   await run(load);
 }
