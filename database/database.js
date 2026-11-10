@@ -16,7 +16,7 @@ function openDatabase(directory) {
 // Column additions are applied to existing user databases without touching their data.
 function migrate(db) {
   const columns = table => db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name);
-  const additions = [['customers','email',"TEXT NOT NULL DEFAULT ''"]];
+  const additions = [['customers','email',"TEXT NOT NULL DEFAULT ''"],['medicines','created_by','INTEGER REFERENCES users(id)']];
   for (const [table, column, definition] of additions) {
     if (!columns(table).includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }

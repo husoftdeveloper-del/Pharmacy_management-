@@ -29,6 +29,14 @@ function renderShell(){
  app.querySelector('#mobile-menu').onclick=()=>app.querySelector('.sidebar').classList.toggle('open');
  app.querySelector('#global-search').onkeydown=ev=>{if(ev.key==='Enter'){const query=ev.target.value;navigate(state.permissions.includes('inventory')?'inventory':'pos',{search:query});}};
 }
+// Each page owns a stylesheet slot in src/styles; load the one for the page we
+// are about to render so page-specific rules apply (and do not leak elsewhere).
+function loadPageStyles(page){
+ let link=document.querySelector('#page-styles');
+ if(!link){link=document.createElement('link');link.id='page-styles';link.rel='stylesheet';document.head.append(link);}
+ const href=`../styles/${page}.css`;
+ if(link.getAttribute('href')!==href)link.setAttribute('href',href);
+}
 export async function navigate(page,params={}){
  if(!state.permissions.includes(page)){toast(t('noAccess'),'error');return;}
  clearTimeout(navigateTimer);currentPageCleanup?.();currentPageCleanup=null;state.page=page;
@@ -36,6 +44,7 @@ export async function navigate(page,params={}){
  const breadcrumb=app.querySelector('#breadcrumb-page');if(breadcrumb)breadcrumb.textContent=t(page);
  const content=app.querySelector('#page-content');content.innerHTML=`<div class="loading-state"><div class="spinner"></div>${e(t('loading'))}</div>`;
  const requested=page;
+ loadPageStyles(page);
  try{
   let html='';try{const response=await fetch(`./${page}.html`);if(response.ok)html=await response.text();}catch{}
   if(state.page!==requested)return;

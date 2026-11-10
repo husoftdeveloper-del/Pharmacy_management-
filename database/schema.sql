@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS medicines (
  barcode TEXT UNIQUE, category_id INTEGER REFERENCES categories(id), manufacturer_id INTEGER REFERENCES manufacturers(id),
  unit TEXT NOT NULL DEFAULT 'piece', cost REAL NOT NULL DEFAULT 0 CHECK(cost >= 0), price REAL NOT NULL CHECK(price >= 0),
  reorder_level INTEGER NOT NULL DEFAULT 10 CHECK(reorder_level >= 0), rx_required INTEGER NOT NULL DEFAULT 0 CHECK(rx_required IN (0,1)),
- storage TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1
+ storage TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+ created_by INTEGER REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS batches (
  id INTEGER PRIMARY KEY, medicine_id INTEGER NOT NULL REFERENCES medicines(id), location_id INTEGER NOT NULL REFERENCES locations(id),

@@ -42,6 +42,7 @@ test('medicine catalogue and inventory stock are separate views of the same data
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  const book=s.medicineBook(admin);const row=book.rows.find(r=>r.id===m.id);
  assert.equal(book.rows.length,1);assert.equal(row.name,'Paracetamol 500mg');assert.equal(row.sku,'PAR-500');assert.equal(row.stock,30);assert.equal(row.price,10);assert.equal(row.reorder_level,5);
+ assert.equal(row.recorded_by,'Administrator');assert.equal(row.expiry,'2030-12-31');assert.ok(row.category_id===null||Number.isInteger(row.category_id));
  assert.equal(book.totals.medicines,1);assert.equal(book.totals.active,1);assert.equal(book.totals.lowStock,0);assert.equal(book.totals.value,180);
  const stockView=s.inventoryBook(admin);assert.equal(stockView.rows.length,1);assert.equal(stockView.rows[0].medicine,'Paracetamol 500mg');assert.equal(stockView.rows[0].batch_no,'B001');assert.equal(stockView.rows[0].quantity,30);assert.equal(stockView.rows[0].value,180);assert.equal(stockView.rows[0].location,'Main pharmacy');
  assert.equal(stockView.totals.batches,1);assert.equal(stockView.totals.value,180);assert.equal(stockView.totals.lowStock,0);assert.equal(stockView.totals.expiring,0);

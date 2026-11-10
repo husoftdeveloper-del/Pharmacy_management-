@@ -129,6 +129,7 @@ class PharmacyService {
         this.run(`UPDATE ${entity} SET ${Object.keys(data).map(k => `${k}=?`).join(',')} WHERE id=?`, ...Object.values(data), recordId);
         recordIdFinal = recordId;
       } else {
+        if (entity === 'medicines') data.created_by = user?.id ?? null;
         const r = this.run(`INSERT INTO ${entity}(${Object.keys(data).join(',')}) VALUES(${Object.keys(data).map(() => '?').join(',')})`, ...Object.values(data));
         recordIdFinal = Number(r.lastInsertRowid);
         if (['customers','suppliers'].includes(entity) && data.opening_balance > 0) this.journal(user, 'Opening party balance', entity === 'customers' ? [[3,data.opening_balance],[8,0,data.opening_balance]] : [[8,data.opening_balance],[6,0,data.opening_balance]], `${entity}:${recordIdFinal}`);
@@ -487,9 +488,10 @@ class PharmacyService {
   }
   medicineBook(user) {
     this.require(user,['medicines','inventory']);
-    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.sku,m.barcode,m.unit,m.cost,m.price,m.reorder_level,m.active,c.name AS category,
-        COALESCE(SUM(b.quantity),0) AS stock
-      FROM medicines m LEFT JOIN categories c ON c.id=m.category_id LEFT JOIN batches b ON b.medicine_id=m.id
+    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.sku,m.barcode,m.unit,m.cost,m.price,m.reorder_level,m.active,m.category_id,c.name AS category,
+        u.name AS recorded_by, COALESCE(SUM(b.quantity),0) AS stock,
+        (SELECT MIN(b2.expiry) FROM batches b2 WHERE b2.medicine_id=m.id AND b2.quantity>0) AS expiry
+      FROM medicines m LEFT JOIN categories c ON c.id=m.category_id LEFT JOIN users u ON u.id=m.created_by LEFT JOIN batches b ON b.medicine_id=m.id
       GROUP BY m.id ORDER BY m.name`);
     return {
       rows,
@@ -595,7 +597,7 @@ class PharmacyService {
     return {kind,from,to,columns,rows,currency:this.setting('currency'),pharmacyName:this.setting('pharmacy_name')};
   }
   generateBarcode(user) {
-    this.require(user,'barcodes');
+    this.require(user,['barcodes','medicines','inventory']);
     for(let attempt=0;attempt<20;attempt++){
       const value='MED-'+Date.now().toString(36).toUpperCase()+'-'+crypto.randomBytes(6).toString('hex').toUpperCase();
       if(!this.get('SELECT id FROM medicines WHERE barcode=?',value)){
