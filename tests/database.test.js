@@ -57,6 +57,7 @@ test('purchase returns remove batch stock and reduce supplier payable',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);const purchase=s.get('SELECT * FROM purchases ORDER BY id DESC');const item=s.get('SELECT * FROM purchase_items WHERE purchase_id=?',purchase.id);
  s.returnDocument(admin,'purchase',{documentId:purchase.id,items:[{itemId:item.id,quantity:5}],reason:'Damaged delivery',method:'credit'});
  assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,25);assert.equal(s.party('supplier',purchase.supplier_id).balance,150);balanced(s);
+ const prets=s.documents(admin,'purchasereturns');assert.equal(prets.length,1);assert.equal(prets[0].invoice_no,'PUR-001');assert.equal(prets[0].supplier,'Health Supplies');assert.equal(prets[0].items,5);assert.equal(prets[0].total,30);assert.equal(s.documents(admin,'purchasereturns',{from:'2000-01-01',to:'2000-01-02'}).length,0);assert.equal(s.documents(admin,'salereturns').length,0);
 });
 test('supplier payment and operating expenses',(t)=>{
  const {s,admin}=fixture(t);stock(s,admin);const party=s.all('SELECT * FROM suppliers')[0];s.partyPayment(admin,{partyType:'supplier',partyId:party.id,amount:80,method:'bank',accountId:2});assert.equal(s.party('supplier',party.id).balance,100);

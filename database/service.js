@@ -205,7 +205,7 @@ class PharmacyService {
     });
   }
   documents(user, type, query = {}) {
-    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], purchases:['purchases','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
+    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], purchases:['purchases','purchases'], purchasereturns:['purchase_returns','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
     if (!config) fail('Unknown history.');
     this.require(user,config[1]);
     const from = query.from ? date(query.from) : '0000-01-01';
@@ -222,6 +222,10 @@ class PharmacyService {
       if (type==='salereturns') {
         const sale=this.get('SELECT invoice_no,customer_id FROM sales WHERE id=?',row.sale_id);
         return {...row,invoice_no:sale?.invoice_no||'',customer:(sale?.customer_id&&this.get('SELECT name FROM customers WHERE id=?',sale.customer_id)?.name)||'Walk-in',items:this.get('SELECT COALESCE(SUM(quantity),0) AS n FROM sale_return_items WHERE return_id=?',row.id).n,user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||''};
+      }
+      if (type==='purchasereturns') {
+        const purchase=this.get('SELECT invoice_no,supplier_id FROM purchases WHERE id=?',row.purchase_id);
+        return {...row,invoice_no:purchase?.invoice_no||'',supplier:purchase?.supplier_id?this.get('SELECT name FROM suppliers WHERE id=?',purchase.supplier_id)?.name||'':'',items:this.get('SELECT COALESCE(SUM(quantity),0) AS n FROM purchase_return_items WHERE return_id=?',row.id).n,user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||''};
       }
       if (type==='purchases') return {...row,supplier:this.get('SELECT name FROM suppliers WHERE id=?',row.supplier_id)?.name};
       if (type==='payments') return {...row,party:this.get(`SELECT name FROM ${row.party_type==='customer'?'customers':'suppliers'} WHERE id=?`,row.party_id)?.name};
