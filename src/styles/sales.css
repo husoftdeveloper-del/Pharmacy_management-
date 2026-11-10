@@ -1,6 +1,12 @@
-/* Sales & returns: the two tabs (sales history / returns) and their helper line.
-   Shared card, table and filter styles come from base.css and pages.css. */
-.sale-tab-tools{justify-content:flex-start;padding:14px 22px 4px;font-size:10px;color:var(--muted)}
-.sale-tab-tools:empty{display:none}
-#sales-total,#returns-total{font-size:11px;font-weight:550;color:var(--text)}
-#returns-total{color:var(--red)}
+/* Sales & returns page: the sales history card on top, the returns card directly
+   below it. Shared card, table and filter styles come from base.css. */
+.sales-panel{margin-bottom:22px}
+.sales-panel:last-of-type{margin-bottom:0}
+.sales-panel .card-header h2{font-size:15px}
+.sales-panel .filter-bar{padding-block:14px}
+.sales-panel .table-footer{justify-content:space-between}
+#sales-total{font-size:11px;font-weight:600;color:var(--text)}
+#returns-total{font-size:11px;font-weight:600;color:var(--red)}
+#returns-total.muted,#returns-count{font-weight:500}
+#sales-hint{font-family:'SFMono-Regular',Consolas,monospace;font-size:10px}
+@media(max-width:650px){.sales-panel .filter-bar{flex-wrap:wrap}}
