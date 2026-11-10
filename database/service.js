@@ -138,6 +138,48 @@ class PharmacyService {
       return { id: recordIdFinal };
     });
   }
+  // Price list: one row per medicine with its shelf quantity, both prices and
+  // the profit made on a single unit.
+  priceList(user) {
+    this.require(user, 'pricelist');
+    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.unit,m.cost,m.price,
+        COALESCE(SUM(b.quantity),0) AS stock
+      FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id
+      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => ({
+        ...row,
+        cost: round(row.cost),
+        price: round(row.price),
+        profit: round(Number(row.price) - Number(row.cost))
+      }));
+    return {
+      rows,
+      totals: {
+        medicines: rows.length,
+        stockValue: round(rows.reduce((sum, row) => sum + Number(row.stock) * Number(row.cost), 0)),
+        profit: round(rows.reduce((sum, row) => sum + Number(row.profit), 0))
+      },
+      currency: this.setting('currency')
+    };
+  }
+  priceListDocument(user) {
+    const book = this.priceList(user);
+    const currency = book.currency || '';
+    return {
+      kind: 'pricelist',
+      from: '',
+      to: '',
+      columns: ['name', 'stock', 'purchasePrice', 'sellingPrice', 'profit'],
+      rows: book.rows.map(row => ({
+        name: row.name,
+        stock: `${row.stock} ${row.unit}`,
+        purchasePrice: `${currency} ${row.cost.toFixed(2)}`,
+        sellingPrice: `${currency} ${row.price.toFixed(2)}`,
+        profit: `${currency} ${row.profit.toFixed(2)}`
+      })),
+      currency,
+      pharmacyName: this.setting('pharmacy_name')
+    };
+  }
   // The Medicines form saves the catalogue entry and, for a new medicine, its
   // opening batch in one transaction so the shelf and the books always agree.
   saveMedicine(user, input) {

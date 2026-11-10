@@ -38,6 +38,22 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('price list shows shelf quantity, both prices and profit per medicine',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
+ s.saveMedicine(admin,{name:'Panadol',unit:'tablet',cost:4,price:7,active:1,opening_stock:{quantity:12,expiry:'2032-01-31',cost:4,price:7}});
+ const book=s.priceList(admin);const paracetamol=book.rows.find(r=>r.id===m.id);const panadol=book.rows.find(r=>r.name==='Panadol');
+ assert.equal(book.rows.length,2);assert.equal(paracetamol.stock,30);assert.equal(paracetamol.cost,6);assert.equal(paracetamol.price,10);assert.equal(paracetamol.profit,4);
+ assert.equal(panadol.stock,12);assert.equal(panadol.unit,'tablet');assert.equal(panadol.profit,3);
+ assert.equal(book.totals.medicines,2);assert.equal(book.totals.stockValue,30*6+12*4);assert.equal(book.totals.profit,7);
+ const doc=s.priceListDocument(admin);
+ assert.deepEqual(doc.columns,['name','stock','purchasePrice','sellingPrice','profit']);
+ assert.equal(doc.rows.find(r=>r.name==='Paracetamol 500mg').stock,'30 tablet');assert.equal(doc.rows.find(r=>r.name==='Panadol').sellingPrice,`${doc.currency} 7.00`);
+ assert.equal(doc.kind,'pricelist');
+ const cashierId=s.saveUser(admin,{username:'price',name:'Price',password:'PricePass123',role:'cashier',active:1,permissions:{}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.throws(()=>s.priceList(cashier),/permission/i);
+ assert.equal(s.permissions(s.get('SELECT * FROM users WHERE id=?',admin.id)).includes('pricelist'),true);
+});
 test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
  const {s,admin}=fixture(t);
  const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',barcode_type:'internal',generic_name:'Paracetamol',brand:'GSK',dosage_form:'tablet',unit:'tablet',cost:6,price:12,reorder_level:20,reorder_qty:100,manufacturer_id:null,category_id:null,active:1,
