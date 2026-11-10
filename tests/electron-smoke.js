@@ -154,7 +154,7 @@ app.whenReady().then(async()=>{
   await pause(400);
   await run("const box=document.querySelector('#only-dues');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
   await pause(300);
-  assert.ok(!(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')")),'only-with-dues hides settled customers');
+  assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'only-with-dues keeps customers who owe money');
   await run("const box=document.querySelector('#only-dues');box.checked=false;box.dispatchEvent(new Event('change'));return true;");
   await pause(300);
   await run("document.querySelector('#record-payment').click();return true;");
@@ -175,6 +175,11 @@ app.whenReady().then(async()=>{
   assert.ok(await run("return document.querySelector('[data-view=history]').classList.contains('active')"),'history selected');
   await run("document.querySelector('[data-view=balances]').click();return true;");
   await pause(300);
+  await run("const box=document.querySelector('#only-dues');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await pause(400);
+  assert.ok(!(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')")),'a settled customer is hidden by the dues filter');
+  await run("const box=document.querySelector('#only-dues');box.checked=false;box.dispatchEvent(new Event('change'));return true;");
+  await pause(200);
   // The sales page holds only the sales history, with no returns table.
   // The returns page offers both lists behind two buttons.
   await run("document.querySelector('[data-page=returns]').click();return true;");
