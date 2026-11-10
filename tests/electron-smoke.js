@@ -248,7 +248,7 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('#inventory-search').value='zzz-none';document.querySelector('#inventory-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
   assert.ok(await run("return document.querySelector('#inventory-rows').innerText.toLowerCase().includes('nothing in this view')"),'empty state for a search with no match');
-  await run("document.querySelector('#inventory-search').value='PAR50001';document.querySelector('#inventory-search').dispatchEvent(new Event('keydown',{key:'Enter'}));return true;");
+  await run("const box=document.querySelector('#inventory-search');box.value='PAR50001';box.dispatchEvent(new Event('input'));box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return true;");
   await pause(250);
   assert.ok(await run("return document.querySelector('#inventory-rows').innerText.includes('Paracetamol 500mg')"),'a scanned barcode finds its medicine');
   await run("document.querySelector('#inventory-search').value='';document.querySelector('#inventory-search').dispatchEvent(new Event('input'));return true;");
