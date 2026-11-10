@@ -1,0 +1,6 @@
+/* Medicines catalogue page: three totals, a search box and the medicine table.
+   Shared card, table and stat styles come from base.css. */
+.medicine-stats{margin-bottom:22px}
+.medicine-stats .stat-value{font-size:26px;display:flex;align-items:baseline;gap:6px}
+#medicine-rows td:nth-child(5),#medicine-rows td:nth-child(6){font-variant-numeric:tabular-nums}
+@media(max-width:650px){.medicine-stats{grid-template-columns:1fr}}

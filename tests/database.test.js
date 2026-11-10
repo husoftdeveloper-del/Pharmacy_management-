@@ -38,6 +38,20 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('medicine catalogue and inventory stock are separate views of the same data',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
+ const book=s.medicineBook(admin);const row=book.rows.find(r=>r.id===m.id);
+ assert.equal(book.rows.length,1);assert.equal(row.name,'Paracetamol 500mg');assert.equal(row.sku,'PAR-500');assert.equal(row.stock,30);assert.equal(row.price,10);assert.equal(row.reorder_level,5);
+ assert.equal(book.totals.medicines,1);assert.equal(book.totals.active,1);assert.equal(book.totals.lowStock,0);assert.equal(book.totals.value,180);
+ const stockView=s.inventoryBook(admin);assert.equal(stockView.rows.length,1);assert.equal(stockView.rows[0].medicine,'Paracetamol 500mg');assert.equal(stockView.rows[0].batch_no,'B001');assert.equal(stockView.rows[0].quantity,30);assert.equal(stockView.rows[0].value,180);assert.equal(stockView.rows[0].location,'Main pharmacy');
+ assert.equal(stockView.totals.batches,1);assert.equal(stockView.totals.value,180);assert.equal(stockView.totals.lowStock,0);assert.equal(stockView.totals.expiring,0);
+ s.saveEntity(admin,'medicines',{...row,id:m.id,reorder_level:40,active:1});
+ assert.equal(s.medicineBook(admin).totals.lowStock,1);assert.equal(s.inventoryBook(admin).totals.lowStock,1);
+ const cashierId=s.saveUser(admin,{username:'counter',name:'Counter',password:'CounterPassword1',role:'cashier',active:1,permissions:{}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.throws(()=>s.medicineBook(cashier),/permission/);assert.throws(()=>s.inventoryBook(cashier),/permission/);
+ assert.throws(()=>s.inventoryBook(null),/sign in/i);
+});
 test('customer book lists email, status and ledger balance for every customer',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin);
  const created=s.saveEntity(admin,'customers',{name:'Walk In Plus',phone:'0700111222',email:'plus@example.com',opening_balance:10,credit_limit:0,active:1});

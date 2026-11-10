@@ -1,1 +1,7 @@
-/* inventory screen: shared design system in base.css; page layouts in pages.css. */
+/* Inventory page: four totals, a search box with an expiring-only toggle and the
+   batch table. Shared card, table and stat styles come from base.css. */
+.inventory-stats{margin-bottom:22px;gap:14px}
+.inventory-stats .stat-value{font-size:24px;display:flex;align-items:baseline;gap:6px}
+#batch-rows td:nth-child(5),#batch-rows td:nth-child(6),#batch-rows td:nth-child(7){font-variant-numeric:tabular-nums}
+@media(max-width:1180px){.inventory-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.inventory-stats{grid-template-columns:1fr}}

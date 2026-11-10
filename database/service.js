@@ -26,7 +26,9 @@ class PharmacyService {
   }
   require(user, permission, write = false) {
     if (!user?.active) fail('Please sign in.');
-    if (!this.permissions(user).includes(permission)) fail('You do not have permission for this action.');
+    const allowed = this.permissions(user);
+    const granted = Array.isArray(permission) ? permission.some(name => allowed.includes(name)) : allowed.includes(permission);
+    if (!granted) fail('You do not have permission for this action.');
     if (write && ['categories','manufacturers','patients','customers','suppliers','staff','locations','accounts'].includes(permission) && user.role === 'cashier') fail('Read-only access.');
   }
   session() { return this.get("SELECT * FROM cash_sessions WHERE status='open'"); }
@@ -143,8 +145,9 @@ class PharmacyService {
   options(user) {
     this.require(user, 'dashboard');
     const result = {};
-    for (const [key, table, permission] of [['categories','categories','categories'],['manufacturers','manufacturers','manufacturers'],['customers','customers','customers'],['suppliers','suppliers','suppliers'],['patients','patients','patients'],['staff','staff','staff'],['locations','locations','inventory'],['medicines','medicines','inventory']]) {
-      if (this.permissions(user).includes(permission)) result[key] = this.all(`SELECT id,name FROM ${table} WHERE active=1 ORDER BY name LIMIT 1000`);
+    for (const [key, table, permission] of [['categories','categories','categories'],['manufacturers','manufacturers','manufacturers'],['customers','customers','customers'],['suppliers','suppliers','suppliers'],['patients','patients','patients'],['staff','staff','staff'],['locations','locations','inventory'],['medicines','medicines',['medicines','inventory']]]) {
+      const can = Array.isArray(permission) ? permission.some(name => this.permissions(user).includes(name)) : this.permissions(user).includes(permission);
+      if (can) result[key] = this.all(`SELECT id,name FROM ${table} WHERE active=1 ORDER BY name LIMIT 1000`);
     }
     result.accounts = this.all("SELECT id,name,code,type FROM accounts WHERE active=1 AND (code='1000' OR code LIKE '101%') ORDER BY code");
     result.batches = this.all('SELECT b.id,m.name,b.batch_no,b.expiry,b.quantity,b.cost,l.name AS location FROM batches b JOIN medicines m ON m.id=b.medicine_id JOIN locations l ON l.id=b.location_id WHERE b.quantity>0 ORDER BY b.expiry LIMIT 2000');
@@ -481,6 +484,44 @@ class PharmacyService {
     if(p.includes('customers'))result.receivable=this.get('SELECT COALESCE(SUM(l.debit-l.credit),0) AS n FROM journal_lines l WHERE l.account_id=3').n;
     result.register=this.session()?{id:this.session().id}:null;result.recent=p.includes('sales')?this.all('SELECT s.id,s.invoice_no,s.total,s.date,c.name AS customer FROM sales s LEFT JOIN customers c ON c.id=s.customer_id ORDER BY s.id DESC LIMIT 5'):[];
     return result;
+  }
+  medicineBook(user) {
+    this.require(user,['medicines','inventory']);
+    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.sku,m.barcode,m.unit,m.cost,m.price,m.reorder_level,m.active,c.name AS category,
+        COALESCE(SUM(b.quantity),0) AS stock
+      FROM medicines m LEFT JOIN categories c ON c.id=m.category_id LEFT JOIN batches b ON b.medicine_id=m.id
+      GROUP BY m.id ORDER BY m.name`);
+    return {
+      rows,
+      totals: {
+        medicines: rows.length,
+        active: rows.filter(row => Number(row.active) === 1).length,
+        lowStock: rows.filter(row => Number(row.active) === 1 && Number(row.stock) <= Number(row.reorder_level)).length,
+        value: round(rows.reduce((sum,row) => sum + Number(row.stock)*Number(row.cost),0))
+      },
+      currency: this.setting('currency')
+    };
+  }
+  inventoryBook(user) {
+    this.require(user,'inventory');
+    const days = Number(this.setting('low_stock_days')) || 90;
+    const rows = this.all(`SELECT b.id,m.id AS medicine_id,m.name AS medicine,b.batch_no,b.expiry,b.quantity,b.cost,l.name AS location,
+        round(b.quantity*b.cost,2) AS value
+      FROM batches b JOIN medicines m ON m.id=b.medicine_id JOIN locations l ON l.id=b.location_id
+      WHERE b.quantity>0 ORDER BY m.name,b.expiry`);
+    const low = this.get(`SELECT COUNT(*) AS n FROM (SELECT m.id FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id WHERE m.active=1 GROUP BY m.id HAVING COALESCE(SUM(b.quantity),0)<=m.reorder_level)`).n;
+    const expiring = this.get("SELECT COUNT(*) AS n FROM batches b WHERE b.quantity>0 AND b.expiry<=date('now','+'||?||' days')",days).n;
+    return {
+      rows,
+      totals: {
+        batches: rows.length,
+        value: round(rows.reduce((sum,row) => sum + Number(row.value),0)),
+        lowStock: low,
+        expiring,
+        warningDays: days
+      },
+      currency: this.setting('currency')
+    };
   }
   customerBook(user) {
     this.require(user,'customers');
