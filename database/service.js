@@ -205,7 +205,7 @@ class PharmacyService {
     });
   }
   documents(user, type, query = {}) {
-    const config = { sales:['sales','sales'], purchases:['purchases','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
+    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], purchases:['purchases','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
     if (!config) fail('Unknown history.');
     this.require(user,config[1]);
     const from = query.from ? date(query.from) : '0000-01-01';
@@ -219,6 +219,10 @@ class PharmacyService {
     const rows = this.all(sql,from,to,limit);
     return rows.map(row => {
       if (type==='sales') return {...row,customer:this.get('SELECT name FROM customers WHERE id=?',row.customer_id)?.name||'Walk-in',returns:this.get('SELECT COALESCE(SUM(total),0) AS n FROM sale_returns WHERE sale_id=?',row.id).n};
+      if (type==='salereturns') {
+        const sale=this.get('SELECT invoice_no,customer_id FROM sales WHERE id=?',row.sale_id);
+        return {...row,invoice_no:sale?.invoice_no||'',customer:(sale?.customer_id&&this.get('SELECT name FROM customers WHERE id=?',sale.customer_id)?.name)||'Walk-in',items:this.get('SELECT COALESCE(SUM(quantity),0) AS n FROM sale_return_items WHERE return_id=?',row.id).n,user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||''};
+      }
       if (type==='purchases') return {...row,supplier:this.get('SELECT name FROM suppliers WHERE id=?',row.supplier_id)?.name};
       if (type==='payments') return {...row,party:this.get(`SELECT name FROM ${row.party_type==='customer'?'customers':'suppliers'} WHERE id=?`,row.party_id)?.name};
       if (['advances','salaries'].includes(type)) return {...row,staff:this.get('SELECT name FROM staff WHERE id=?',row.staff_id)?.name};

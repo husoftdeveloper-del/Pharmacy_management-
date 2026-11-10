@@ -51,6 +51,7 @@ test('sales returns restore stock only when requested and respect original quant
  assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,27);assert.equal(s.register(admin,'status').expected,1000+40-16);
  s.returnDocument(admin,'sale',{documentId:sale.id,items:[{itemId:item.id,quantity:1,restock:0}],reason:'Damaged',method:'cash'});assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,27);
  assert.throws(()=>s.returnDocument(admin,'sale',{documentId:sale.id,items:[{itemId:item.id,quantity:3,restock:1}],reason:'Too much'}),/exceeds/);balanced(s);
+ const returns=s.documents(admin,'salereturns');assert.equal(returns.length,2);assert.ok(returns[0].invoice_no.startsWith('INV-'));assert.equal(returns[0].customer,'Walk-in');assert.equal(returns.reduce((a,r)=>a+r.total,0),16+8);assert.equal(s.documents(admin,'salereturns',{from:'2000-01-01',to:'2000-01-02'}).length,0);
 });
 test('purchase returns remove batch stock and reduce supplier payable',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);const purchase=s.get('SELECT * FROM purchases ORDER BY id DESC');const item=s.get('SELECT * FROM purchase_items WHERE purchase_id=?',purchase.id);
