@@ -127,7 +127,7 @@ app.whenReady().then(async()=>{
   await run("await window.pharmacy.invoke('return',{type:'sale',documentId:1,items:[{itemId:1,quantity:1,restock:1}],reason:'Smoke return',method:'cash'});return true;");
   await run("document.querySelector('#filter-apply').click();return true;");
   await until(()=>run("return document.querySelector('#returns-rows').innerText.includes('Smoke return')"),'return listed on the returns page');
-  assert.ok((await run("return document.querySelector('#returns-total').innerText")).includes([...document.querySelectorAll('#returns-rows tbody tr')].length.toString()),'returns total matches the rows');
+  assert.ok(await run("const rows=document.querySelectorAll('#returns-rows tbody tr').length;return rows>0 && document.querySelector('#returns-total').innerText.startsWith(String(rows))"),'returns total matches the rows');
   assert.ok((await run("return document.querySelector('#page-content').innerText")).includes('INV-'),'returns page shows the original invoice number');
   await run("document.querySelector('[data-open-sale]').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'invoice detail from the returns page');
