@@ -82,7 +82,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | POS | Medicine/barcode/SKU search, stock-aware cart, FEFO batch allocation, prescription checks, server-calculated discounts/tax, cash/bank/credit sales, receipt PDF |
 | Sales history | Date filters, invoice details, quantity-limited returns (restock/damaged choice, cash/bank refund or customer credit), PDF receipts, amount already returned per invoice |
 | Returns | Separate module with two buttons — sales returns and purchase returns: invoice, customer/supplier, returned quantity, negative amount, refund method, reason; View the original document or start another return |
-| Customers | Contact records, opening balances, credit limits, outstanding balances, payments and invoice allocation |
+| Customers | Contact records, opening balances, credit limits, outstanding balances, payments and invoice allocation (sidebar: Overview, right below Returns) |
 | Medicines | SKU/barcode, generic name, category/manufacturer, unit, cost/price, reorder level, Rx flag, storage instructions, active/inactive status |
 | Barcode | One-click unique barcode generation from the icon beside the input, instant preview, unique assignment, local CODE128-B SVG with checksum, printable PDF; keyboard-wedge scanner input in POS |
 | Purchases | Supplier invoices, multi-item receiving, batch/expiry/cost/location, discounts, cash/bank/credit payment, purchase returns |
