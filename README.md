@@ -145,7 +145,7 @@ Screens are served by the main process from `src/` with `cache-control: no-store
 └── .github/workflows/windows.yml
 ```
 
-The shared shell loads each page's HTML and JavaScript module. Reusable record screens share a form/table component; complex workflows have dedicated modules. Shared visual rules live in `base.css` and `pages.css`; page stylesheet slots are provided for future page-specific extensions.
+The shared shell loads each page's HTML and JavaScript module. Reusable record screens share a form/table component; complex workflows have dedicated modules. Shared visual rules live in `base.css` and `pages.css`; each page's own rules live in its `src/styles/<page>.css` file, which `navigate()` links in when the page opens.
 
 ### Security boundaries
 

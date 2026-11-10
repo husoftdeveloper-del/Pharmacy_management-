@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.33**
+Verified release: **v1.0.0-build.34**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.33
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.33/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.33/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.34
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.34/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.34/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-80bebfc20d4377b5fa32211de18f3995fa0dfeb64ddd0ca0fee20145d71136b1  Pharmacy-1.0.0-x64.exe
-2e8296c3ad72c6b35b835cd7f33e4833e039a64071bec98ec6805e04c290b5da  Pharmacy-1.0.0-Portable.exe
+acbf08bfe5c3e00d4048b5fb40ca7730f9700d8bbce2cd278ce544df66864c49  Pharmacy-1.0.0-x64.exe
+92bb8a98c5d4a9bbe43806f894057920a47b6c1ba073d160bf7a9d5fa8e394f9  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `328540f`. The branch also contains the refreshed installer commit `766e0a3`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `7dc1868`. The branch also contains the refreshed installer commit `25f8112`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -74,6 +74,21 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
 
+## Medicines page rebuilt (build 34)
+
+The Medicines page now follows the agreed reference layout:
+
+- A plain **Medicines** title with a rule underneath and a **New Medicine** button on the right.
+- One card holding the search box (“Search by name, barcode, generic, or brand…”) and an **All categories** picker.
+- One card holding the table: **Name** (with generic name below), **Barcode**, **Category**, **Stock**, **Purchase Price**, **Selling Price**, **Expiry**, **Recorded by** and **Actions**, with the pill empty state (“No medicines match your search.”).
+
+Two supporting changes made the reference possible:
+
+1. `medicines.created_by` records who entered each medicine (existing databases get the column through the automatic migration), and the page reads it as *Recorded by*; the nearest in-stock batch expiry is shown as *Expiry* (amber when it is inside the expiry-warning window).
+2. Every page stylesheet in `src/styles` is now actually loaded when its page opens (`loadPageStyles` in `app.js`). Until this build only `base.css` was linked, so page-specific rules in `customers.css`, `customerpayments.css`, `barcodes.css`, `returns.css` and the new `medicines.css` / `inventory.css` were never applied. The shared only-with-dues / only-expiring switch moved into `base.css` so both pages can use it.
+
+The medicine form also has the barcode side-icon: one click creates a unique code and fills the field.
+
 ## Medicines and Inventory split (build 33)
 
 The former “Medicines & inventory” module is now two pages at the top of the **Management** group, in this order:
@@ -111,7 +126,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.33` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.34` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -133,7 +148,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42789383764
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42795786872
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
