@@ -193,6 +193,8 @@ app.whenReady().then(async()=>{
   assert.ok(footer.startsWith('Cancel|Save & New|'),'cancel, save and new, save order');
   await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=name]').value='Form Medicine';f.querySelector('[name=generic_name]').value='Ibuprofen';f.querySelector('[name=brand]').value='GSK';f.querySelector('[name=dosage_form]').value='tablet';f.querySelector('[name=unit]').value='tablet';f.querySelector('[name=reorder_level]').value='20';f.querySelector('[name=reorder_qty]').value='100';f.querySelector('[name=cost]').value='5';f.querySelector('[name=price]').value='9';f.querySelector('.opening-stock').open=true;f.querySelector('[name=opening_quantity]').value='25';f.querySelector('[name=opening_batch]').value='OPEN-A';f.querySelector('[name=opening_expiry]').value='2031-12-31';return true;");
   await run("document.querySelector('#modal-root [data-save-new]').click();return true;");
+  await pause(500);
+  assert.equal(await run("return document.querySelector('#modal-root .form-error')?.textContent||''"),'','the form reports no error after saving');
   await until(()=>run("return document.querySelector('#medicine-rows').innerText.includes('Form Medicine')"),'saved medicine appears in the table');
   assert.ok(await run("return document.querySelector('#medicine-rows').innerText.includes('25')"),'opening stock shows as the medicine stock');
   assert.ok(await run("return !!document.querySelector('#modal-root form.medicine-form') && document.querySelector('#modal-root [name=name]').value===''"),'save and new clears the form and keeps it open');
