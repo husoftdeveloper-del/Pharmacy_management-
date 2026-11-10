@@ -38,6 +38,27 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
+ const {s,admin}=fixture(t);
+ const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',barcode_type:'internal',generic_name:'Paracetamol',brand:'GSK',dosage_form:'tablet',unit:'tablet',cost:6,price:12,reorder_level:20,reorder_qty:100,manufacturer_id:null,category_id:null,active:1,
+   opening_stock:{quantity:40,batch_no:'OPEN-1',expiry:'2031-05-31',location_id:1}});
+ const medicine=s.get('SELECT * FROM medicines WHERE id=?',saved.id);
+ assert.equal(medicine.name,'Panadol');assert.equal(medicine.brand,'GSK');assert.equal(medicine.dosage_form,'tablet');assert.equal(medicine.barcode_type,'internal');
+ assert.equal(medicine.reorder_qty,100);assert.equal(medicine.reorder_level,20);assert.equal(medicine.created_by,admin.id);
+ assert.match(medicine.sku,/^MED-\d{5}$/,'a missing SKU is generated');
+ const batch=s.get('SELECT * FROM batches WHERE medicine_id=?',saved.id);
+ assert.equal(batch.quantity,40);assert.equal(batch.batch_no,'OPEN-1');assert.equal(batch.expiry,'2031-05-31');assert.equal(batch.cost,6);
+ assert.equal(s.get("SELECT quantity FROM stock_movements WHERE batch_id=? AND reason='opening'",batch.id).quantity,40);
+ assert.equal(s.medicineBook(admin).rows[0].stock,40);
+ const lines=s.all('SELECT account_id,debit,credit FROM journal_lines WHERE journal_id=(SELECT id FROM journals WHERE description=\'Opening stock\')');
+ assert.equal(lines.length,2);assert.equal(lines.find(l=>l.account_id===4).debit,240);assert.equal(lines.find(l=>l.account_id===8).credit,240);
+ balanced(s);
+ assert.throws(()=>s.saveMedicine(admin,{...medicine,id:saved.id,price:12,opening_stock:{quantity:5,expiry:'2032-01-01'}}),/only entered when the medicine is created/);
+ assert.throws(()=>s.saveMedicine(admin,{name:'No expiry',unit:'tablet',price:1,cost:1,opening_stock:{quantity:5}}),/date/i);
+ const cashierId=s.saveUser(admin,{username:'stock',name:'Stock',password:'StockPassword1',role:'cashier',active:1,permissions:{}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.throws(()=>s.saveMedicine(cashier,{name:'Denied',price:1,cost:1}),/permission/i);
+});
 test('medicine catalogue and inventory stock are separate views of the same data',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  const book=s.medicineBook(admin);const row=book.rows.find(r=>r.id===m.id);
@@ -71,6 +92,7 @@ test('existing databases gain the customer email column without losing data',(t)
  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  const first=openDatabase(directory);first.exec("INSERT INTO customers(name,phone,opening_balance,credit_limit,active) VALUES('Legacy Customer','0700000001',5,0,1)");first.close();
  const reopened=openDatabase(directory);const column=reopened.prepare('PRAGMA table_info(customers)').all().some(c=>c.name==='email');assert.ok(column);
+ for(const column of ['created_by','brand','dosage_form','barcode_type','reorder_qty'])assert.ok(reopened.prepare('PRAGMA table_info(medicines)').all().some(c=>c.name===column),`medicines.${column} migrated`);
  const row=reopened.prepare("SELECT name,email,opening_balance FROM customers").get();assert.equal(row.name,'Legacy Customer');assert.equal(row.email,'');assert.equal(row.opening_balance,5);reopened.close();
 });
 test('credit limits, customer payment allocation and receivable balance',(t)=>{

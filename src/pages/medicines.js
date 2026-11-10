@@ -1,7 +1,7 @@
 import {api,state,money,escapeHTML as e,today} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
 import {icon,button,run} from '../components/ui.js';
-import {openRecord} from '../components/records.js';
+import {openMedicineForm} from '../components/medicine-form.js';
 
 /* Medicines: the catalogue itself. One search box, one category filter and a
    single table with name, barcode, category, stock, purchase price, selling
@@ -59,7 +59,7 @@ export async function render(root,params={}){
         <td>${row.recorded_by?e(row.recorded_by):'<span class="muted">—</span>'}</td>
         <td class="text-end"><button class="btn btn-ghost btn-sm" data-edit="${row.id}">${icon('settings',14)}<span>${e(t('edit'))}</span></button></td>
       </tr>`).join(''):emptyRow(9);
-    root.querySelectorAll('[data-edit]').forEach(node=>node.onclick=()=>openRecord('medicines',rows.find(row=>row.id===Number(node.dataset.edit)),load));
+    root.querySelectorAll('[data-edit]').forEach(node=>node.onclick=()=>openMedicineForm(rows.find(row=>row.id===Number(node.dataset.edit)),load));
     root.querySelector('#medicine-count').textContent=`${visible.length} ${t('medicines')}`;
   };
   const fillCategories=()=>{
@@ -73,7 +73,7 @@ export async function render(root,params={}){
     fillCategories();
     paint();
   }
-  root.querySelector('#add-medicine').onclick=()=>openRecord('medicines',{},load);
+  root.querySelector('#add-medicine').onclick=()=>openMedicineForm({},load);
   query.oninput=ev=>{search=ev.target.value;clearTimeout(timer);timer=setTimeout(paint,160);};
   select.onchange=ev=>{category=ev.target.value;paint();};
   await run(load);

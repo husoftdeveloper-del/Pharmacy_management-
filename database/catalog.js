@@ -8,7 +8,7 @@ const entities = {
   patients: { permission: 'patients', fields: { name: 'text!', phone: 'text', age: 'age', gender: 'text', notes: 'text', active: 'bool' } },
   staff: { permission: 'staff', fields: { name: 'text!', phone: 'text', position: 'text', salary: 'money', hired_on: 'date', active: 'bool' } },
   locations: { permission: 'inventory', fields: { name: 'text!', description: 'text', active: 'bool' } },
-  medicines: { permission: ['medicines','inventory'], fields: { name: 'text!', generic_name: 'text', sku: 'text!', barcode: 'barcode', category_id: 'id', manufacturer_id: 'id', unit: 'text!', cost: 'money', price: 'money!', reorder_level: 'int', rx_required: 'bool', storage: 'text', active: 'bool' } },
+  medicines: { permission: ['medicines','inventory'], fields: { name: 'text!', generic_name: 'text', brand: 'text', sku: 'text!', barcode: 'barcode', barcode_type: 'text', category_id: 'id', manufacturer_id: 'id', unit: 'text!', dosage_form: 'text', cost: 'money', price: 'money!', reorder_level: 'int', reorder_qty: 'int', rx_required: 'bool', storage: 'text', active: 'bool' } },
   offers: { permission: 'offers', fields: { name: 'text!', kind: 'text!', value: 'money!', min_total: 'money', starts: 'date!', ends: 'date!', active: 'bool' } },
   accounts: { permission: 'banking', fields: { code: 'text!', name: 'text!', type: 'text!', active: 'bool' } }
 };

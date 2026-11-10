@@ -40,3 +40,36 @@
 .barcode-field small{line-height:1.6}
 @media(max-width:950px){.medicines-filter{flex-wrap:wrap}.medicines-category{flex:1 1 100%}}
 @media(max-width:650px){.medicines-heading{align-items:flex-start}.medicines-heading .btn{width:100%}.medicines-empty{padding:46px 16px}}
+
+/* ---- New Medicine form (matches the reference layout) ---- */
+.modal-medicine{width:760px}
+.modal-medicine .modal-header{padding:22px 26px;border-bottom:1px solid var(--border)}
+.modal-medicine .modal-header h2{font-size:18px;font-weight:650;letter-spacing:-.3px}
+.modal-medicine .modal-body{padding:22px 26px 20px}
+.medicine-form .mf-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px}
+.medicine-form .mf-field{display:flex;flex-direction:column;gap:7px;font-size:12px;min-width:0}
+.medicine-form .mf-field>span{font-size:12.5px;font-weight:550;color:var(--text)}
+.medicine-form .mf-field b{color:var(--red);font-weight:600}
+.medicine-form .mf-field small{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:1px}
+.medicine-form .mf-full{grid-column:1/-1}
+.medicine-form input,.medicine-form select{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:9px;padding:11px 13px;width:100%;min-width:0;font-size:13px;min-height:42px}
+.medicine-form input::placeholder{color:var(--muted)}
+.medicine-form .mf-select{position:relative;display:block}
+.medicine-form .mf-select select{appearance:none;cursor:pointer;padding-inline-end:38px}
+.medicine-form .mf-select svg{position:absolute;inset-inline-end:13px;top:50%;transform:translateY(-50%) rotate(90deg);pointer-events:none;color:var(--muted)}
+.medicine-form .barcode-input-wrap input{padding-inline-end:50px}
+.medicine-form .barcode-generate-btn{width:36px;height:36px}
+.medicine-form .opening-stock{margin-top:18px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}
+.medicine-form .opening-stock summary{list-style:none;display:flex;align-items:center;gap:11px;padding:14px 16px;font-size:13px;font-weight:550;cursor:pointer}
+.medicine-form .opening-stock summary::-webkit-details-marker{display:none}
+.medicine-form .opening-stock summary>span:nth-of-type(2){flex:1}
+.medicine-form .opening-stock summary>svg{transform:rotate(90deg);color:var(--muted);transition:transform .18s}
+.medicine-form .opening-stock[open] summary>svg{transform:rotate(-90deg)}
+.medicine-form .opening-stock-icon{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--surface2);color:var(--primary)}
+.medicine-form .opening-grid{padding:4px 16px 18px;border-top:1px solid var(--border);margin:0;padding-top:16px}
+.medicine-form .form-error{margin-top:14px}
+.medicine-form-footer{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
+.medicine-form-footer .btn{min-height:44px;padding-inline:22px;font-size:13px;border-radius:9px}
+.btn-soft{background:color-mix(in srgb,var(--primary) 12%,var(--surface));color:var(--primary);border-color:transparent}
+.btn-soft:hover{background:color-mix(in srgb,var(--primary) 20%,var(--surface))}
+@media(max-width:650px){.modal-medicine .modal-body{padding:18px 16px}.medicine-form .mf-grid{grid-template-columns:1fr}.medicine-form-footer{flex-wrap:wrap}.medicine-form-footer .btn{flex:1 1 45%}}

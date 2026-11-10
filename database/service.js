@@ -138,6 +138,55 @@ class PharmacyService {
       return { id: recordIdFinal };
     });
   }
+  // The Medicines form saves the catalogue entry and, for a new medicine, its
+  // opening batch in one transaction so the shelf and the books always agree.
+  saveMedicine(user, input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Invalid medicine.');
+    const record = { ...input };
+    if (!record.id && !String(record.sku || '').trim()) record.sku = this.nextSku();
+    if (record.id) {
+      const existing = this.get('SELECT * FROM medicines WHERE id=?', id(record.id, 'medicine'));
+      if (!existing) fail('Record not found.');
+      if (!String(record.sku || '').trim()) record.sku = existing.sku;
+      if (!String(record.unit || '').trim()) record.unit = existing.unit;
+      if (record.price === undefined || record.price === '') record.price = existing.price;
+    }
+    const opening = record.opening_stock;
+    const quantity = opening ? Number(opening.quantity) : 0;
+    if (quantity > 0 && record.id) fail('Opening stock is only entered when the medicine is created. Use purchases or stock adjustments to add stock.');
+    return transaction(this.db, () => {
+      const saved = this.saveEntity(user, 'medicines', record);
+      if (quantity > 0) this.openingStock(user, saved.id, opening);
+      return saved;
+    });
+  }
+  nextSku() {
+    for (let attempt = 1; attempt < 100000; attempt++) {
+      const value = `MED-${String(attempt).padStart(5, '0')}`;
+      if (!this.get('SELECT id FROM medicines WHERE sku=?', value)) return value;
+    }
+    fail('Could not create a medicine code.');
+  }
+  openingStock(user, medicineId, input) {
+    this.require(user, 'inventory', true);
+    const medicine = this.get('SELECT * FROM medicines WHERE id=?', id(medicineId, 'medicine'));
+    if (!medicine) fail('Medicine not found.');
+    const quantity = integer(input.quantity, 'quantity');
+    const expiry = date(input.expiry);
+    if (expiry <= new Date().toISOString().slice(0, 10)) fail('Opening stock expiry must be in the future.');
+    const location = id(input.location_id || 1, 'location');
+    if (!this.get('SELECT id FROM locations WHERE id=?', location)) fail('Stock location not found.');
+    const batchNo = text(input.batch_no, 'batch number', false, 80) || 'OPEN-1';
+    const cost = round(number(input.cost ?? medicine.cost, 'cost', 0));
+    const value = round(quantity * cost);
+    return transaction(this.db, () => {
+      const r = this.run('INSERT INTO batches(medicine_id,location_id,batch_no,expiry,cost,quantity) VALUES(?,?,?,?,?,?)', medicine.id, location, batchNo, expiry, cost, quantity);
+      this.run("INSERT INTO stock_movements(batch_id,quantity,reason,reference,user_id) VALUES(?,?, 'opening', ?, ?)", r.lastInsertRowid, quantity, `MED-${medicine.id}`, user.id);
+      if (value > 0) this.journal(user, 'Opening stock', [[4, value], [8, 0, value]], `MED-${medicine.id}`);
+      audit(this.db, user, 'opening_stock', 'batches', r.lastInsertRowid, { quantity, value });
+      return { id: Number(r.lastInsertRowid), quantity, value };
+    });
+  }
   catalog(user, search = '') {
     this.require(user, 'pos');
     const term = `%${text(search,'search',false,100).replace(/[\\%_]/g,'\\$&')}%`;
