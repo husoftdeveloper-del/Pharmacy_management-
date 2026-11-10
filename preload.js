@@ -4,7 +4,7 @@ let sessionToken = null;
 const devResume = process.argv.includes('--pharmacy-dev')
   ? ipcRenderer.invoke('pharmacy:dev-resume').then(result => { if (result && result.ok && result.data && result.data.token) sessionToken = result.data.token; }).catch(() => {})
   : Promise.resolve();
-const allowed = new Set(['bootstrap','setup','login','logout','session','preference','preferences','dashboard','customerAccounts','options','list','save','catalog','sale','purchase','documents','document','return','payment','expense','advance','salary','register','inventory','stockCount','savePrescription','prescriptionFile','cancelPrescription','saveUser','settings','report','generateBarcode','barcode','pdf','receipt','printBarcode','backup','restore']);
+const allowed = new Set(['bootstrap','setup','login','logout','session','preference','preferences','dashboard','customerBook','customerAccounts','options','list','save','catalog','sale','purchase','documents','document','return','payment','expense','advance','salary','register','inventory','stockCount','savePrescription','prescriptionFile','cancelPrescription','saveUser','settings','report','generateBarcode','barcode','pdf','receipt','printBarcode','backup','restore']);
 contextBridge.exposeInMainWorld('pharmacy', Object.freeze({
   invoke: async (channel, payload = {}) => {
     await devResume;

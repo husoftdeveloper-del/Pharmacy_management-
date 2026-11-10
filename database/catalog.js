@@ -3,7 +3,7 @@
 const entities = {
   categories: { permission: 'categories', fields: { name: 'text!', description: 'text', active: 'bool' } },
   manufacturers: { permission: 'manufacturers', fields: { name: 'text!', country: 'text', phone: 'text', active: 'bool' } },
-  customers: { permission: 'customers', fields: { name: 'text!', phone: 'text', address: 'text', opening_balance: 'money', credit_limit: 'money', active: 'bool' } },
+  customers: { permission: 'customers', fields: { name: 'text!', phone: 'text', email: 'text', address: 'text', opening_balance: 'money', credit_limit: 'money', active: 'bool' } },
   suppliers: { permission: 'suppliers', fields: { name: 'text!', phone: 'text', address: 'text', opening_balance: 'money', active: 'bool' } },
   patients: { permission: 'patients', fields: { name: 'text!', phone: 'text', age: 'age', gender: 'text', notes: 'text', active: 'bool' } },
   staff: { permission: 'staff', fields: { name: 'text!', phone: 'text', position: 'text', salary: 'money', hired_on: 'date', active: 'bool' } },

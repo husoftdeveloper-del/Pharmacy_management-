@@ -168,6 +168,7 @@ async function dispatch(event, request) {
   if(c==='preferences')return service.preferences(user);
   if(c==='dashboard')return service.dashboard(user);
   if(c==='customerAccounts')return service.customerAccounts(user,p);
+  if(c==='customerBook')return service.customerBook(user);
   if(c==='options')return service.options(user);
   if(c==='list')return service.list(user,p.entity,p);
   if(c==='save')return service.saveEntity(user,p.entity,p.record);

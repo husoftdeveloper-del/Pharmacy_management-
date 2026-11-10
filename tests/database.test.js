@@ -38,6 +38,26 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('customer book lists email, status and ledger balance for every customer',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin);
+ const created=s.saveEntity(admin,'customers',{name:'Walk In Plus',phone:'0700111222',email:'plus@example.com',opening_balance:10,credit_limit:0,active:1});
+ assert.equal(s.get('SELECT email FROM customers WHERE id=?',created.id).email,'plus@example.com');
+ s.sale(admin,{customerId:created.id,items:[{medicineId:m.id,quantity:2}],paymentMethod:'credit'});
+ const book=s.customerBook(admin);const row=book.rows.find(r=>r.id===created.id);
+ assert.equal(row.email,'plus@example.com');assert.equal(row.phone,'0700111222');assert.equal(row.balance,30);assert.equal(row.active,1);
+ assert.equal(book.totals.customers,1);assert.equal(book.totals.active,1);assert.equal(book.totals.outstanding,30);
+ const disabled=s.saveEntity(admin,'customers',{...row,active:0});
+ assert.equal(s.get('SELECT active FROM customers WHERE id=?',created.id).active,0);
+ const after=s.customerBook(admin);assert.equal(after.totals.customers,1);assert.equal(after.totals.active,0);assert.equal(after.rows[0].active,0);assert.ok(disabled.id);
+ assert.throws(()=>s.customerBook(null),/sign in|permission/i);
+});
+test('existing databases gain the customer email column without losing data',(t)=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pharmacy-migrate-'));
+ t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const first=openDatabase(directory);first.exec("INSERT INTO customers(name,phone,opening_balance,credit_limit,active) VALUES('Legacy Customer','0700000001',5,0,1)");first.close();
+ const reopened=openDatabase(directory);const column=reopened.prepare('PRAGMA table_info(customers)').all().some(c=>c.name==='email');assert.ok(column);
+ const row=reopened.prepare("SELECT name,email,opening_balance FROM customers").get();assert.equal(row.name,'Legacy Customer');assert.equal(row.email,'');assert.equal(row.opening_balance,5);reopened.close();
+});
 test('credit limits, customer payment allocation and receivable balance',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin);const customer=s.saveEntity(admin,'customers',{name:'Patient Customer',opening_balance:20,credit_limit:100,active:1}).id;
  assert.throws(()=>s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:10}],paymentMethod:'credit'}),/credit limit/);

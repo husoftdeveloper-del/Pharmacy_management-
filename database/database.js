@@ -10,7 +10,16 @@ function openDatabase(directory) {
   const db = new DatabaseSync(filename);
   db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+  migrate(db);
   return db;
+}
+// Column additions are applied to existing user databases without touching their data.
+function migrate(db) {
+  const columns = table => db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name);
+  const additions = [['customers','email',"TEXT NOT NULL DEFAULT ''"]];
+  for (const [table, column, definition] of additions) {
+    if (!columns(table).includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');

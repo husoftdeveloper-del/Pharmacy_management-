@@ -1,1 +1,11 @@
-/* customers screen: shared design system in base.css; page layouts in pages.css. */
+/* Customers page: two totals, a wide search bar and one table.
+   Shared card, table and stat styles come from base.css. */
+.customer-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:22px}
+.customer-stats .stat-card{padding:20px 22px}
+.customer-stats .stat-value{font-size:26px;display:flex;align-items:baseline;gap:6px}
+.customer-stats .stat-footer svg{color:var(--primary)}
+.customer-search-bar{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:center}
+.customer-search-bar .search-field{max-width:none;flex:1}
+.customer-search-bar .search-field input{padding:12px 0;font-size:12.5px}
+#customer-rows td:nth-child(4){font-variant-numeric:tabular-nums}
+@media(max-width:650px){.customer-stats{grid-template-columns:1fr}.customer-search-bar{padding:14px 16px}}

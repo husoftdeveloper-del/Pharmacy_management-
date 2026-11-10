@@ -482,6 +482,29 @@ class PharmacyService {
     result.register=this.session()?{id:this.session().id}:null;result.recent=p.includes('sales')?this.all('SELECT s.id,s.invoice_no,s.total,s.date,c.name AS customer FROM sales s LEFT JOIN customers c ON c.id=s.customer_id ORDER BY s.id DESC LIMIT 5'):[];
     return result;
   }
+  customerBook(user) {
+    this.require(user,'customers');
+    const balance = customer => {
+      const invoices = this.get('SELECT COALESCE(SUM(total-paid),0) AS n FROM sales WHERE customer_id=?',customer.id).n;
+      const returns = this.get('SELECT COALESCE(SUM(r.credit_amount),0) AS n FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id=?',customer.id).n;
+      const payments = this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE party_type=? AND party_id=?','customer',customer.id).n;
+      return round(customer.opening_balance+invoices-returns-payments);
+    };
+    const rows = this.all('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers ORDER BY name').map(customer => ({
+      ...customer,
+      active: Number(customer.active) === 1 ? 1 : 0,
+      balance: balance(customer)
+    }));
+    return {
+      rows,
+      totals: {
+        customers: rows.length,
+        active: rows.filter(row => row.active === 1).length,
+        outstanding: round(rows.reduce((sum,row) => sum + Math.max(0,row.balance),0))
+      },
+      currency: this.setting('currency')
+    };
+  }
   customerAccounts(user, query = {}) {
     this.require(user,'customerpayments');
     const from = query.from ? date(query.from) : '0000-01-01';
