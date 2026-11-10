@@ -189,7 +189,7 @@ app.whenReady().then(async()=>{
   assert.ok(!(await run("return !!document.querySelector('#modal-root [name=cost]') || !!document.querySelector('#modal-root [name=price]')")),'prices live in opening stock for a new medicine');
   assert.ok(await run("return !!document.querySelector('#modal-root [data-generate-barcode]')"),'barcode icon beside the barcode field');
   assert.ok(await run("return !!document.querySelector('#modal-root .opening-stock')"),'opening stock section');
-  const openingFields=await run("return [...document.querySelectorAll('#modal-root .opening-grid .mf-field > span:first-child')].map(s=>s.innerText.trim().toLowerCase()).join('|')");
+  const openingFields=await run("document.querySelector('#modal-root .opening-stock').open=true;return [...document.querySelectorAll('#modal-root .opening-grid .mf-field > span:first-child')].map(s=>s.textContent.trim().toLowerCase()).join('|')");
   assert.equal(openingFields,'quantity|expiry|purchase price|selling price','opening stock holds quantity, expiry and both prices');
   for(const name of ['opening_quantity','opening_expiry','opening_cost','opening_price']){
     assert.ok(await run(`return !!document.querySelector('#modal-root [name=${name}]')`),`opening stock has ${name}`);
