@@ -55,6 +55,11 @@ test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
  balanced(s);
  assert.throws(()=>s.saveMedicine(admin,{...medicine,id:saved.id,price:12,opening_stock:{quantity:5,expiry:'2032-01-01'}}),/only entered when the medicine is created/);
  assert.throws(()=>s.saveMedicine(admin,{name:'No expiry',unit:'tablet',price:1,cost:1,opening_stock:{quantity:5}}),/date/i);
+ const priced=s.saveMedicine(admin,{name:'Brufen',unit:'tablet',cost:2,price:0,active:1,opening_stock:{quantity:5,expiry:'2032-03-31',cost:3,price:7}});
+ assert.equal(s.get('SELECT price FROM medicines WHERE id=?',priced.id).price,7,'opening stock selling price is stored on the medicine');
+ const pricedBatch=s.get('SELECT cost,quantity,expiry FROM batches WHERE medicine_id=?',priced.id);assert.equal(pricedBatch.cost,3);assert.equal(pricedBatch.quantity,5);assert.equal(pricedBatch.expiry,'2032-03-31');
+ assert.equal(s.get('SELECT batch_no FROM batches WHERE medicine_id=?',priced.id).batch_no,'OPEN-1');
+ assert.match(s.get('SELECT sku FROM medicines WHERE id=?',priced.id).sku,/^MED-\d{5}$/);
  const cashierId=s.saveUser(admin,{username:'stock',name:'Stock',password:'StockPassword1',role:'cashier',active:1,permissions:{}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
  assert.throws(()=>s.saveMedicine(cashier,{name:'Denied',price:1,cost:1}),/permission/i);

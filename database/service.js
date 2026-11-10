@@ -178,8 +178,10 @@ class PharmacyService {
     if (!this.get('SELECT id FROM locations WHERE id=?', location)) fail('Stock location not found.');
     const batchNo = text(input.batch_no, 'batch number', false, 80) || 'OPEN-1';
     const cost = round(number(input.cost ?? medicine.cost, 'cost', 0));
+    const price = round(number(input.price ?? medicine.price, 'price', 0));
     const value = round(quantity * cost);
     return transaction(this.db, () => {
+      if (price > 0 && Number(medicine.price) !== price) this.run('UPDATE medicines SET price=? WHERE id=?', price, medicine.id);
       const r = this.run('INSERT INTO batches(medicine_id,location_id,batch_no,expiry,cost,quantity) VALUES(?,?,?,?,?,?)', medicine.id, location, batchNo, expiry, cost, quantity);
       this.run("INSERT INTO stock_movements(batch_id,quantity,reason,reference,user_id) VALUES(?,?, 'opening', ?, ?)", r.lastInsertRowid, quantity, `MED-${medicine.id}`, user.id);
       if (value > 0) this.journal(user, 'Opening stock', [[4, value], [8, 0, value]], `MED-${medicine.id}`);

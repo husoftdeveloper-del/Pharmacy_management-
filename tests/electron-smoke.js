@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.36')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.37')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -183,20 +183,28 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('#add-medicine').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form.medicine-form')"),'new medicine form');
   assert.ok(await run("return document.querySelector('#modal-root .modal').classList.contains('modal-medicine')"),'medicine modal uses its own width');
-  for(const name of ['name','barcode','barcode_type','generic_name','brand','manufacturer_id','category_id','dosage_form','unit','reorder_level','reorder_qty','cost','price']){
+  for(const name of ['name','barcode','barcode_type','generic_name','brand','manufacturer_id','category_id','dosage_form','unit','reorder_level','reorder_qty']){
     assert.ok(await run(`return !!document.querySelector('#modal-root [name=${name}]')`),`form has ${name}`);
   }
+  assert.ok(!(await run("return !!document.querySelector('#modal-root [name=cost]') || !!document.querySelector('#modal-root [name=price]')")),'prices live in opening stock for a new medicine');
   assert.ok(await run("return !!document.querySelector('#modal-root [data-generate-barcode]')"),'barcode icon beside the barcode field');
-  assert.ok(await run("return !!document.querySelector('#modal-root .opening-stock') && !!document.querySelector('#modal-root [name=opening_quantity]') && !!document.querySelector('#modal-root [name=opening_expiry]')"),'opening stock section');
+  assert.ok(await run("return !!document.querySelector('#modal-root .opening-stock')"),'opening stock section');
+  const openingFields=await run("return [...document.querySelectorAll('#modal-root .opening-grid .mf-field > span:first-child')].map(s=>s.innerText.trim().toLowerCase()).join('|')");
+  assert.equal(openingFields,'quantity|expiry|purchase price|selling price','opening stock holds quantity, expiry and both prices');
+  for(const name of ['opening_quantity','opening_expiry','opening_cost','opening_price']){
+    assert.ok(await run(`return !!document.querySelector('#modal-root [name=${name}]')`),`opening stock has ${name}`);
+  }
   const footer=await run("return [...document.querySelectorAll('#modal-root .medicine-form-footer .btn')].map(b=>b.innerText.trim()).join('|')");
   assert.equal(footer.split('|').length,3,'three footer buttons');
   assert.ok(footer.startsWith('Cancel|Save & New|'),'cancel, save and new, save order');
-  await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=name]').value='Form Medicine';f.querySelector('[name=generic_name]').value='Ibuprofen';f.querySelector('[name=brand]').value='GSK';f.querySelector('[name=dosage_form]').value='tablet';f.querySelector('[name=unit]').value='tablet';f.querySelector('[name=reorder_level]').value='20';f.querySelector('[name=reorder_qty]').value='100';f.querySelector('[name=cost]').value='5';f.querySelector('[name=price]').value='9';f.querySelector('.opening-stock').open=true;f.querySelector('[name=opening_quantity]').value='25';f.querySelector('[name=opening_batch]').value='OPEN-A';f.querySelector('[name=opening_expiry]').value='2031-12-31';return true;");
+  await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=name]').value='Form Medicine';f.querySelector('[name=generic_name]').value='Ibuprofen';f.querySelector('[name=brand]').value='GSK';f.querySelector('[name=dosage_form]').value='tablet';f.querySelector('[name=unit]').value='tablet';f.querySelector('[name=reorder_level]').value='20';f.querySelector('[name=reorder_qty]').value='100';f.querySelector('.opening-stock').open=true;f.querySelector('[name=opening_quantity]').value='25';f.querySelector('[name=opening_expiry]').value='2031-12-31';f.querySelector('[name=opening_cost]').value='5';f.querySelector('[name=opening_price]').value='9';return true;");
   await run("document.querySelector('#modal-root [data-save-new]').click();return true;");
   await pause(500);
   assert.equal(await run("return document.querySelector('#modal-root .form-error')?.textContent||''"),'','the form reports no error after saving');
   await until(()=>run("return document.querySelector('#medicine-rows').innerText.includes('Form Medicine')"),'saved medicine appears in the table');
   assert.ok(await run("return document.querySelector('#medicine-rows').innerText.includes('25')"),'opening stock shows as the medicine stock');
+  assert.ok(await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine'));return row.innerText.includes('5.00')&&row.innerText.includes('9.00')"),'opening stock prices become the medicine purchase and selling price');
+  assert.ok(await run("return !!document.querySelector('#modal-root [name=opening_quantity]') && document.querySelector('#modal-root [name=opening_quantity]').value===''"),'opening stock is cleared for the next medicine');
   assert.ok(await run("return !!document.querySelector('#modal-root form.medicine-form') && document.querySelector('#modal-root [name=name]').value===''"),'save and new clears the form and keeps it open');
   await run("document.querySelector('#modal-root [data-cancel]').click();return true;");
   await pause(200);
@@ -205,6 +213,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#modal-root form.medicine-form')"),'edit medicine form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=name]').value"),'edit form is prefilled');
   assert.ok(!(await run("return !!document.querySelector('#modal-root .opening-stock')")),'opening stock is only offered for new medicines');
+  assert.ok(await run("return !!document.querySelector('#modal-root [name=price]') && document.querySelector('#modal-root [name=price]').value!==''"),'editing keeps the selling price editable in the form');
   await run("document.querySelector('#modal-root [data-cancel]').click();return true;");
   await pause(150);
   await run("document.querySelector('[data-page=inventory]').click();return true;");
@@ -287,7 +296,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.36'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.37'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

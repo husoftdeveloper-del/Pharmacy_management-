@@ -25,7 +25,6 @@ function input(name,label,value='',type='text',extra=''){return `<label class="m
 export function medicineForm(record={},editing=false){
   const categories=state.options.categories||[];
   const companies=state.options.manufacturers||[];
-  const locations=state.options.locations||[{id:1,name:t('location')}];
   return `<form class="medicine-form" novalidate>
     <div class="mf-grid">
       <label class="mf-field mf-full"><span>${e(t('name'))} <b>*</b></span><input name="name" value="${e(record.name??'')}" maxlength="180" autocomplete="off" required></label>
@@ -39,16 +38,15 @@ export function medicineForm(record={},editing=false){
       ${select('unit',t('unit'),withCurrent(units,record.unit),record.unit||'piece')}
       <label class="mf-field"><span>${e(t('reorderLevel'))}</span><input name="reorder_level" type="number" min="0" step="1" value="${e(record.reorder_level??0)}"><small>${e(t('reorderLevelHint'))}</small></label>
       ${input('reorder_qty',t('reorderQty'),record.reorder_qty??0,'number')}
-      ${input('cost',t('purchasePrice'),record.cost??0,'number')}
-      ${input('price',t('sellingPrice'),record.price??'','number',record.id?'':'required')}
+      ${editing?input('cost',t('purchasePrice'),record.cost??0,'number')+input('price',t('sellingPrice'),record.price??'','number','required'):''}
       ${input('storage',t('storage'),record.storage??'')}
     </div>
     ${editing?'':`<details class="opening-stock" ${record.openingOpen?'open':''}><summary><span class="opening-stock-icon">${icon('box',17)}</span><span>${e(t('openingStock'))}</span>${icon('chevron',16)}</summary>
       <div class="mf-grid opening-grid">
         ${input('opening_quantity',t('quantity'),'','number')}
-        ${input('opening_batch',t('batchNo'),'')}
         <label class="mf-field"><span>${e(t('expiry'))}</span><input name="opening_expiry" type="date" min="${e(today())}" value=""></label>
-        ${select('opening_location',t('stockLocation'),locations.map(item=>({value:item.id,label:item.name})),locations[0]?.id??1)}
+        ${input('opening_cost',t('purchasePrice'),'','number')}
+        ${input('opening_price',t('sellingPrice'),'','number','required')}
       </div></details>`}
     <div class="form-error" role="alert"></div>
     <footer class="medicine-form-footer">
@@ -63,15 +61,18 @@ function readForm(form){
   const data=new FormData(form);
   const value=name=>String(data.get(name)??'').trim();
   const numeric=name=>value(name)===''?0:Number(value(name));
+  const opening=form.querySelector('[name=opening_quantity]')?{
+    quantity:numeric('opening_quantity'),expiry:value('opening_expiry'),
+    cost:numeric('opening_cost'),price:numeric('opening_price')
+  }:null;
   const record={
     name:value('name'),generic_name:value('generic_name'),brand:value('brand'),barcode:value('barcode'),
     barcode_type:value('barcode_type')||'internal',dosage_form:value('dosage_form'),
     category_id:value('category_id')||null,manufacturer_id:value('manufacturer_id')||null,
-    unit:value('unit')||'piece',cost:numeric('cost'),price:numeric('price'),
+    unit:value('unit')||'piece',cost:opening?opening.cost:numeric('cost'),price:opening?opening.price:numeric('price'),
     reorder_level:numeric('reorder_level'),reorder_qty:numeric('reorder_qty'),storage:value('storage')
   };
-  const quantity=numeric('opening_quantity');
-  if(quantity>0)record.opening_stock={quantity,batch_no:value('opening_batch'),expiry:value('opening_expiry'),location_id:value('opening_location')||1,cost:numeric('cost')};
+  if(opening&&opening.quantity>0)record.opening_stock={quantity:opening.quantity,expiry:opening.expiry,cost:opening.cost};
   return record;
 }
 
@@ -90,7 +91,7 @@ export function openMedicineForm(record={},done){
     form.querySelector('[name=unit]').value='piece';
     form.querySelector('[name=reorder_level]').value='0';
     form.querySelector('[name=reorder_qty]').value='0';
-    form.querySelector('[name=cost]').value='0';
+    for(const name of ['opening_quantity','opening_expiry','opening_cost','opening_price'])form.querySelector(`[name=${name}]`).value='';
     form.querySelector('.opening-stock')?.removeAttribute('open');
     form.querySelector('[name=name]').focus();
   };
@@ -99,6 +100,7 @@ export function openMedicineForm(record={},done){
     try{
       const record=readForm(form);
       if(!record.name){error.textContent=t('nameRequired');return;}
+      if(!editing&&!(record.price>0)){error.textContent=t('priceRequired');form.querySelector('.opening-stock').open=true;form.querySelector('[name=opening_price]').focus();return;}
       if(record.opening_stock&&!record.opening_stock.expiry){form.querySelector('.opening-stock').open=true;error.textContent=t('openingExpiryRequired');return;}
       await api('saveMedicine',{record});
       toast(t('recordSaved'));
