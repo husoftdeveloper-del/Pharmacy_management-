@@ -7,9 +7,9 @@ import {icon,run} from '../components/ui.js';
    Out of Stock or Expiring Soon. The search box also accepts a barcode scanner. */
 const FILTERS=[
   {key:'all',label:'allStock',symbol:'box'},
-  {key:'low',label:'lowStock',symbol:'warning'},
+  {key:'low',label:'lowStockFilter',symbol:'warning'},
   {key:'out',label:'outOfStock',symbol:'transfer'},
-  {key:'expiring',label:'expiringSoon',symbol:'clock'}
+  {key:'expiring',label:'expiringFilter',symbol:'clock'}
 ];
 export async function render(root){
   root.innerHTML=`
