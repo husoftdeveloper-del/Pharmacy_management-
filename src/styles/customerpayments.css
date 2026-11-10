@@ -1,5 +1,22 @@
-/* Customer payments page: one card with a date filter, the payments table and
-   a footer total. Shared card, table and filter styles come from base.css. */
-#payment-total{font-size:11px;font-weight:600;color:var(--text)}
-#payment-count{font-size:11px}
-@media(max-width:650px){#payment-total,#payment-count{display:block;line-height:1.8}}
+/* Customer payments: four totals, Balances/History buttons, a search box with an
+   "only with dues" toggle and the matching table. Shared tokens from base.css. */
+.payment-stats{margin-bottom:22px}
+.payment-stats .stat-card{padding:18px 19px}
+.payment-stats .stat-value{font-size:24px;display:flex;align-items:baseline;gap:6px}
+.payment-stats .stat-value.negative{color:var(--red)}
+.payment-stats .stat-icon{width:34px;height:34px}
+.payment-stats .stat-label{font-size:11px}
+.tabs .tab{display:inline-flex;align-items:center;gap:7px}
+.payment-toolbar{gap:18px}
+.dues-toggle{display:inline-flex;align-items:center;gap:9px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+.dues-toggle.is-hidden{display:none}
+.dues-toggle input{position:absolute;opacity:0;width:0;height:0}
+.toggle-track{width:34px;height:19px;border-radius:20px;background:var(--border);position:relative;transition:background .18s;flex-shrink:0}
+.toggle-dot{position:absolute;top:2px;inset-inline-start:2px;width:15px;height:15px;border-radius:50%;background:var(--surface);box-shadow:0 1px 3px #0003;transition:transform .18s}
+.dues-toggle input:checked+.toggle-track{background:var(--primary)}
+.dues-toggle input:checked+.toggle-track .toggle-dot{transform:translateX(15px)}
+[dir=rtl] .dues-toggle input:checked+.toggle-track .toggle-dot{transform:translateX(-15px)}
+.dues-toggle input:focus-visible+.toggle-track{outline:3px solid #58b9ae;outline-offset:2px}
+.dues-toggle input:checked~span{color:var(--text)}
+#payment-body td:nth-child(2),#payment-body td:nth-child(3),#payment-body td:nth-child(4),#payment-body td:nth-child(5),#payment-body td:nth-child(6){font-variant-numeric:tabular-nums}
+@media(max-width:650px){.payment-toolbar{flex-wrap:wrap}.payment-toolbar .search-field{max-width:none}}

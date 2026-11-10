@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.30')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.31')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -139,6 +139,24 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=customerpayments]').click();return true;");
   await until(()=>run("return !!document.querySelector('#record-payment')"),'customer payments page');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Customer payments')"),'page titled customer payments');
+  // Balances view: four totals, customer rows and the only-with-dues toggle.
+  await until(()=>run("return document.querySelectorAll('.payment-stats .stat-value').length===4"),'four payment totals');
+  assert.ok(await run("return document.querySelector('[data-view=balances]').classList.contains('active')"),'balances selected by default');
+  await until(()=>run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'customer row in balances');
+  assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Credit Sales')"),'balances table header');
+  await run("document.querySelector('#customer-search').value='Payment Customer';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
+  await pause(400);
+  assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'search keeps the matching customer');
+  await run("document.querySelector('#customer-search').value='zzz-none';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
+  await pause(400);
+  assert.ok(!(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')")),'search filters customers out');
+  await run("document.querySelector('#customer-search').value='';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
+  await pause(400);
+  await run("const box=document.querySelector('#only-dues');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await pause(300);
+  assert.ok(!(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')")),'only-with-dues hides settled customers');
+  await run("const box=document.querySelector('#only-dues');box.checked=false;box.dispatchEvent(new Event('change'));return true;");
+  await pause(300);
   await run("document.querySelector('#record-payment').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root [name=party_id]')"),'payment form');
   await run(`const modal=document.querySelector('#modal-root');
@@ -150,9 +168,13 @@ app.whenReady().then(async()=>{
     modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
     modal.querySelector('[name=reference]').value='SMOKE-PAY-1';
     modal.querySelector('form').requestSubmit();return true;`);
-  await until(()=>run("return !document.querySelector('#modal-root .modal') && document.querySelector('#payment-rows').innerText.includes('SMOKE-PAY-1')"),'payment saved and listed');
-  assert.ok(await run("return document.querySelector('#payment-rows').innerText.includes('Payment Customer')"),'payment shows the customer');
-  assert.ok(await run("return document.querySelector('#payment-total').innerText.includes('20.00')"),'payment total updates');
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'payment saved');
+  assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'balances refresh after the payment');
+  await run("document.querySelector('[data-view=history]').click();return true;");
+  await until(()=>run("return document.querySelector('#payment-body').innerText.includes('SMOKE-PAY-1')"),'payment listed in history');
+  assert.ok(await run("return document.querySelector('[data-view=history]').classList.contains('active')"),'history selected');
+  await run("document.querySelector('[data-view=balances]').click();return true;");
+  await pause(300);
   // The sales page holds only the sales history, with no returns table.
   // The returns page offers both lists behind two buttons.
   await run("document.querySelector('[data-page=returns]').click();return true;");
@@ -177,7 +199,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.30'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.31'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

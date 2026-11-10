@@ -482,6 +482,36 @@ class PharmacyService {
     result.register=this.session()?{id:this.session().id}:null;result.recent=p.includes('sales')?this.all('SELECT s.id,s.invoice_no,s.total,s.date,c.name AS customer FROM sales s LEFT JOIN customers c ON c.id=s.customer_id ORDER BY s.id DESC LIMIT 5'):[];
     return result;
   }
+  customerAccounts(user, query = {}) {
+    this.require(user,'customerpayments');
+    const from = query.from ? date(query.from) : '0000-01-01';
+    const to = query.to ? date(query.to) : '9999-12-31';
+    if (from > to) fail('Start date must be before end date.');
+    const byId = rows => new Map(rows.map(row => [row.id, row]));
+    const credit = byId(this.all("SELECT customer_id AS id,SUM(total) AS total FROM sales WHERE payment_method='credit' AND customer_id IS NOT NULL AND date(date) BETWEEN ? AND ? GROUP BY customer_id",from,to));
+    const payments = byId(this.all("SELECT party_id AS id,SUM(amount) AS total,MAX(date) AS last FROM payments WHERE party_type='customer' AND date(date) BETWEEN ? AND ? GROUP BY party_id",from,to));
+    const returns = byId(this.all("SELECT s.customer_id AS id,SUM(r.total) AS total FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id IS NOT NULL AND date(r.date) BETWEEN ? AND ? GROUP BY s.customer_id",from,to));
+    const rows = this.all('SELECT id,name,phone,opening_balance FROM customers WHERE active=1 ORDER BY name').map(customer => ({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      creditSales: round(credit.get(customer.id)?.total||0),
+      paid: round(payments.get(customer.id)?.total||0),
+      returned: round(returns.get(customer.id)?.total||0),
+      balance: this.party('customer',customer.id).balance,
+      lastPayment: payments.get(customer.id)?.last||null
+    }));
+    return {
+      rows,
+      totals: {
+        creditSales: round(rows.reduce((sum,row)=>sum+row.creditSales,0)),
+        paid: round(rows.reduce((sum,row)=>sum+row.paid,0)),
+        returned: round(rows.reduce((sum,row)=>sum+row.returned,0)),
+        owed: round(rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+      },
+      currency: this.setting('currency')
+    };
+  }
   report(user,input) {
     const kind=input.kind||'sales';const permission=['profit','finance'].includes(kind)?'finance':kind==='audit'?'audit':'reports';this.require(user,permission);
     const from=input.from?date(input.from):new Date(Date.now()-29*86400000).toISOString().slice(0,10),to=input.to?date(input.to):new Date().toISOString().slice(0,10);if(from>to)fail('Invalid report range.');
