@@ -111,6 +111,10 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 7. **Close register:** count the drawer, compare with expected cash, and record the difference.
 8. **Back up:** save a `.sqlite` backup to separate protected storage. Test restore on a spare installation.
 
+## Renderer cache
+
+Screens are served by the main process from `src/` with `cache-control: no-store`, and the session cache is cleared on launch, so a new build always replaces the old UI. If the dashboard ever looks outdated, check the `build.NN` label in the sidebar footer.
+
 ## Architecture
 
 ```text
