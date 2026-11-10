@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.19**
+Verified release: **v1.0.0-build.22**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.19
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.19/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.19/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.22
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.22/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.22/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-e02d9223e0026bbb8476211e7252c33e8a6d3b57852fe2b976650193ecd39cbc  Pharmacy-1.0.0-x64.exe
-ab1a078c20a67d3ad667802a3f5abdcd083f77c16c5cfd2a7056a3732166643d  Pharmacy-1.0.0-Portable.exe
+d3e2b5b87458819ffa3527e2c263961f94869402678b87faf6a3d2aba8ab85d9  Pharmacy-1.0.0-x64.exe
+cdd1306e6e3c084a9eb43bebd5b2c21e95dfd2cd21614ecbd4bde9eadaf912d8  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `178fbaa`. The branch also contains the refreshed installer commit `ab03451`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `c8d9d7a`. The branch also contains the refreshed installer commit `7605045`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -39,7 +39,7 @@ npm start
 
 See `README.md` for architecture, all modules, security boundaries, operating instructions, build commands and known limitations.
 
-## Dashboard boxes (build 18, single row in build 19)
+## Dashboard boxes (single row since build 19, deep links since build 20)
 
 The dashboard now shows four equal data-driven boxes in one responsive grid, each clickable to its full page:
 
@@ -50,7 +50,18 @@ The dashboard now shows four equal data-driven boxes in one responsive grid, eac
 | Expiring soon | Number of batches inside the expiry-warning window | Batch number, remaining quantity and days left (or Expired) |
 | Recent sales | Today's sales total (or the number of recent invoices for roles without finance access) | Latest three invoices with customer and total |
 
-Build 19 places the four boxes side by side in one row of four equal columns (two columns below 1180 px, one below 650 px). Each box is one large click target: the card shows a pointer cursor, lifts on hover, moves its arrow, is focusable with Tab and opens with Enter or Space. The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
+Build 19 places the four boxes side by side in one row of four equal columns (two columns below 1180 px, one below 650 px). Each box is one large click target: the card shows a pointer cursor, lifts on hover, moves its arrow, is focusable with Tab and opens with Enter or Space. Each detail line inside a box is its own button, so a click opens that exact record instead of just the module:
+
+| Clicked row | Where it goes | What you see |
+| --- | --- | --- |
+| An invoice in Recent sales | Sales & returns | The invoice detail dialog opens immediately and the row is highlighted |
+| An expense in Expenses | Finance & expenses | Expenses tab with that expense highlighted and scrolled into view |
+| A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
+| A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
+
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.22` = `build.22` shown in the app).
+
+The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
 ## Purchase form fix
 
@@ -70,7 +81,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42771000762
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42772793205
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
