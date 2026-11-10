@@ -60,6 +60,7 @@ test('purchase returns remove batch stock and reduce supplier payable',(t)=>{
 test('supplier payment and operating expenses',(t)=>{
  const {s,admin}=fixture(t);stock(s,admin);const party=s.all('SELECT * FROM suppliers')[0];s.partyPayment(admin,{partyType:'supplier',partyId:party.id,amount:80,method:'bank',accountId:2});assert.equal(s.party('supplier',party.id).balance,100);
  s.expense(admin,{category:'Rent',description:'Monthly rent',amount:50,method:'cash',accountId:1});assert.equal(s.register(admin,'status').expected,950);const report=s.report(admin,{kind:'profit'});assert.equal(report.rows.at(-1).amount,-50);balanced(s);
+ const board=s.dashboard(admin);assert.equal(board.expenses.today,50);assert.equal(board.expenses.month.total,50);assert.equal(board.expenses.month.count,1);assert.equal(board.expenses.recent[0].category,'Rent');assert.equal(board.lowCount,0);assert.equal(board.expiringCount,0);
 });
 test('salary advances are deducted once and monthly payroll is unique',(t)=>{
  const {s,admin}=fixture(t);const staff=s.saveEntity(admin,'staff',{name:'Pharmacist',salary:500,active:1}).id;
