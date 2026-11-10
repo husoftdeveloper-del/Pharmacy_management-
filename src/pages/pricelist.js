@@ -17,7 +17,7 @@ export async function render(root){
     </section>
     <section class="card price-list-card">
       <div class="table-scroll"><table class="price-list-table">
-        <thead><tr><th>${e(t('name'))}</th><th>${e(t('stock'))}</th><th>${e(t('purchasePrice'))}</th><th>${e(t('sellingPrice'))}</th><th class="text-end">${e(t('profit'))}</th></tr></thead>
+        <thead><tr><th>${e(t('name'))}</th><th>${e(t('stock'))}</th><th>${e(t('purchasePrice'))}</th><th>${e(t('sellingPrice'))}</th><th class="text-end">${e(t('profitPerUnit'))}</th></tr></thead>
         <tbody id="price-rows"></tbody>
       </table></div>
       <footer class="price-list-footer"><span id="price-count"></span></footer>
