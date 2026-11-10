@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.34**
+Verified release: **v1.0.0-build.36**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.34
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.34/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.34/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.36
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.36/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.36/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-acbf08bfe5c3e00d4048b5fb40ca7730f9700d8bbce2cd278ce544df66864c49  Pharmacy-1.0.0-x64.exe
-92bb8a98c5d4a9bbe43806f894057920a47b6c1ba073d160bf7a9d5fa8e394f9  Pharmacy-1.0.0-Portable.exe
+9139650bc4d877e7939821dcc40ae2dbe70c1a947ed5382b3988bb42d86b100d  Pharmacy-1.0.0-x64.exe
+3af8d04bf76bc5513cf21ff96078dc89b19d9cf5c99cf72db5cfc17ea2dbce49  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `7dc1868`. The branch also contains the refreshed installer commit `25f8112`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `70ed418`. The branch also contains the refreshed installer commit `9986aae`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -73,6 +73,31 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## New Medicine form rebuilt (build 35–36)
+
+The **New Medicine** dialog now follows the reference layout:
+
+| Row | Fields |
+| --- | --- |
+| 1 | **Name** (full width) |
+| 2 | **Barcode** with the side-icon generator · **Barcode Type** (Internal / Manufacturer) |
+| 3 | **Generic Name** · **Brand** |
+| 4 | **Company** (manufacturer) · **Category** |
+| 5 | **Dosage Form** (tablet, capsule, syrup, suspension, injection, cream, ointment, drops, inhaler, sachet, powder, spray, other) · **Unit** (piece, tablet, capsule, bottle, box, strip, sachet, ml, g, tube, vial, ampoule) |
+| 6 | **Reorder Level** (with the hint “Alert when total stock falls to or below this quantity.”) · **Reorder Qty** |
+| 7 | **Purchase Price** · **Selling Price** (kept because the table and the point of sale need them) |
+| 8 | **Opening Stock** collapsible: quantity, batch number, expiry and stock location |
+
+Footer: **Cancel · Save & New · Save**. *Save & New* stores the medicine, refreshes the table and clears the form for the next entry.
+
+Supporting changes:
+
+- New medicine columns `brand`, `dosage_form`, `barcode_type` and `reorder_qty`, added to existing databases by the automatic migration.
+- The SKU is generated automatically (`MED-00001`, `MED-00002`, …) because the reference form does not ask for one; the number stays unique.
+- A new `saveMedicine` channel writes the catalogue entry **and** its opening batch in one transaction: `batches` row, an `opening` stock movement and a balanced journal entry (Inventory debit / Opening balance equity credit). Opening stock is only offered for a new medicine — later stock comes from purchases, adjustments or transfers.
+- Editing an existing medicine reuses the same dialog, prefilled, without the Opening Stock section.
+- The sidebar entry for Customer payments had no translation key and printed `customerpayments`; it is now labelled in English, Pashto and Dari.
 
 ## Medicines page rebuilt (build 34)
 
@@ -126,7 +151,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.34` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.36` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -148,7 +173,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42795786872
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42800330900
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
