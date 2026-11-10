@@ -85,6 +85,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Customers | Total customers and outstanding-credit cards, full-width search (name/phone/email), table of Name, Phone, Email, Credit Balance and Status with Edit and Payment per row, New Customer form (sidebar: Overview, right below Returns) |
 | Customer payments | Four totals (credit sales, paid, returned, owed), **Balances** view with per-customer credit sales/paid/returned/balance/last payment plus search and “only with dues”, **History** view of every payment with allocation and user, and a Record Payment form |
 | Medicines | SKU/barcode, generic name, category/manufacturer, unit, cost/price, reorder level, Rx flag, storage instructions, active/inactive status |
+| Inventory | Batch-level stock: medicine, batch number, expiry, location, quantity, cost and value, with totals for batches, stock value, low stock and near-expiry items, plus an expiring-only filter |
 | Barcode | One-click unique barcode generation from the icon beside the input, instant preview, unique assignment, local CODE128-B SVG with checksum, printable PDF; keyboard-wedge scanner input in POS |
 | Purchases | Supplier invoices, multi-item receiving, batch/expiry/cost/location, discounts, cash/bank/credit payment, purchase returns |
 | Suppliers | Contacts, opening balances, payables, payments and purchase history |

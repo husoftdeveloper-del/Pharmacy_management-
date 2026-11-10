@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.32**
+Verified release: **v1.0.0-build.33**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.32
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.32/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.32/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.33
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.33/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.33/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-c5a4348a2df55a70f193645656db49ac934e2688fd3764655bf616ec33935086  Pharmacy-1.0.0-x64.exe
-5746995a7b96760dc3da58144612e19fd7b442f74ce224d67adfa49de8cb9740  Pharmacy-1.0.0-Portable.exe
+80bebfc20d4377b5fa32211de18f3995fa0dfeb64ddd0ca0fee20145d71136b1  Pharmacy-1.0.0-x64.exe
+2e8296c3ad72c6b35b835cd7f33e4833e039a64071bec98ec6805e04c290b5da  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `cb2e760`. The branch also contains the refreshed installer commit `2a5f066`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `328540f`. The branch also contains the refreshed installer commit `766e0a3`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -74,6 +74,17 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
 
+## Medicines and Inventory split (build 33)
+
+The former “Medicines & inventory” module is now two pages at the top of the **Management** group, in this order:
+
+| Page | Permission | Shows |
+| --- | --- | --- |
+| **Medicines** | `medicines` | Catalogue only: Total medicines, Low stock and Stock value cards, search, and a table of name/generic name, SKU, category, price and unit, stock, reorder level and status with Edit |
+| **Inventory** | `inventory` | The stock itself: Batches, Stock value, Low stock and Expiring cards, search plus an “expiring” toggle, and a batch table of medicine, batch, expiry, location, quantity, cost and value, with a shortcut to Stock adjustments |
+
+Both read the same SQLite data through two permission-checked calls (`medicineBook`, `inventoryBook`), so editing a medicine on one page is visible on the other. The medicine entity accepts **either** permission (`['medicines','inventory']`), so existing custom roles keep working; administrators and pharmacists get both by default, and both are separate checkboxes on the Users page. Stock adjustments, transfers, physical counts and barcodes are unchanged.
+
 ## Renderer caching fixed in build 24
 
 The app loads its screens through a custom `pharmacy://` protocol. Chromium was allowed to cache those responses, so after an update the window could keep rendering the previous build (for example the old dashboard with record lists inside the boxes).
@@ -100,7 +111,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.32` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.33` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -122,7 +133,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42787602935
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42789383764
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
