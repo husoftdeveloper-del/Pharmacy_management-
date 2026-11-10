@@ -16,7 +16,7 @@ function row(main,side){return `<li class="insight-row"><span class="row-main">$
 function insightCard({go,color,symbol,label,hint,chip,value,unit=false,meta='',rows=[]}){
   return `<article class="card insight-card" data-go="${e(go)}" tabindex="0" role="button" aria-label="${e(t(label))}">
     <header class="insight-head"><span class="insight-icon ${color}">${icon(symbol,18)}</span><div class="insight-title"><strong>${e(t(label))}</strong><small>${e(hint)}</small></div>${chip!==''?`<span class="insight-chip">${e(String(chip))}</span>`:''}</header>
-    <div class="insight-value">${e(value)}${unit?`<small>${e(state.preferences.currency)}</small>`:''}</div>
+    <div class="insight-value"><span>${e(value)}</span>${unit?`<small>${e(state.preferences.currency)}</small>`:''}</div>
     ${meta?`<p class="insight-meta">${meta}</p>`:''}
     ${rows.length?`<ul class="insight-list">${rows.join('')}</ul>`:`<p class="insight-empty">${icon('check',14)}${e(t('noData'))}</p>`}
     <footer class="insight-foot"><span>${e(t('view'))}</span>${icon('arrow',14)}</footer>

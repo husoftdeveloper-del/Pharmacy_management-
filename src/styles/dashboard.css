@@ -1,34 +1,40 @@
 /* Dashboard boxes: Expenses, Low stock, Expiring soon and Recent sales.
-   Shared design tokens live in base.css; this file only lays out the boxes. */
-.insight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-bottom:23px}
-.insight-card{display:flex;flex-direction:column;padding:20px 20px 0;cursor:pointer;position:relative;transition:transform .2s,box-shadow .2s,border-color .2s}
-.insight-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px #1734480f;border-color:color-mix(in srgb,var(--primary) 32%,var(--border))}
+   The four boxes always sit together in a single row of four columns on
+   desktop, and the whole box is one click target. Tokens come from base.css. */
+.insight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px;align-items:stretch}
+.insight-card{display:flex;flex-direction:column;min-width:0;padding:16px 16px 0;cursor:pointer;position:relative;border-radius:13px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease}
+.insight-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px #17344814;border-color:color-mix(in srgb,var(--primary) 38%,var(--border));background:color-mix(in srgb,var(--primary-soft) 22%,var(--surface))}
+.insight-card:active{transform:translateY(-1px)}
 .insight-card:focus-visible{outline:3px solid #58b9ae;outline-offset:3px}
-.insight-head{display:flex;align-items:center;gap:11px;margin-bottom:15px}
-.insight-icon{width:37px;height:37px;display:grid;place-items:center;border-radius:10px;background:var(--primary-soft);color:var(--primary);flex-shrink:0}
+.insight-head{display:flex;align-items:center;gap:9px;margin-bottom:12px;min-width:0}
+.insight-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:9px;background:var(--primary-soft);color:var(--primary);flex-shrink:0}
 .insight-icon.blue{background:var(--blue-soft);color:var(--blue)}
 .insight-icon.amber{background:var(--amber-soft);color:var(--amber)}
 .insight-icon.red{background:var(--red-soft);color:var(--red)}
 .insight-icon.teal{background:var(--primary-soft);color:var(--primary)}
-.insight-title{min-width:0}
+.insight-title{min-width:0;flex:1}
 .insight-title strong{display:block;font-size:12px;font-weight:600;letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.insight-title small{display:block;font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.insight-chip{margin-inline-start:auto;min-width:26px;text-align:center;font-size:10px;font-weight:650;padding:4px 8px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);color:var(--muted)}
-.insight-value{font-size:26px;font-weight:700;letter-spacing:-.8px;line-height:1.2;display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
-.insight-value small{font-size:11px;font-weight:500;letter-spacing:0;color:var(--muted)}
-.insight-meta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin-top:8px;min-height:15px}
-.insight-meta svg{color:var(--primary)}
-.insight-list{list-style:none;margin:14px 0 0;padding:0;border-top:1px solid var(--border)}
-.insight-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:11px}
+.insight-title small{display:block;font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insight-chip{margin-inline-start:auto;min-width:24px;flex-shrink:0;text-align:center;font-size:10px;font-weight:650;padding:3px 7px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);color:var(--muted)}
+.insight-value{font-size:22px;font-weight:700;letter-spacing:-.7px;line-height:1.15;display:flex;align-items:baseline;gap:4px;flex-wrap:nowrap;min-width:0}
+.insight-value>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insight-value small{font-size:10px;font-weight:500;letter-spacing:0;color:var(--muted);flex-shrink:0}
+.insight-meta{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--muted);margin-top:6px;min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insight-meta svg{color:var(--primary);flex-shrink:0}
+.insight-list{list-style:none;margin:12px 0 0;padding:0;border-top:1px solid var(--border);flex:1}
+.insight-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;min-width:0}
 .insight-row:last-child{border-bottom:0}
 .insight-row .row-main{min-width:0;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.insight-row .row-main small{display:block;font-size:9px;font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insight-row .row-main small{display:block;font-size:9px;font-weight:400;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .insight-row .row-side{flex-shrink:0;font-size:10px;color:var(--muted);white-space:nowrap}
 .insight-row .row-side b{font-size:11px;color:var(--text);font-weight:600}
-.insight-empty{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted);margin:14px 0 0;padding:12px 0;border-top:1px solid var(--border)}
-.insight-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding:12px 0;border-top:1px solid var(--border);font-size:10px;font-weight:600;color:var(--primary);opacity:.75;transition:opacity .2s}
+.insight-empty{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--muted);margin:12px 0 0;padding:11px 0;border-top:1px solid var(--border);flex:1}
+.insight-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding:10px 0;border-top:1px solid var(--border);font-size:10px;font-weight:600;color:var(--primary);opacity:.8;transition:opacity .18s}
+.insight-foot svg{transition:transform .18s ease}
 .insight-card:hover .insight-foot{opacity:1}
+.insight-card:hover .insight-foot svg{transform:translateX(3px)}
+[dir=rtl] .insight-card:hover .insight-foot svg{transform:translateX(-3px)}
 .trend-card{margin-bottom:22px}
-@media(min-width:1500px){.insight-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:1499px){.insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:650px){.insight-grid{grid-template-columns:1fr;gap:12px}.insight-card{padding:16px 16px 0}.insight-value{font-size:23px}}
+/* Keep all four in one row as long as the cards can still breathe. */
+@media(max-width:1180px){.insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.insight-grid{grid-template-columns:1fr;gap:11px}.insight-card{padding:15px 15px 0}.insight-value{font-size:21px}}
