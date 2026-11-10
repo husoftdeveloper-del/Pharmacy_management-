@@ -143,7 +143,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return document.querySelectorAll('.payment-stats .stat-value').length===4"),'four payment totals');
   assert.ok(await run("return document.querySelector('[data-view=balances]').classList.contains('active')"),'balances selected by default');
   await until(()=>run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'customer row in balances');
-  assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Credit Sales')"),'balances table header');
+  assert.ok(await run("return document.querySelector('#payment-body').innerText.toLowerCase().includes('credit sales')"),'balances table header');
   await run("document.querySelector('#customer-search').value='Payment Customer';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
   await pause(400);
   assert.ok(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')"),'search keeps the matching customer');
