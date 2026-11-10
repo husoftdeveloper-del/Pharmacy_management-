@@ -1,46 +1,76 @@
-import {api,state,money,escapeHTML as e,today} from '../scripts/api.js';
+import {api,money,escapeHTML as e} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
-import {icon,pageHeader,button,table,badge,empty,run} from '../components/ui.js';
-/* Inventory: the stock itself — every batch with its quantity, expiry, location
-   and value. The catalogue (names, codes, prices) lives on the Medicines page;
-   stock adjustments, transfers and physical counts stay in their own modules. */
-export async function render(root,params={}){
-  root.innerHTML=pageHeader(t('inventory'),t('stockInBatches'),button(t('adjustments'),'box','secondary','id="go-adjustments"'))+
-    `<div class="stat-grid inventory-stats">
-      <article class="card stat-card"><div class="stat-top"><span class="stat-label">${e(t('batches'))}</span><span class="stat-icon blue">${icon('box',19)}</span></div><div class="stat-value"><span>0</span></div><div class="stat-footer">${icon('pill',12)}<span>${e(t('medicines'))}</span></div></article>
-      <article class="card stat-card"><div class="stat-top"><span class="stat-label">${e(t('stockValue'))}</span><span class="stat-icon">${icon('wallet',19)}</span></div><div class="stat-value"><span>${money(0)}</span><small>${e(state.preferences.currency)}</small></div><div class="stat-footer">${icon('clock',12)}<span>${e(t('cost'))}</span></div></article>
-      <article class="card stat-card"><div class="stat-top"><span class="stat-label">${e(t('lowStock'))}</span><span class="stat-icon amber">${icon('warning',19)}</span></div><div class="stat-value"><span>0</span></div><div class="stat-footer">${icon('box',12)}<span>${e(t('reorderLevel'))}</span></div></article>
-      <article class="card stat-card"><div class="stat-top"><span class="stat-label">${e(t('expiring'))}</span><span class="stat-icon red">${icon('clock',19)}</span></div><div class="stat-value"><span>0</span></div><div class="stat-footer">${icon('clock',12)}<span id="warning-days"></span></div></article>
+import {icon,run} from '../components/ui.js';
+
+/* Inventory: what is on the shelf right now. One row per medicine with its
+   barcode, total quantity and nearest expiry, filtered by All stock, Low Stock,
+   Out of Stock or Expiring Soon. The search box also accepts a barcode scanner. */
+const FILTERS=[
+  {key:'all',label:'allStock',symbol:'box'},
+  {key:'low',label:'lowStock',symbol:'warning'},
+  {key:'out',label:'outOfStock',symbol:'transfer'},
+  {key:'expiring',label:'expiringSoon',symbol:'clock'}
+];
+export async function render(root){
+  root.innerHTML=`
+    <header class="page-heading inventory-heading">
+      <div><h1>${e(t('inventory'))}</h1></div>
+      <label class="inventory-search">${icon('barcode',19)}<input id="inventory-search" type="search" autocomplete="off" placeholder="${e(t('scanBarcode'))}" aria-label="${e(t('scanBarcode'))}"></label>
+    </header>
+    <div class="inventory-filters" role="group" aria-label="${e(t('inventory'))}">
+      ${FILTERS.map((filter,index)=>`<button class="inventory-chip ${index===0?'active':''}" data-filter="${filter.key}" aria-pressed="${index===0}">${icon(filter.symbol,17)}<span>${e(t(filter.label))}</span><b data-count="${filter.key}"></b></button>`).join('')}
     </div>
-    <section class="card">
-      <div class="table-toolbar"><label class="search-field">${icon('search',17)}<input id="batch-search" placeholder="${e(t('search'))}" aria-label="${e(t('search'))}"></label><label class="dues-toggle"><input type="checkbox" id="only-expiring"><span class="toggle-track"><span class="toggle-dot"></span></span><span>${e(t('expiring'))}</span></label></div>
-      <div id="batch-rows"></div>
+    <section class="card inventory-card">
+      <div class="table-scroll"><table class="inventory-table">
+        <thead><tr><th>${e(t('name'))}</th><th>${e(t('barcode'))}</th><th>${e(t('stock'))}</th><th>${e(t('expiry'))}</th></tr></thead>
+        <tbody id="inventory-rows"></tbody>
+      </table></div>
+      <footer class="inventory-footer"><span id="inventory-count"></span></footer>
     </section>`;
-  let rows=[],search='',onlyExpiring=false,timer,days=90;
-  const daysLeft=expiry=>Math.round((Date.parse(`${expiry}T00:00:00Z`)-Date.parse(`${today()}T00:00:00Z`))/86400000);
+
+  let rows=[],filter='all',search='',timer;
+  const input=root.querySelector('#inventory-search');
   const paint=()=>{
     const term=search.trim().toLowerCase();
-    const visible=rows.filter(row=>(!term||row.medicine.toLowerCase().includes(term)||String(row.batch_no||'').toLowerCase().includes(term)||String(row.location||'').toLowerCase().includes(term))&&(!onlyExpiring||daysLeft(row.expiry)<=days));
-    root.querySelector('#batch-rows').innerHTML=visible.length?table(['medicine','batchNo','expiryDate','location','quantity','cost','value'],visible,row=>{
-      const left=daysLeft(row.expiry);
-      const tone=left<0?'muted':left<=30?'warn':left<=days?'good':'muted';
-      return `<tr><td><span class="table-name">${e(row.medicine)}</span></td><td class="mono">${e(row.batch_no)}</td><td class="nowrap"><span class="badge ${tone}">${e(row.expiry)}</span></td><td class="muted">${e(row.location)}</td><td class="nowrap"><strong>${row.quantity}</strong></td><td class="nowrap">${money(row.cost)}</td><td class="nowrap">${money(row.value)}</td></tr>`;
-    }):empty(t('noData'),t('inventory'),'box');
+    const visible=rows.filter(row=>{
+      if(filter==='low'&&!row.low)return false;
+      if(filter==='out'&&!row.out)return false;
+      if(filter==='expiring'&&!row.expiring)return false;
+      if(!term)return true;
+      return [row.name,row.generic_name,row.sku,row.barcode].some(value=>String(value||'').toLowerCase().includes(term));
+    });
+    root.querySelector('#inventory-rows').innerHTML=visible.length?visible.map(row=>`<tr>
+        <td><span class="table-name">${e(row.name)}</span>${row.generic_name?`<small class="table-sub">${e(row.generic_name)}</small>`:''}</td>
+        <td class="mono">${row.barcode?e(row.barcode):'<span class="muted">—</span>'}</td>
+        <td><span class="badge ${row.out?'muted':row.low?'warn':'good'} stock-badge">${row.stock} ${e(t(row.unit))}</span></td>
+        <td class="nowrap">${row.expiry?e(row.expiry):'<span class="muted">—</span>'}</td>
+      </tr>`).join(''):`<tr><td colspan="4" class="inventory-empty-cell"><div class="inventory-empty"><div class="inventory-empty-icon">${icon('box',26)}</div><h3>${e(t('noInventoryMatch'))}</h3><p>${e(t('noInventoryMatchHint'))}</p></div></td></tr>`;
+    root.querySelector('#inventory-count').textContent=`${t('showingAll')} ${visible.length}`;
+  };
+  const counts=book=>{
+    const map={all:book.totals.medicines,low:book.totals.low,out:book.totals.out,expiring:book.totals.expiring};
+    for(const [key,value] of Object.entries(map))root.querySelector(`[data-count="${key}"]`).textContent=value?String(value):'';
   };
   const load=async()=>{
     const book=await api('inventoryBook');
-    rows=book.rows||[];days=book.totals.warningDays||90;
-    const values=root.querySelectorAll('.inventory-stats .stat-value span');
-    values[0].textContent=String(book.totals.batches);
-    values[1].textContent=money(book.totals.value);
-    values[2].textContent=String(book.totals.lowStock);
-    values[3].textContent=String(book.totals.expiring);
-    root.querySelector('#warning-days').textContent=`${days} ${t('expiryDays')}`;
+    rows=book.rows||[];
+    counts(book);
     paint();
   };
-  root.querySelector('#go-adjustments').onclick=()=>window.dispatchEvent(new CustomEvent('navigate',{detail:'adjustments'}));
-  root.querySelector('#batch-search').oninput=ev=>{search=ev.target.value;clearTimeout(timer);timer=setTimeout(paint,180);};
-  root.querySelector('#only-expiring').onchange=ev=>{onlyExpiring=ev.target.checked;paint();};
+  const selectChip=key=>{
+    filter=key;
+    root.querySelectorAll('[data-filter]').forEach(chip=>{const active=chip.dataset.filter===key;chip.classList.toggle('active',active);chip.setAttribute('aria-pressed',String(active));});
+    paint();
+  };
+  root.querySelectorAll('[data-filter]').forEach(chip=>chip.onclick=()=>selectChip(chip.dataset.filter));
+  input.oninput=()=>{search=input.value;clearTimeout(timer);timer=setTimeout(paint,160);};
+  input.onkeydown=event=>{
+    if(event.key!=='Enter')return;
+    event.preventDefault();
+    const term=input.value.trim();
+    const exact=rows.find(row=>String(row.barcode||'')===term);
+    if(exact){search=term;paint();}
+  };
   await run(load);
   return ()=>clearTimeout(timer);
 }

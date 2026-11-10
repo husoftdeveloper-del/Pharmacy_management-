@@ -597,27 +597,42 @@ class PharmacyService {
       currency: this.setting('currency')
     };
   }
+  // Inventory view: one row per active medicine with the shelf quantity summed
+  // from every batch and the nearest in-stock expiry, so the page can filter by
+  // all stock, low stock, out of stock and expiring soon.
   inventoryBook(user) {
     this.require(user,'inventory');
     const days = Number(this.setting('low_stock_days')) || 90;
-    const rows = this.all(`SELECT b.id,m.id AS medicine_id,m.name AS medicine,b.batch_no,b.expiry,b.quantity,b.cost,l.name AS location,
-        round(b.quantity*b.cost,2) AS value
-      FROM batches b JOIN medicines m ON m.id=b.medicine_id JOIN locations l ON l.id=b.location_id
-      WHERE b.quantity>0 ORDER BY m.name,b.expiry`);
-    const low = this.get(`SELECT COUNT(*) AS n FROM (SELECT m.id FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id WHERE m.active=1 GROUP BY m.id HAVING COALESCE(SUM(b.quantity),0)<=m.reorder_level)`).n;
-    const expiring = this.get("SELECT COUNT(*) AS n FROM batches b WHERE b.quantity>0 AND b.expiry<=date('now','+'||?||' days')",days).n;
+    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.sku,m.barcode,m.unit,m.reorder_level,
+        COALESCE(SUM(b.quantity),0) AS stock,
+        (SELECT MIN(b2.expiry) FROM batches b2 WHERE b2.medicine_id=m.id AND b2.quantity>0) AS expiry
+      FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id
+      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => {
+      const stock = Number(row.stock);
+      const reorder = Number(row.reorder_level);
+      const expiring = Boolean(row.expiry) && row.expiry <= new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      return {
+        ...row,
+        stock,
+        reorder_level: reorder,
+        out: stock === 0,
+        low: stock > 0 && stock <= reorder,
+        expiring
+      };
+    });
     return {
       rows,
       totals: {
-        batches: rows.length,
-        value: round(rows.reduce((sum,row) => sum + Number(row.value),0)),
-        lowStock: low,
-        expiring,
+        medicines: rows.length,
+        low: rows.filter(row => row.low).length,
+        out: rows.filter(row => row.out).length,
+        expiring: rows.filter(row => row.expiring).length,
         warningDays: days
       },
       currency: this.setting('currency')
     };
   }
+
   customerBook(user) {
     this.require(user,'customers');
     const balance = customer => {
