@@ -78,7 +78,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Area | Working functionality |
 |---|---|
 | Authentication | First-run administrator creation, salted scrypt password hashes, login throttling, 15-minute inactivity expiry, logout, active-user checks |
-| Dashboard | Sales totals, seven-day chart, stock value, low-stock and expiry alerts, recent invoices; respects module permissions |
+| Dashboard | Sales totals, seven-day chart, stock value, plus four clickable boxes — expenses this month, low stock, expiring soon and recent sales — each with the latest records; boxes appear only for the permissions the signed-in role has |
 | POS | Medicine/barcode/SKU search, stock-aware cart, FEFO batch allocation, prescription checks, server-calculated discounts/tax, cash/bank/credit sales, receipt PDF |
 | Sales history | Date filters, invoice details, quantity-limited returns, restock/damaged choice, cash/bank refund or customer credit, PDF receipts |
 | Customers | Contact records, opening balances, credit limits, outstanding balances, payments and invoice allocation |
