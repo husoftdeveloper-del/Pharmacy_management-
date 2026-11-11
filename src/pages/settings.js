@@ -127,7 +127,7 @@ export async function render(root,params={}){
         <div class="receipt-totals">
           <div><span>${e(t('subtotal'))}</span><b>${money(subtotal)}</b></div>
           <div><span>${e(t('discount'))}</span><b>- ${money(discount)}</b></div>
-          <div class="receipt-grand"><span>${e(t('total'))}</span><b>${money(total)}</b></div>
+          <div class="receipt-grand"><span>${e(t('total').toUpperCase())}</span><b>${money(total)}</b></div>
         </div>
         <footer class="receipt-foot">${e(p.receipt_footer||'')}</footer>
       </div>`;
