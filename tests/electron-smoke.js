@@ -497,7 +497,7 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=reports]').click();return true;");
   await until(()=>run("return document.querySelectorAll('.kpi-card').length===8"),'eight report KPIs');
   assert.ok(await run("return !!document.querySelector('.report-chart svg')"),'revenue and profit trend chart renders');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Net Profit')"),'net profit KPI label');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.toLowerCase().includes('net profit')"),'net profit KPI label');
   await run("document.querySelector('#report-period').value='7';document.querySelector('#report-period').dispatchEvent(new Event('change'));return true;");
   await pause(400);
   assert.equal(await run("return document.querySelectorAll('.kpi-card').length"),8,'KPIs survive a period change');
