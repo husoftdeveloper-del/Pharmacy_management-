@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.49**
+Verified release: **v1.0.0-build.50**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.49
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.49/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.49/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.50
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.50/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.50/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-cb714c0b76afb108905e122ee5e3c3e8420ba60dc2634a2bf486b846d945b2b8  Pharmacy-1.0.0-x64.exe
-6646c2144eca7139074093eaf560f1abb29c2fad6b80c89ba327b4012f9c266f  Pharmacy-1.0.0-Portable.exe
+726617926b43b26875c295a054edad0015973a25665fd743de7133316fbdb720  Pharmacy-1.0.0-x64.exe
+dd68b1837a1c8068580e55655fd2a7fcb4bcce14b5b70b857593258cf8129b76  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `f2f620f`. The branch also contains the refreshed installer commit `14a68b3`.
+Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `2a21ced`. The branch also contains the refreshed installer commit `6ff315b`.
 
 ```powershell
 git clone --branch arena/17a27247-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -73,6 +73,18 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Login no longer blocked by a saved permission set (build 50)
+
+Signing in could fail with **“You do not have permission for this action.”** and never open the app. The login screen itself was fine — the shell then asked for preferences and reference data, and that call required the `dashboard` module. An account whose saved permission set had Dashboard switched off (for example a set stored by an older build, or a user edited on the Users page) could therefore never get past the login screen, with no way back in.
+
+Three changes fix that:
+
+1. **Preferences and reference data are shell-level.** `preferences` and `options` now only require a signed-in, active account, so the window always opens. Each list inside `options` is still filtered by permission.
+2. **An administrator always keeps every module.** A stored permission set can no longer strip modules from an administrator — the account that can repair permissions can never lock itself out. The Users page shows the administrator's boxes ticked and disabled, and `saveUser` stores all modules for that role.
+3. **The shell picks a landing page.** After sign-in the app opens the Dashboard if it is allowed, otherwise the first permitted module, and only shows a “no access” toast when the account genuinely has no module at all.
+
+Also hardened while there: a corrupt `permissions` JSON payload now falls back to the role defaults instead of throwing during sign-in.
 
 ## STOCK group removed (build 49)
 
@@ -310,7 +322,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.49` = `build.49` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.50` = `build.50` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -328,11 +340,11 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 
 ## Verification completed
 
-- 27 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks, the finance queries, every report tab and the three staff pages.
+- 28 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks, the finance queries, every report tab and the three staff pages.
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 37 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42985022110
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42986520116
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
