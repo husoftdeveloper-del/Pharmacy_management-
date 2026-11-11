@@ -267,7 +267,7 @@ app.whenReady().then(async()=>{
   assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all')"),'showing all footer');
   assert.ok(await run("return !!document.querySelector('#export-price-list')"),'export PDF button');
   // The selling price shows a pencil only while its cell is hovered.
-  assert.ok(await run("const c=[...document.querySelectorAll('.price-list-table .price-cell')].find(td=>td.textContent.includes('Paracetamol'));return !!c?.querySelector('[data-edit-price]')"),'selling price has an edit icon');
+  assert.ok(await run("const row=[...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return !!row?.querySelector('.price-cell [data-edit-price]')"),'selling price has an edit icon');
   assert.equal(await run("const b=document.querySelector('.price-cell [data-edit-price]');return getComputedStyle(b).opacity"),'0','the edit icon is hidden until the cell is hovered');
   assert.ok((await run("return [...document.styleSheets].flatMap(sh=>{try{return [...sh.cssRules].map(r=>r.cssText)}catch{return []}}).join(' ')")).includes('.price-cell:hover .price-edit'),'hover reveals the icon');
   await run("const key=[...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));key.querySelector('[data-edit-price]').click();return true;");
