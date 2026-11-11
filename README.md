@@ -90,7 +90,8 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Inventory | Shelf stock per medicine with barcode search/scan, quantity, nearest expiry, and All stock / Low Stock / Out of Stock / Expiring Soon filters |
 | Barcode | One-click unique barcode generation from the icon beside the input, instant preview, unique assignment, local CODE128-B SVG with checksum, printable PDF; keyboard-wedge scanner input in POS |
 | Purchases | Supplier invoices, multi-item receiving, batch/expiry/cost/location, discounts, cash/bank/credit payment, purchase returns |
-| Suppliers | Contacts, opening balances, payables, payments and purchase history |
+| Suppliers | Supplier name, contact person, phone, purchase count, total spent, last purchase date, status, with edit and payment actions |
+| Supplier payments | Four totals (purchased / paid / credited / owed), Balances and History views, supplier search, an only-with-dues switch, and a Pay action per supplier |
 | Finance | Expenses, party payments, double-entry journals, profit and loss, trial balance |
 | Staff/payroll | Staff records, monthly salary uniqueness, advances, automatic advance deduction, net salary payment |
 | Cash register | One shared open register, opening float, cash in/out, expected cash from ledger, counted close and over/short entry |
