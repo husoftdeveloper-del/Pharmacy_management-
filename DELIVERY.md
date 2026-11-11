@@ -14,8 +14,8 @@ These are Windows x64, unsigned builds. Verify the download source and checksums
 ### GitHub release asset SHA-256
 
 ```text
-dae981d6bbbb4d7b09ed79567634f46c46a8a3ecd68db60e2eecb5cc8b85fc6f  Pharmacy-1.0.0-x64.exe
-7bed887690d85ca1f8eaf22bb9d7e937a2d604fa5ebb7e21970aa5282cd1e62e  Pharmacy-1.0.0-Portable.exe
+cb714c0b76afb108905e122ee5e3c3e8420ba60dc2634a2bf486b846d945b2b8  Pharmacy-1.0.0-x64.exe
+6646c2144eca7139074093eaf560f1abb29c2fad6b80c89ba327b4012f9c266f  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `2c32c01`. The branch also contains the refreshed installer commit `5383b5c`.
+Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `f2f620f`. The branch also contains the refreshed installer commit `14a68b3`.
 
 ```powershell
 git clone --branch arena/17a27247-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -332,7 +332,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 37 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/WORKFLOW_ID
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42985022110
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
