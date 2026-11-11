@@ -93,7 +93,7 @@ app.whenReady().then(async()=>{
   assert.equal(await run("return [...document.querySelectorAll('.template-card strong')].map(x=>x.textContent.trim()).join('|')"),'Classic|Compact|Boxed','receipt template names');
   assert.equal(await run("return document.querySelector('.template-card.active').dataset.template"),'classic','classic is the default template');
   assert.ok(await run("return document.querySelector('#receipt-preview').innerText.includes('TOTAL')"),'preview shows totals');
-  assert.ok(await run("const text=document.querySelector('.receipt-sheet').innerText;return text.includes('17.00')&&!text.includes('AFN 17.00')"),'preview amounts print without a currency prefix');
+  assert.ok(await run("const text=document.querySelector('.receipt-sheet').innerText;return text.includes('39.00')&&!text.includes('AFN 39.00')"),'preview amounts print without a currency prefix');
   assert.ok(await run("return document.querySelector('.receipt-sheet').classList.contains('t-classic')"),'preview follows the chosen template');
   assert.equal(await run("return document.querySelector('#receipt-paper').value"),'80mm','default paper size');
   assert.equal(await run("return document.querySelector('#receipt-copies').value"),'1','default copy count');
