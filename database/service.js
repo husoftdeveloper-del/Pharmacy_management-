@@ -694,7 +694,7 @@ class PharmacyService {
   options(user) {
     this.require(user, 'dashboard');
     const result = {};
-    for (const [key, table, permission] of [['categories','categories','categories'],['manufacturers','manufacturers','manufacturers'],['customers','customers','customers'],['suppliers','suppliers','suppliers'],['patients','patients','patients'],['staff','staff','staff'],['locations','locations','inventory'],['medicines','medicines',['medicines','inventory']]]) {
+    for (const [key, table, permission] of [['categories','categories','categories'],['manufacturers','manufacturers','manufacturers'],['customers','customers','customers'],['suppliers','suppliers','suppliers'],['patients','patients','patients'],['staff','staff',['staff','employees','salaries','advances']],['locations','locations','inventory'],['medicines','medicines',['medicines','inventory']]]) {
       const can = Array.isArray(permission) ? permission.some(name => this.permissions(user).includes(name)) : this.permissions(user).includes(permission);
       if (can) result[key] = this.all(`SELECT id,name FROM ${table} WHERE active=1 ORDER BY name LIMIT 1000`);
     }
@@ -917,17 +917,131 @@ class PharmacyService {
     const amount=round(number(input.amount,'amount',0.01)),payment=method(input.method);if(payment==='credit')fail('Choose cash or bank.');const account=this.paymentAccount(input.accountId,payment);
     return transaction(this.db,()=>{const r=this.run('INSERT INTO advances(staff_id,amount,note,account_id,user_id) VALUES(?,?,?,?,?)',staff.id,amount,text(input.note,'note'),account.id,user.id);this.journal(user,'Staff advance',[[5,amount],[account.id,0,amount]],`ADV-${r.lastInsertRowid}`);audit(this.db,user,'create','advances',r.lastInsertRowid,{amount});return {id:Number(r.lastInsertRowid)};});
   }
+  // Employees page: the team list with what each one costs per month and any
+  // advance still to be recovered.
+  employeeBook(user) {
+    this.require(user,['employees','staff']);
+    const rows = this.all(`SELECT s.id,s.name,s.position,s.phone,s.salary,s.hired_on,s.active,
+        (SELECT COALESCE(SUM(a.amount-a.repaid),0) FROM advances a WHERE a.staff_id=s.id) AS advance_due,
+        (SELECT MAX(x.date) FROM salaries x WHERE x.staff_id=s.id) AS last_paid
+      FROM staff s ORDER BY s.active DESC,s.name`).map(row => ({
+        ...row,
+        salary: round(row.salary),
+        advance_due: round(row.advance_due),
+        last_paid: row.last_paid || null
+      }));
+    return {
+      rows,
+      totals: {
+        active: rows.filter(row => Number(row.active) === 1).length,
+        payroll: round(rows.filter(row => Number(row.active) === 1).reduce((sum,row) => sum + Number(row.salary), 0))
+      },
+      currency: this.setting('currency')
+    };
+  }
+  // Monthly salaries page: issued payroll plus the people still unpaid for the
+  // selected month, so the pending card and the list always agree.
+  salaryBook(user, query = {}) {
+    this.require(user,['salaries','staff']);
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(query.month || '')) ? String(query.month) : new Date().toISOString().slice(0,7);
+    const year = /^\d{4}$/.test(String(query.year || '')) ? String(query.year) : '';
+    const status = ['paid','pending'].includes(String(query.status || '')) ? String(query.status) : '';
+    const issued = this.all(`SELECT s.id,s.month,s.gross,s.additions,s.deductions,s.deduction,s.net,s.date,s.staff_id,
+        t.name AS staff, t.position, a.name AS account, COALESCE(u.name,'') AS recorded_by
+      FROM salaries s JOIN staff t ON t.id=s.staff_id LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN users u ON u.id=s.user_id
+      ORDER BY s.month DESC,s.id DESC`).map(row => ({
+        id: row.id,
+        month: row.month,
+        staff_id: row.staff_id,
+        staff: row.staff,
+        position: row.position,
+        base: round(row.gross),
+        additions: round(row.additions),
+        deductions: round(row.deductions),
+        advance_deduction: round(row.deduction),
+        net: round(row.net),
+        status: 'paid',
+        paid_date: row.date,
+        account: row.account || '',
+        recorded_by: row.recorded_by
+      })).filter(row => (!year || row.month.startsWith(year)) && (!status || status === 'paid'));
+    const paidThisMonth = new Set(this.all('SELECT staff_id FROM salaries WHERE month=?',month).map(row => row.staff_id));
+    const pending = status === 'paid' ? [] : this.all('SELECT id,name,position,salary FROM staff WHERE active=1 ORDER BY name')
+      .filter(row => !paidThisMonth.has(row.id))
+      .map(row => ({
+        id: null,
+        month,
+        staff_id: row.id,
+        staff: row.name,
+        position: row.position,
+        base: round(row.salary),
+        additions: 0,
+        deductions: 0,
+        advance_deduction: round(this.get('SELECT COALESCE(SUM(amount-repaid),0) AS n FROM advances WHERE staff_id=?',row.id).n),
+        net: 0,
+        status: 'pending',
+        paid_date: null,
+        account: '',
+        recorded_by: ''
+      }));
+    const rows = [...issued, ...pending].sort((a,b) => b.month.localeCompare(a.month) || String(a.staff).localeCompare(String(b.staff)));
+    const payroll = round(this.all('SELECT salary FROM staff WHERE active=1').reduce((total,row) => total + Number(row.salary), 0));
+    return {
+      month,
+      year,
+      status,
+      years: [...new Set(this.all('SELECT DISTINCT substr(month,1,4) AS year FROM salaries ORDER BY year DESC').map(row => row.year))],
+      months: [...new Set(this.all('SELECT DISTINCT month FROM salaries ORDER BY month DESC').map(row => row.month))],
+      currency: this.setting('currency'),
+      totals: {
+        payroll,
+        pending: pending.length,
+        paid: issued.filter(row => row.month === month).length,
+        netPaid: round(issued.filter(row => row.month === month).reduce((total,row) => total + Number(row.net), 0))
+      },
+      rows
+    };
+  }
+  // Salary advances page: what is still owed back and what has been settled.
+  advanceBook(user, query = {}) {
+    this.require(user,['advances','staff']);
+    const status = ['active','settled'].includes(String(query.status || '')) ? String(query.status) : '';
+    const rows = this.all(`SELECT a.id,a.date,a.amount,a.repaid,a.note,a.staff_id,t.name AS staff,t.position,a.account_id,ac.name AS account,
+        COALESCE(u.name,'') AS recorded_by
+      FROM advances a JOIN staff t ON t.id=a.staff_id LEFT JOIN accounts ac ON ac.id=a.account_id LEFT JOIN users u ON u.id=a.user_id
+      ORDER BY a.date DESC,a.id DESC`).map(row => ({
+        ...row,
+        amount: round(row.amount),
+        repaid: round(row.repaid),
+        remaining: round(Number(row.amount) - Number(row.repaid)),
+        status: Number(row.amount) - Number(row.repaid) > 0 ? 'active' : 'settled'
+      })).filter(row => !status || row.status === status);
+    const all = this.all('SELECT amount,repaid FROM advances');
+    return {
+      status,
+      currency: this.setting('currency'),
+      totals: {
+        outstanding: round(all.reduce((total,row) => total + Math.max(0, Number(row.amount) - Number(row.repaid)), 0)),
+        recovered: round(all.reduce((total,row) => total + Number(row.repaid), 0)),
+        activeEmployees: this.get('SELECT COUNT(*) AS n FROM staff WHERE active=1').n
+      },
+      rows
+    };
+  }
   salary(user,input) {
     this.require(user,'staff',true);const staff=this.get('SELECT * FROM staff WHERE id=? AND active=1',id(input.staffId));if(!staff)fail('Staff not found.');
     const month=text(input.month,'month',true,7);if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))fail('Choose a valid month.');
     const gross=round(number(input.gross ?? staff.salary,'gross')),payment=method(input.method);if(payment==='credit')fail('Choose cash or bank.');const account=this.paymentAccount(input.accountId,payment);
     return transaction(this.db,()=>{
       if(this.get('SELECT id FROM salaries WHERE staff_id=? AND month=?',staff.id,month))fail('This staff member has already been paid for this month.');
+      const additions=input.additions===undefined||input.additions===''?0:round(number(input.additions,'additions'));
+      const deductions=input.deductions===undefined||input.deductions===''?0:round(number(input.deductions,'deductions'));
+      if(deductions>round(gross+additions))fail('Deductions cannot be more than the base salary plus additions.');
       const advances=this.all('SELECT * FROM advances WHERE staff_id=? AND amount>repaid ORDER BY date,id',staff.id);
-      const deduction=Math.min(gross,sum(advances.map(a=>({amount:a.amount-a.repaid})),'amount'));
-      const net=round(gross-deduction);const r=this.run('INSERT INTO salaries(staff_id,month,gross,deduction,net,account_id,user_id) VALUES(?,?,?,?,?,?,?)',staff.id,month,gross,deduction,net,account.id,user.id);
+      const deduction=Math.min(round(gross+additions-deductions),sum(advances.map(a=>({amount:a.amount-a.repaid})),'amount'));
+      const net=round(gross+additions-deductions-deduction);const r=this.run('INSERT INTO salaries(staff_id,month,gross,additions,deductions,deduction,net,account_id,user_id) VALUES(?,?,?,?,?,?,?,?,?)',staff.id,month,gross,additions,deductions,deduction,net,account.id,user.id);
       let remaining=deduction;for(const advance of advances){const value=Math.min(remaining,round(advance.amount-advance.repaid));if(value<=0)continue;this.run('UPDATE advances SET repaid=repaid+? WHERE id=?',value,advance.id);remaining=round(remaining-value);if(!remaining)break;}
-      this.journal(user,'Monthly salary',[[14,gross],[5,0,deduction],[account.id,0,net]],`SAL-${r.lastInsertRowid}`);audit(this.db,user,'pay_salary','salaries',r.lastInsertRowid,{gross,deduction,net});return {id:Number(r.lastInsertRowid),net,deduction};
+      this.journal(user,'Monthly salary',[[14,round(gross+additions-deductions)],[5,0,deduction],[account.id,0,net]],`SAL-${r.lastInsertRowid}`);audit(this.db,user,'pay_salary','salaries',r.lastInsertRowid,{gross,additions,deductions,deduction,net});return {id:Number(r.lastInsertRowid),net,deduction,additions,deductions};
     });
   }
   register(user,action,input={}) {

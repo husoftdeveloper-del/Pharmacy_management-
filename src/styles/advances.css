@@ -1,0 +1,26 @@
+/* Salary Advances: two totals, a status filter and the advance table. */
+.advances-heading{align-items:flex-end;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:22px}
+.advances-heading h1{font-size:26px;letter-spacing:-.6px}
+.advances-heading .btn{min-height:42px;padding-inline:20px;font-size:12.5px;border-radius:9px}
+.advances-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:18px}
+.advances-stats .stat-card{padding:20px 22px}
+.advances-stats .stat-value{font-size:26px}
+.advances-filter{display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:18px;border-radius:12px;flex-wrap:wrap}
+.advances-select{position:relative;display:flex;align-items:center;flex:0 0 190px}
+.advances-select select{appearance:none;width:100%;border:1px solid var(--border);border-radius:9px;padding:11px 36px 11px 13px;font-size:12.5px;background:var(--surface);color:var(--text);cursor:pointer}
+[dir=rtl] .advances-select select{padding:11px 13px 11px 36px}
+.advances-select>svg{position:absolute;inset-inline-end:12px;transform:rotate(90deg);pointer-events:none;color:var(--muted)}
+.advances-card{border-radius:12px}
+.advances-table thead{background:var(--surface)}
+.advances-table th{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:550;color:var(--muted);padding:17px 22px;border-bottom:1px solid var(--border);background:transparent}
+.advances-table th.text-end,.advances-table td.text-end{text-align:end}
+.advances-table td{padding:15px 22px;font-size:12.5px;border-bottom:1px solid var(--border)}
+.advances-table tbody tr:last-child td{border-bottom:0}
+.advances-table .sub{font-size:11px;margin-top:2px}
+.advances-empty-cell{padding:0!important;border-bottom:0!important}
+.advances-empty{padding:58px 22px;text-align:center}
+.advances-empty-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--surface2);color:var(--muted);display:grid;place-items:center}
+.advances-empty h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:7px}
+.advances-empty p{font-size:12px;color:var(--muted)}
+@media(max-width:900px){.advances-select{flex:1 1 45%}}
+@media(max-width:650px){.advances-stats{grid-template-columns:1fr}.advances-heading{align-items:flex-start}.advances-heading .btn{width:100%}}

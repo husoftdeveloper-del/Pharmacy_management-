@@ -182,6 +182,9 @@ async function dispatch(event, request) {
   if(c==='ledgerBook')return service.ledgerBook(user,p);
   if(c==='reportOverview')return service.reportOverview(user,p);
   if(c==='reportBook')return service.reportBook(user,p);
+  if(c==='employeeBook')return service.employeeBook(user);
+  if(c==='salaryBook')return service.salaryBook(user,p);
+  if(c==='advanceBook')return service.advanceBook(user,p);
   if(c==='options')return service.options(user);
   if(c==='list')return service.list(user,p.entity,p);
   if(c==='save')return service.saveEntity(user,p.entity,p.record);

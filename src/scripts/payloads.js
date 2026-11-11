@@ -46,6 +46,8 @@ export function staffPaymentPayload(kind, data) {
   if (kind === 'salary') {
     payload.month = data.month;
     if (data.gross !== '' && data.gross !== undefined) payload.gross = data.gross;
+    if (data.additions !== '' && data.additions !== undefined) payload.additions = data.additions;
+    if (data.deductions !== '' && data.deductions !== undefined) payload.deductions = data.deductions;
   } else {
     payload.amount = data.amount;
     payload.note = data.note;

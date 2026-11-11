@@ -95,7 +95,9 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Expenses | New Expense form (category, description, amount, cash/bank account), this-month/total/entries totals, search, category and date filters, table with date, category, description, amount, recorded by and a detail dialog |
 | Ledger & P&L | From/To range, P&L Statement and Transactions tabs, sales revenue, sale returns, net revenue, COGS, COGS returned, net COGS, operating expenses and net profit, with Cash In / Cash Out / Net Cash Flow / Total Purchases cards and CSV/PDF export |
 | Finance | Party payments, double-entry journals, profit and loss, trial balance |
-| Staff/payroll | Staff records, monthly salary uniqueness, advances, automatic advance deduction, net salary payment |
+| Employees | Team list with position, phone, monthly salary, join date and status; search plus an active/all filter; Active Employees and Monthly Payroll totals; New/Edit employee form |
+| Monthly Salaries | Payroll table (base, additions, deductions, advance deduction, net pay, status, paid date), All Years / month / status filters, Pending rows for anyone not yet paid this month, Export PDF and an Issue Salary form |
+| Salary Advances | Advance list with amount, remaining balance, reason and Active/Settled status, Outstanding Advances and Active Employees totals, and a New Advance form |
 | Cash register | One shared open register, opening float, cash in/out, expected cash from ledger, counted close and over/short entry |
 | Prescriptions | Patient/doctor/date/notes, PNG/JPEG/PDF attachment up to 5 MB, pending/dispensed/cancelled states, sale linkage |
 | Reference data | Medicine categories, patients, manufacturers |
@@ -139,7 +141,7 @@ Screens are served by the main process from `src/` with `cache-control: no-store
 │   ├── barcode.js               Local CODE128-B generator
 │   └── pdf.js                   Electron printToPDF (no PDF framework)
 ├── src/
-│   ├── pages/                   34 module HTML files + matching JavaScript modules
+│   ├── pages/                   37 module HTML files + matching JavaScript modules
 │   ├── components/              Reusable Vanilla JS forms, tables, dialogs, documents
 │   ├── styles/                  Shared design system and per-page stylesheet files
 │   ├── scripts/                 Shell, API adapter, navigation, translations
