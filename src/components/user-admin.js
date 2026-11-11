@@ -8,7 +8,7 @@ export const modules=['dashboard','pos','sales','returns','customers','customerp
 const defaults={admin:modules,pharmacist:['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','barcodes','purchases','suppliers','supplierpayments','expenses','ledger','employees','salaries','advances','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],cashier:['dashboard','pos','sales','returns','customers','customerpayments','patients','prescriptions','register','barcodes'],accountant:['dashboard','sales','returns','customers','customerpayments','suppliers','purchases','expenses','ledger','finance','staff','employees','salaries','advances','register','banking','reports','backup']};
 
 export async function renderUsers(container,{onSaved}={}){
-  container.innerHTML=`<div class="user-admin-head"><p>${e(t('usersHint'))}</p>${button(t('add'),'plus','primary','id="add-user"')}</div><div id="user-rows"></div>`;
+  container.innerHTML=`<div class="user-admin-head">${button(t('add'),'plus','primary','id="add-user"')}</div><div id="user-rows"></div>`;
   const load=async()=>{
     const result=await api('list',{entity:'users',limit:200});
     container.querySelector('#user-rows').innerHTML=table(['name','username','role','active','actions'],result.rows,row=>`<tr>

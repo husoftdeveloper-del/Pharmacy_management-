@@ -291,7 +291,10 @@ export async function render(root,params={}){
     root.querySelectorAll('[data-tab]').forEach(node=>{const active=node.dataset.tab===tab;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     const body=root.querySelector('#settings-body');
     if(tab==='users'){
-      body.innerHTML=`<section class="card settings-card"><div id="settings-users"></div></section>`;
+      body.innerHTML=`<section class="card settings-card">
+        <header class="settings-card-head">${icon('users',18)}<div><h2>${e(t('users'))}</h2><p>${e(t('usersHint'))}</p></div></header>
+        <div id="settings-users"></div>
+      </section>`;
     }else if(tab==='data'){
       body.innerHTML=paintData();
     }else if(tab==='license'){
