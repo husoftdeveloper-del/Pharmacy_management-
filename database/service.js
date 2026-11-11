@@ -161,6 +161,117 @@ class PharmacyService {
       currency: this.setting('currency')
     };
   }
+  // Expenses page: every cost entry with who logged it, plus the totals shown
+  // above the table.
+  expenseBook(user) {
+    this.require(user,'expenses');
+    const rows = this.all(`SELECT e.id,e.date,e.category,e.description,e.amount,e.account_id,a.name AS account,u.name AS recorded_by
+      FROM expenses e LEFT JOIN accounts a ON a.id=e.account_id LEFT JOIN users u ON u.id=e.user_id
+      ORDER BY e.date DESC,e.id DESC`);
+    const month = new Date().toISOString().slice(0,7);
+    return {
+      rows,
+      totals: {
+        thisMonth: round(rows.filter(row=>String(row.date).slice(0,7)===month).reduce((sum,row)=>sum+Number(row.amount),0)),
+        total: round(rows.reduce((sum,row)=>sum+Number(row.amount),0)),
+        entries: rows.length
+      },
+      categories: [...new Set(rows.map(row=>row.category))].sort(),
+      currency: this.setting('currency')
+    };
+  }
+  // Ledger & P&L: the profit and loss statement, the cash movement and the
+  // journal transactions for one date range.
+  ledgerBook(user, query = {}) {
+    this.require(user,'ledger');
+    const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
+    if (from > to) fail('Start date must be before end date.');
+    const accountTotal = code => {
+      const account = this.get('SELECT id,type FROM accounts WHERE code=?',code);
+      if (!account) return 0;
+      const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',account.id,from,to);
+      return round(account.type==='income'?row.credit-row.debit:row.debit-row.credit);
+    };
+    const salesRevenue = accountTotal('4000');
+    const saleReturns = accountTotal('4100');
+    const discounts = accountTotal('4200');
+    const cogs = accountTotal('5000');
+    const cogsReturned = this.get(`SELECT COALESCE(SUM(si.cost*sri.quantity),0) AS n FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+      JOIN sale_returns r ON r.id=sri.return_id WHERE date(r.date) BETWEEN ? AND ?`,from,to).n;
+    const expenses = accountTotal('6000');
+    const netRevenue = round(salesRevenue - saleReturns);
+    const netCogs = round(cogs - round(cogsReturned));
+    const grossProfit = round(netRevenue - netCogs);
+    const netProfit = round(grossProfit - expenses);
+    const cash = this.all("SELECT id FROM accounts WHERE code IN ('1000','1010')").map(row=>row.id);
+    const cashMoved = [];
+    for (const accountId of cash) {
+      const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',accountId,from,to);
+      cashMoved.push({debit:Number(row.debit),credit:Number(row.credit)});
+    }
+    const cashIn = round(cashMoved.reduce((sum,row)=>sum+row.debit,0));
+    const cashOut = round(cashMoved.reduce((sum,row)=>sum+row.credit,0));
+    const purchases = this.get('SELECT COALESCE(SUM(total),0) AS n,COUNT(*) AS c FROM purchases WHERE date(date) BETWEEN ? AND ?',from,to);
+    return {
+      from,to,
+      currency: this.setting('currency'),
+      statement: {
+        salesRevenue, saleReturns, discounts, netRevenue,
+        cogs: round(cogs), cogsReturned: round(cogsReturned), netCogs,
+        grossProfit, expenses, netProfit
+      },
+      cash: { cashIn, cashOut, netCashFlow: round(cashIn-cashOut), totalPurchases: round(purchases.n), purchaseCount: Number(purchases.c) },
+      transactions: this.all(`SELECT j.id,j.date,j.description,j.reference,u.name AS user,
+          COALESCE(SUM(l.debit),0) AS amount
+        FROM journals j LEFT JOIN journal_lines l ON l.journal_id=j.id LEFT JOIN users u ON u.id=j.user_id
+        WHERE date(j.date) BETWEEN ? AND ? GROUP BY j.id ORDER BY j.date DESC,j.id DESC LIMIT 500`,from,to)
+    };
+  }
+  // Reports overview: the headline numbers and the daily revenue/profit trend.
+  reportOverview(user, query = {}) {
+    this.require(user,'reports');
+    const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
+    if (from > to) fail('Start date must be before end date.');
+    const sales = this.get(`SELECT COALESCE(SUM(s.subtotal),0) AS revenue,COALESCE(SUM(s.discount),0) AS discount,COALESCE(SUM(s.total),0) AS total,COUNT(s.id) AS orders
+      FROM sales s WHERE date(s.date) BETWEEN ? AND ?`,from,to);
+    const items = this.get(`SELECT COALESCE(SUM(i.quantity),0) AS quantity,COALESCE(SUM(i.cost*i.quantity),0) AS cogs
+      FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date) BETWEEN ? AND ?`,from,to);
+    const returns = this.get('SELECT COALESCE(SUM(total),0) AS total FROM sale_returns WHERE date(date) BETWEEN ? AND ?',from,to);
+    const expenses = this.get('SELECT COALESCE(SUM(amount),0) AS total,COUNT(*) AS entries FROM expenses WHERE date(date) BETWEEN ? AND ?',from,to);
+    const revenue = round(Number(sales.revenue) - Number(returns.total));
+    const cogs = round(items.cogs);
+    const grossProfit = round(revenue - cogs);
+    const netProfit = round(grossProfit - Number(expenses.total));
+    const trend = this.all(`SELECT d.day,
+        (SELECT COALESCE(SUM(s.subtotal),0) FROM sales s WHERE date(s.date)=d.day) -
+        (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE date(r.date)=d.day) AS revenue,
+        (SELECT COALESCE(SUM(i.cost*i.quantity),0) FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date)=d.day) AS cogs
+      FROM (WITH RECURSIVE days(day) AS (SELECT ? UNION ALL SELECT date(day,'+1 day') FROM days WHERE day < ?) SELECT day FROM days) d
+      ORDER BY d.day`,from,to).map(row=>{
+        const dayRevenue = round(row.revenue);
+        const dayProfit = round(dayRevenue - Number(row.cogs));
+        return { day: row.day, revenue: dayRevenue, profit: dayProfit };
+      });
+    return {
+      from,to,
+      currency: this.setting('currency'),
+      totals: {
+        revenue,
+        grossProfit,
+        expenses: round(Number(expenses.total)),
+        netProfit,
+        orders: Number(sales.orders),
+        itemsSold: Number(items.quantity),
+        cogs,
+        averageOrder: sales.orders ? round(Number(sales.total)/Number(sales.orders)) : 0,
+        margin: revenue > 0 ? round(grossProfit / revenue * 100) : 0,
+        expenseEntries: Number(expenses.entries)
+      },
+      trend
+    };
+  }
   // Purchases page: every received purchase with what is still owed on it.
   purchaseBook(user) {
     this.require(user,'purchases');
@@ -591,7 +702,7 @@ class PharmacyService {
     });
   }
   expense(user,input) {
-    this.require(user,'finance',true);const amount=round(number(input.amount,'amount',0.01)),payment=method(input.method);if(payment==='credit')fail('Expenses must be paid.');
+    this.require(user,'expenses');const amount=round(number(input.amount,'amount',0.01)),payment=method(input.method);if(payment==='credit')fail('Expenses must be paid.');
     const account=this.paymentAccount(input.accountId,payment);
     return transaction(this.db,()=>{const r=this.run('INSERT INTO expenses(category,description,amount,account_id,user_id) VALUES(?,?,?,?,?)',text(input.category,'category',true,100),text(input.description,'description',true),amount,account.id,user.id);this.journal(user,'Operating expense',[[13,amount],[account.id,0,amount]],`EXP-${r.lastInsertRowid}`);audit(this.db,user,'create','expenses',r.lastInsertRowid,{amount});return {id:Number(r.lastInsertRowid)};});
   }

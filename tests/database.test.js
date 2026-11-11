@@ -249,3 +249,25 @@ test('one-click barcode generation is unique, valid and not assigned until saved
  const cashierId=s.saveUser(admin,{username:'cashier2',name:'Cashier',password:'CashierPassword1',role:'cashier',active:1,permissions:{barcodes:false}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);assert.throws(()=>s.generateBarcode(cashier),/permission/);
 });
+
+test('finance pages read expenses, the profit statement and the report overview',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin);
+ s.sale(admin,{items:[{medicineId:m.id,quantity:4}],paymentMethod:'cash',accountId:1});
+ s.expense(admin,{category:'Rent',description:'Shop rent',amount:40,method:'cash',accountId:1});
+ const expenses=s.expenseBook(admin);
+ assert.equal(expenses.rows.length,1);assert.equal(expenses.rows[0].category,'Rent');assert.equal(expenses.rows[0].recorded_by,'Administrator');
+ assert.deepEqual(expenses.categories,['Rent']);assert.equal(expenses.totals.entries,1);assert.equal(expenses.totals.total,40);assert.equal(expenses.totals.thisMonth,40);
+ const ledger=s.ledgerBook(admin,{from:'2000-01-01',to:'2999-12-31'});
+ assert.equal(ledger.statement.salesRevenue,40);assert.equal(ledger.statement.netRevenue,40);assert.equal(ledger.statement.cogs,24);
+ assert.equal(ledger.statement.expenses,40);assert.equal(ledger.statement.netProfit,-24);
+ assert.equal(ledger.cash.cashIn,1040);assert.equal(ledger.cash.cashOut,40);assert.equal(ledger.cash.netCashFlow,1000);assert.equal(ledger.cash.purchaseCount,1);
+ assert.ok(ledger.transactions.length>=2);assert.equal(ledger.transactions[0].user,'Administrator');
+ const overview=s.reportOverview(admin,{from:'2000-01-01',to:'2999-12-31'});
+ assert.equal(overview.totals.revenue,40);assert.equal(overview.totals.grossProfit,16);assert.equal(overview.totals.expenses,40);
+ assert.equal(overview.totals.netProfit,-24);assert.equal(overview.totals.orders,1);assert.equal(overview.totals.itemsSold,4);
+ assert.equal(overview.totals.cogs,24);assert.equal(overview.totals.averageOrder,40);assert.equal(overview.totals.expenseEntries,1);
+ assert.ok(overview.trend.length>0);assert.equal(overview.trend.reduce((sum,row)=>sum+row.revenue,0),40);
+ const cashierId=s.saveUser(admin,{username:'cashier3',name:'Cashier',password:'CashierPassword1',role:'cashier',active:1,permissions:{expenses:false,ledger:false,reports:false}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.throws(()=>s.expenseBook(cashier),/permission/);assert.throws(()=>s.ledgerBook(cashier,{}),/permission/);assert.throws(()=>s.reportOverview(cashier,{}),/permission/);
+});

@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.44')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.45')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -30,9 +30,12 @@ app.whenReady().then(async()=>{
   assert.ok(groupLabels.includes('PURCHASING'),'purchasing is its own sidebar group');
   const purchasingPages=await run("const groups=[...document.querySelectorAll('.nav-group')];const heading=groups.find(g=>g.textContent.trim()==='PURCHASING');const items=[];let node=heading.nextElementSibling;while(node&&!node.classList.contains('nav-group')){if(node.dataset.page)items.push(node.dataset.page);node=node.nextElementSibling;}return items.join(',');");
   assert.equal(purchasingPages,'purchases,suppliers,supplierpayments','purchasing group holds purchases, suppliers and supplier payments');
-  assert.equal(await run("const groups=[...document.querySelectorAll('.nav-group')].map(g=>g.textContent.trim());return groups.slice(1,4).join('|')"),'MANAGEMENT|PURCHASING|STOCK','purchasing sits directly after the medicines group');
+  assert.equal(await run("const groups=[...document.querySelectorAll('.nav-group')].map(g=>g.textContent.trim());return groups.slice(1,5).join('|')"),'MANAGEMENT|PURCHASING|FINANCE|STOCK','purchasing sits directly after the medicines group and finance follows purchasing');
   assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(0,11).join(',')"),'dashboard,pos,sales,returns,customers,customerpayments,register,medicines,inventory,pricelist,printlabels','print labels closes the medicines group');
   assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(11,14).join(',')"),'purchases,suppliers,supplierpayments','purchasing comes right after print labels');
+  assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(14,17).join(',')"),'expenses,ledger,reports','finance holds expenses, ledger and reports');
+  const financePages=await run("const groups=[...document.querySelectorAll('.nav-group')];const heading=groups.find(g=>g.textContent.trim()==='FINANCE');const items=[];let node=heading.nextElementSibling;while(node&&!node.classList.contains('nav-group')){if(node.dataset.page)items.push(node.dataset.page);node=node.nextElementSibling;}return items.join(',');");
+  assert.equal(financePages,'expenses,ledger,reports','finance group order');
   for(const key of ['printlabels','supplierpayments','purchasing','stockgroup']){
     assert.notEqual(await run(`return document.querySelector('[data-i18n=${key}]')?.textContent`),key,`${key} has a translated label`);
   }
@@ -135,7 +138,7 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=dashboard]').click();return true;");
   await until(()=>run("return document.querySelectorAll('.insight-card').length===4"),'dashboard again');
   await run("document.querySelector('.insight-card[data-go=reports]').click();return true;");
-  await until(()=>run("return !!document.querySelector('[name=reportType]') && document.querySelector('[name=reportType]').value==='expiryReport'"),'expiry report preselected from dashboard box');
+  await until(()=>run("return document.querySelectorAll('[data-tab]').length===9 && !!document.querySelector('#report-period')"),'reports page from dashboard box');
   // Returns is its own sidebar module, separate from the sales history page.
   await run("document.querySelector('[data-page=returns]').click();return true;");
   await until(()=>run("return !!document.querySelector('#returns-rows') && !document.querySelector('.loading-state')"),'returns page from sidebar');
@@ -464,6 +467,49 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#sales-rows table')"),'sales history table');
   assert.equal(await run("return document.querySelectorAll('#returns-rows, #returns-total').length"),0,'sales page must not contain the returns list');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Sales history')"),'sales page titled as sales history');
+  // Finance: Expenses totals and filters, the Ledger statement and the Reports KPIs.
+  await run("document.querySelector('[data-page=expenses]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#expense-rows') && !!document.querySelector('#new-expense')"),'expenses page');
+  assert.equal(await run("return document.querySelectorAll('.expense-stats .stat-value').length"),3,'three expense totals');
+  assert.ok(await run("return document.querySelector('#expense-rows').innerText.includes('Shop rent')"),'expense listed');
+  assert.equal(await run("return document.querySelectorAll('#expense-rows tbody tr').length"),1,'one expense row');
+  assert.ok(await run("return document.querySelector('#expense-category').options.length===2"),'expense category filter is populated');
+  await run("document.querySelector('#expense-search').value='nothing-matches';document.querySelector('#expense-search').dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  assert.ok(await run("return document.querySelector('#expense-rows').innerText.toLowerCase().includes('no expenses match')"),'no-match state for the expense search');
+  await run("document.querySelector('#expense-search').value='';document.querySelector('#expense-search').dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  await run("document.querySelector('[data-page=ledger]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#ledger-panel .ledger-line') && !!document.querySelector('#ledger-from')"),'ledger statement');
+  assert.ok(await run("return document.querySelector('#ledger-panel').innerText.includes('Net Revenue')"),'net revenue line');
+  assert.ok(await run("return document.querySelector('#ledger-panel').innerText.includes('Net Profit')"),'net profit line');
+  assert.equal(await run("return document.querySelectorAll('.ledger-side .ledger-card').length"),4,'four cash movement cards');
+  assert.ok(await run("return document.querySelector('.ledger-side').innerText.toLowerCase().includes('cash in') && document.querySelector('.ledger-side').innerText.toLowerCase().includes('total purchases')"),'cash movement labels');
+  await run("document.querySelector('[data-view=transactions]').click();return true;");
+  await pause(300);
+  assert.ok(await run("return document.querySelector('#ledger-panel').innerText.toLowerCase().includes('transactions')"),'transaction tab painted');
+  await run("document.querySelector('[data-view=statement]').click();return true;");
+  await pause(200);
+  await run("document.querySelector('#ledger-export').click();return true;");
+  assert.ok(await run("return !document.querySelector('#ledger-menu').hidden"),'export menu opens');
+  await run("document.querySelector('[data-export=csv]').click();return true;");
+  assert.ok(await run("return document.querySelector('#ledger-menu').hidden"),'export menu closes after choosing CSV');
+  await run("document.querySelector('[data-page=reports]').click();return true;");
+  await until(()=>run("return document.querySelectorAll('.kpi-card').length===8"),'eight report KPIs');
+  assert.ok(await run("return !!document.querySelector('.report-chart svg')"),'revenue and profit trend chart renders');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Net Profit')"),'net profit KPI label');
+  await run("document.querySelector('#report-period').value='7';document.querySelector('#report-period').dispatchEvent(new Event('change'));return true;");
+  await pause(400);
+  assert.equal(await run("return document.querySelectorAll('.kpi-card').length"),8,'KPIs survive a period change');
+  await run("document.querySelector('[data-tab=sales]').click();return true;");
+  await until(()=>run("return !!document.querySelector('.report-table-card')"),'report detail tab');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.length>120"),'detail report renders content');
+  await run("document.querySelector('[data-tab=overview]').click();return true;");
+  await until(()=>run("return document.querySelectorAll('.kpi-card').length===8"),'overview tab again');
+  for(const kind of ['expenses','ledger']){
+    assert.notEqual(await run(`return document.querySelector('[data-page=${kind}] span')?.textContent`),kind,`${kind} has a translated label`);
+  }
+  assert.ok(await run("return document.querySelector('[data-i18n=financesection]')?.textContent==='FINANCE'"),'finance group heading is labelled');
   await run("await window.pharmacy.invoke('preference',{language:'ps',theme:'dark'});return true;");
   await run("document.querySelector('#logout').click();return true;");
   await until(()=>run("return !!document.querySelector('#auth-form')"),'reload login');
@@ -471,7 +517,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.44'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.45'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

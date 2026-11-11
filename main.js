@@ -178,6 +178,9 @@ async function dispatch(event, request) {
   if(c==='purchaseBook')return service.purchaseBook(user);
   if(c==='supplierBook')return service.supplierBook(user);
   if(c==='supplierAccounts')return service.supplierAccounts(user,p);
+  if(c==='expenseBook')return service.expenseBook(user);
+  if(c==='ledgerBook')return service.ledgerBook(user,p);
+  if(c==='reportOverview')return service.reportOverview(user,p);
   if(c==='options')return service.options(user);
   if(c==='list')return service.list(user,p.entity,p);
   if(c==='save')return service.saveEntity(user,p.entity,p.record);
