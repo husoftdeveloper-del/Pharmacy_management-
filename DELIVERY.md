@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.45**
+Verified release: **v1.0.0-build.46**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.45
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.45/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.45/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.46
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.46/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.46/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-2033796b204805bbc3a011232e493ddd90d78d5c107e88620bacf1484477b6bd  Pharmacy-1.0.0-x64.exe
-925e8edc2bfefa51715b61ec319af34f46bdb6e9ee91fdb9aa8286966b48c73d  Pharmacy-1.0.0-Portable.exe
+2f32350cc4013fffcf7b0a8ca33b716f229ea6f11c497c0d45784c5cc07adc8a  Pharmacy-1.0.0-x64.exe
+af83dd65bc912e72cb0f4fab1fa6d1d69b31b00a7b0e7125fdc0146e1a9f9d5d  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,10 +28,10 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `7f1b7a7`. The branch also contains the refreshed installer commit `21132f9`.
+Complete source is on branch `arena/59bbe374-pharmacy-management`. Application source commit: `00cf370`. The branch also contains the refreshed installer commit `3fb32d0`.
 
 ```powershell
-git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
+git clone --branch arena/59bbe374-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
 cd .\Pharmacy_management-
 npm ci
 npm start
@@ -73,6 +73,23 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Report tabs (build 46)
+
+Every Reports tab now behaves like its own page: the tab owns its filter row, its KPI boxes and its table, all served by one permission-checked `reportBook` call, and a tab with no matching rows says **“No data for the selected filters.”**
+
+| Tab | Filter row | KPI boxes | Table |
+| --- | --- | --- | --- |
+| **Sales** | Search invoice #, All cashiers, All customers, All statuses | Revenue, Discount, Sale Returns, Orders | Invoice #, Date, Customer, Cashier, Total, Discount, Returned, Status |
+| **Profit** | Search medicine | Revenue, Cost of Goods, Gross Profit, Margin, Returned (Value) | Medicine, Quantity, Revenue, Cost of Goods, Profit, Margin, Returned (Value) |
+| **Inventory** | Search medicine or batch | Batches, Units, Stock Value, Low Stock | Medicine, Batch, Expiry, Location, Quantity, Cost, Value |
+| **Expiry** | Search medicine or batch, Any expiry (expired / ≤ 30 / ≤ 90) | Expired, Expiring ≤ 30 days, Expiring ≤ 90 days, Value at Risk | Medicine, Batch, Expiry, Days Left, Quantity, Value |
+| **Purchases** | Search invoice #, All suppliers, All statuses | Invoices, Total Purchases, Paid, Balance Due | Invoice #, Date, Supplier, Recorded by, Total, Paid, Balance Due, Status |
+| **Expenses** | Search expense, All categories | Total, Entries, Largest Expense, Categories | Date, Category, Description, Amount, Account, Recorded by |
+| **Customers** | Search customer | Customers, Credit Sales, Paid, Outstanding | Customer, Phone, Orders, Credit, Paid, Returned, Balance |
+| **Suppliers** | Search supplier | Suppliers, Total Purchases, Paid, Balance Due | Supplier, Phone, Orders, Purchased, Paid, Returned, Balance |
+
+Filtering happens in the main process, so the KPI boxes, the table and the CSV always describe the same rows. The **Export** button on the period card writes the current tab as CSV (translated column titles) or PDF. Profit figures come from the same `profitFigures` helper the Ledger page uses, so the Profit tab and the P&L statement can never disagree.
 
 ## Finance section (build 45)
 
@@ -243,7 +260,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.45` = `build.45` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.46` = `build.46` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -261,11 +278,11 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 
 ## Verification completed
 
-- 25 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks and the new finance queries.
+- 26 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks, the finance queries and every report tab.
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 34 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42976556865
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42979944592
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
