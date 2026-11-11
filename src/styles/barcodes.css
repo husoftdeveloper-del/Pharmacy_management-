@@ -1,0 +1,8 @@
+.barcode-input-wrap{position:relative;display:block;width:100%}
+.barcode-input-wrap input{padding-inline-end:48px!important}
+.barcode-generate-btn{position:absolute;inset-inline-end:5px;top:50%;transform:translateY(-50%);width:36px;height:36px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 22%,transparent);border-radius:7px;background:var(--primary-soft);color:var(--primary);cursor:pointer;transition:background .18s,box-shadow .18s}
+.barcode-generate-btn:hover{background:color-mix(in srgb,var(--primary) 18%,var(--surface));box-shadow:0 2px 8px color-mix(in srgb,var(--primary) 18%,transparent)}
+.barcode-generate-btn:active:not(:disabled){transform:translateY(-50%)}
+.barcode-generate-btn:focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:2px}
+.barcode-generate-btn:disabled{opacity:.55;cursor:wait}
+.barcode-field small{line-height:1.6}

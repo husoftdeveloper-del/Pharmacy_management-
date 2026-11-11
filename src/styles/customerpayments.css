@@ -1,0 +1,12 @@
+/* Customer payments: four totals, Balances/History buttons, a search box with an
+   "only with dues" toggle and the matching table. Shared tokens from base.css. */
+.payment-stats{margin-bottom:22px}
+.payment-stats .stat-card{padding:18px 19px}
+.payment-stats .stat-value{font-size:24px;display:flex;align-items:baseline;gap:6px}
+.payment-stats .stat-value.negative{color:var(--red)}
+.payment-stats .stat-icon{width:34px;height:34px}
+.payment-stats .stat-label{font-size:11px}
+.tabs .tab{display:inline-flex;align-items:center;gap:7px}
+.payment-toolbar{gap:18px}
+#payment-body td:nth-child(2),#payment-body td:nth-child(3),#payment-body td:nth-child(4),#payment-body td:nth-child(5),#payment-body td:nth-child(6){font-variant-numeric:tabular-nums}
+@media(max-width:650px){.payment-toolbar{flex-wrap:wrap}.payment-toolbar .search-field{max-width:none}}

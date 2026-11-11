@@ -1,0 +1,4 @@
+import {api,escapeHTML as e,dateTime} from '../scripts/api.js';
+import {t} from '../scripts/i18n.js';
+import {pageHeader,table,dateFilters,bindDates} from '../components/ui.js';
+export async function render(root){root.innerHTML=pageHeader(t('audit'),t('auditHint'))+`<section class="card"><div class="filter-bar">${dateFilters()}</div><div id="audit-rows"></div></section>`;const load=async(query={})=>{const rows=await api('documents',{type:'audit',limit:500,...query});root.querySelector('#audit-rows').innerHTML=table(['date','username','actions','record','details'],rows,r=>`<tr><td class="nowrap">${e(dateTime(r.created_at))}</td><td>${e(r.username)}</td><td class="mono">${e(r.action)}</td><td>${e(r.entity)} ${e(r.entity_id)}</td><td class="audit-details">${e(r.details)}</td></tr>`);};bindDates(root,load);await load();}

@@ -1,0 +1,6 @@
+/* Returns page: two buttons (sales returns / purchase returns), a shared date
+   filter and the list for the selected kind. Shared styles come from base.css. */
+.returns-tabs{margin-bottom:16px}
+.returns-tabs .tab{min-width:150px;font-weight:550}
+#returns-total{font-size:11px;font-weight:600;color:var(--text)}
+@media(max-width:650px){.returns-tabs{width:100%}.returns-tabs .tab{flex:1;min-width:0}}

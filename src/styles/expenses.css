@@ -1,0 +1,38 @@
+/* Expenses page: three totals, a filter row (search, category, two dates) and
+   the expense table. Tokens come from base.css. */
+.expense-heading{align-items:flex-end;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:22px}
+.expense-heading h1{font-size:26px;letter-spacing:-.6px}
+.expense-heading .btn{min-height:42px;padding-inline:20px;font-size:12.5px;border-radius:9px}
+.expense-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:18px}
+.expense-stats .stat-card{padding:20px 22px}
+.expense-stats .stat-value{font-size:26px;display:flex;align-items:baseline;gap:6px}
+.expense-stats .stat-icon{width:34px;height:34px}
+.expense-filter{display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:18px;border-radius:12px;flex-wrap:wrap}
+.expense-search{flex:1 1 320px;min-width:0;display:flex;align-items:center;gap:11px;border:1px solid var(--border);border-radius:9px;padding:0 14px;background:var(--surface);color:var(--muted)}
+.expense-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+.expense-search input{border:0;box-shadow:none;background:none;width:100%;min-width:0;padding:11px 0;font-size:13px;color:var(--text)}
+.expense-search input::-webkit-search-cancel-button{display:none}
+.expense-select{position:relative;display:flex;align-items:center;flex:0 0 190px}
+.expense-select select{appearance:none;width:100%;border:1px solid var(--border);border-radius:9px;padding:11px 36px 11px 13px;font-size:12.5px;background:var(--surface);color:var(--text);cursor:pointer}
+[dir=rtl] .expense-select select{padding:11px 13px 11px 36px}
+.expense-select>svg{position:absolute;inset-inline-end:12px;transform:rotate(90deg);pointer-events:none;color:var(--muted)}
+.expense-date{position:relative;display:flex;align-items:center;flex:0 0 170px}
+.expense-date input{border:1px solid var(--border);border-radius:9px;padding:10px 36px 10px 11px;font-size:12.5px;background:var(--surface);color:var(--text);width:100%}
+.expense-date .date-icon{position:absolute;inset-inline-end:11px;color:var(--muted);pointer-events:none}
+.expense-card{border-radius:12px}
+.expense-table thead{background:var(--surface)}
+.expense-table th{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:550;color:var(--muted);padding:17px 22px;border-bottom:1px solid var(--border);background:transparent}
+.expense-table td{padding:15px 22px;font-size:12.5px;border-bottom:1px solid var(--border)}
+.expense-table tbody tr:last-child td{border-bottom:0}
+.expense-table th.text-end,.expense-table td.text-end{text-align:end}
+.expense-empty-cell{padding:0!important;border-bottom:0!important}
+.expense-empty{padding:58px 22px;text-align:center}
+.expense-empty-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--surface2);color:var(--muted);display:grid;place-items:center}
+.expense-empty h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:7px}
+.expense-empty p{font-size:12px;color:var(--muted)}
+.expense-detail{display:grid;gap:14px}
+.expense-detail>div{display:flex;justify-content:space-between;gap:14px;font-size:12.5px}
+.expense-detail span{color:var(--muted)}
+.expense-detail p{font-size:12.5px;color:var(--text);line-height:1.7;border-top:1px solid var(--border);padding-top:14px}
+@media(max-width:900px){.expense-select,.expense-date{flex:1 1 45%}}
+@media(max-width:650px){.expense-stats{grid-template-columns:1fr}.expense-heading{align-items:flex-start}.expense-heading .btn{width:100%}}

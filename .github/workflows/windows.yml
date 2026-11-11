@@ -1,0 +1,88 @@
+name: Test and build Windows desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: ['arena/0746dde2-pharmacy-management']
+    paths:
+      - 'main.js'
+      - 'preload.js'
+      - 'package*.json'
+      - 'database/**'
+      - 'src/**'
+      - '!src/pages/*.exe'
+      - 'tests/**'
+      - 'build/**'
+      - '.github/workflows/windows.yml'
+permissions:
+  contents: write
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Electron renderer, SQLite, PDF and RTL smoke test
+        run: npx electron tests/electron-smoke.js
+      - name: Build Windows installer and portable EXE
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run dist:win 2>&1 | tee artifacts/windows-build.log
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pharmacy-windows-and-test-results
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Expose smoke failure details
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f artifacts/windows-build.log ]; then
+            message=$(tail -c 50000 artifacts/windows-build.log)
+            echo "::error title=Windows build failure::${message//$'\n'/%0A}"
+          fi
+          if [ -f artifacts/electron-smoke-error.txt ]; then
+            message=$(head -c 50000 artifacts/electron-smoke-error.txt)
+            echo "::error title=Electron smoke failure::${message//$'\n'/%0A}"
+          fi
+      - name: Publish downloadable Windows release
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release tag follows the build label shown inside the application.
+          build=$(sed -n "s/.*APP_BUILD='\(build\.[0-9]*\)'.*/\1/p" src/scripts/version.js)
+          if [ -z "$build" ]; then echo "Cannot read APP_BUILD"; exit 1; fi
+          tag="v1.0.0-$build"
+          gh release create "$tag" release/*.exe release/*.blockmap release/latest.yml --target "$GITHUB_SHA" --title "Pharmacy Management 1.0.0 — ${build} Windows" --notes "Windows x64 installer and portable application. Electron + HTML/CSS/Vanilla JavaScript + SQLite. Unsigned build: verify the source commit and checksums. See README.md for setup and operational limitations." --prerelease
+      - name: Update installer in pages folder
+        if: success()
+        shell: bash
+        run: |
+          cp release/Pharmacy-1.0.0-x64.exe src/pages/Pharmacy-Setup.exe
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Pharmacy-Setup.exe
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Pharmacy-Setup.exe [skip ci]"
+            git push origin HEAD:"$GITHUB_REF_NAME"
+          fi
