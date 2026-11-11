@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.46')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.47')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -36,6 +36,13 @@ app.whenReady().then(async()=>{
   assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(14,17).join(',')"),'expenses,ledger,reports','finance holds expenses, ledger and reports');
   const financePages=await run("const groups=[...document.querySelectorAll('.nav-group')];const heading=groups.find(g=>g.textContent.trim()==='FINANCE');const items=[];let node=heading.nextElementSibling;while(node&&!node.classList.contains('nav-group')){if(node.dataset.page)items.push(node.dataset.page);node=node.nextElementSibling;}return items.join(',');");
   assert.equal(financePages,'expenses,ledger,reports','finance group order');
+  const staffPages=await run("const groups=[...document.querySelectorAll('.nav-group')];const heading=groups.find(g=>g.textContent.trim()==='STAFF');const items=[];let node=heading.nextElementSibling;while(node&&!node.classList.contains('nav-group')){if(node.dataset.page)items.push(node.dataset.page);node=node.nextElementSibling;}return items.join(',');");
+  assert.equal(staffPages,'employees,salaries,advances','staff group holds employees, salaries and advances');
+  assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(24,27).join(',')"),'employees,salaries,advances','staff holds employees, salaries and advances right after the stock group');
+  assert.equal(await run("const groups=[...document.querySelectorAll('.nav-group')].map(g=>g.textContent.trim());return groups.slice(4,8).join('|')"),'STOCK|STAFF|OPERATIONS|ADMINISTRATION','the staff group sits between stock and operations');
+  for(const key of ['employees','salaries','advances','staffgroup']){
+    assert.notEqual(await run(`return document.querySelector('[data-i18n=${key}]')?.textContent`),key,`${key} has a translated label`);
+  }
   for(const key of ['printlabels','supplierpayments','purchasing','stockgroup']){
     assert.notEqual(await run(`return document.querySelector('[data-i18n=${key}]')?.textContent`),key,`${key} has a translated label`);
   }
@@ -537,6 +544,67 @@ app.whenReady().then(async()=>{
     assert.notEqual(await run(`return document.querySelector('[data-page=${kind}] span')?.textContent`),kind,`${kind} has a translated label`);
   }
   assert.ok(await run("return document.querySelector('[data-i18n=financesection]')?.textContent==='FINANCE'"),'finance group heading is labelled');
+  // Staff: Employees, Monthly Salaries and Salary Advances are three pages.
+  await run("document.querySelector('[data-page=employees]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#employee-rows') && !!document.querySelector('#new-employee')"),'employees page');
+  assert.equal(await run("return document.querySelectorAll('.employees-stats .stat-value').length"),2,'two employee totals');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Active Employees') && document.querySelector('#page-content').innerText.includes('Monthly Payroll')"),'employee total labels');
+  assert.ok(await run("return document.querySelector('#employee-rows').innerText.toLowerCase().includes('no employees yet')"),'empty employee state');
+  assert.ok(await run("return !!document.querySelector('#employee-filter')"),'active/all filter');
+  await run("document.querySelector('#new-employee').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root [name=name]')"),'new employee form');
+  await run(`const modal=document.querySelector('#modal-root');
+    modal.querySelector('[name=name]').value='Smoke Employee';
+    modal.querySelector('[name=position]').value='Cashier';
+    modal.querySelector('[name=phone]').value='0700111222';
+    modal.querySelector('[name=salary]').value='400';
+    modal.querySelector('[name=hired_on]').value='2026-01-05';
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal') && document.querySelector('#employee-rows').innerText.includes('Smoke Employee')"),'employee saved from the form');
+  assert.ok(await run("return document.querySelector('#employee-rows').innerText.includes('400')"),'employee salary shown');
+  assert.ok(await run("return document.querySelector('.employees-stats').innerText.includes('400')"),'payroll total follows the new employee');
+  await run("document.querySelector('[data-page=salaries]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#salary-rows') && !!document.querySelector('#issue-salary')"),'salaries page');
+  assert.equal(await run("return document.querySelectorAll('.salaries-stats .stat-value').length"),2,'two salary totals');
+  assert.ok(await run("return [...document.querySelectorAll('.salaries-table thead th')].map(x=>x.innerText.trim()).join('|').includes('Advance Deduction')"),'salary table has the advance deduction column');
+  assert.ok(await run("return document.querySelector('#salary-rows').innerText.includes('Smoke Employee')"),'pending salary listed for the new employee');
+  await run("document.querySelector('#issue-salary').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root [name=staff_id]')"),'issue salary form');
+  await run(`const modal=document.querySelector('#modal-root');
+    const option=[...modal.querySelector('[name=staff_id]').options].find(o=>o.textContent==='Smoke Employee');
+    if(!option)throw new Error('employee option missing');
+    modal.querySelector('[name=staff_id]').value=option.value;
+    modal.querySelector('[name=staff_id]').dispatchEvent(new Event('change'));
+    modal.querySelector('[name=additions]').value='50';
+    modal.querySelector('[name=deductions]').value='20';
+    modal.querySelector('[name=method]').value='cash';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'salary issued');
+  await pause(300);
+  assert.ok(await run("return document.querySelector('#salary-rows').innerText.toLowerCase().includes('paid')"),'issued salary is marked paid');
+  assert.ok(await run("return document.querySelector('#salary-rows').innerText.includes('430')"),'net pay is base plus additions minus deductions');
+  await run("document.querySelector('[data-page=advances]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#advance-rows') && !!document.querySelector('#new-advance')"),'advances page');
+  assert.equal(await run("return document.querySelectorAll('.advances-stats .stat-value').length"),2,'two advance totals');
+  assert.ok(await run("return document.querySelector('#advance-rows').innerText.toLowerCase().includes('no advances yet')"),'empty advance state');
+  await run("document.querySelector('#new-advance').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root [name=staff_id]')"),'new advance form');
+  await run(`const modal=document.querySelector('#modal-root');
+    const option=[...modal.querySelector('[name=staff_id]').options].find(o=>o.textContent==='Smoke Employee');
+    modal.querySelector('[name=staff_id]').value=option.value;
+    modal.querySelector('[name=amount]').value='60';
+    modal.querySelector('[name=note]').value='Smoke advance';
+    modal.querySelector('[name=method]').value='cash';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'advance saved');
+  await pause(300);
+  assert.ok(await run("return document.querySelector('#advance-rows').innerText.includes('Smoke advance')"),'advance listed');
+  assert.ok(await run("return document.querySelector('.advances-stats').innerText.includes('60')"),'outstanding total follows the advance');
+  await run("document.querySelector('#advance-status').value='settled';document.querySelector('#advance-status').dispatchEvent(new Event('change'));return true;");
+  await pause(300);
+  assert.ok(await run("return document.querySelector('#advance-rows').innerText.toLowerCase().includes('no advances yet')"),'settled filter hides active advances');
   await run("await window.pharmacy.invoke('preference',{language:'ps',theme:'dark'});return true;");
   await run("document.querySelector('#logout').click();return true;");
   await until(()=>run("return !!document.querySelector('#auth-form')"),'reload login');
@@ -544,7 +612,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.46'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.47'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

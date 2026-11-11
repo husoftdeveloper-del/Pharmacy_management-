@@ -6,18 +6,18 @@ const entities = {
   customers: { permission: 'customers', fields: { name: 'text!', phone: 'text', email: 'text', address: 'text', opening_balance: 'money', credit_limit: 'money', active: 'bool' } },
   suppliers: { permission: 'suppliers', fields: { name: 'text!', contact_person: 'text', phone: 'text', address: 'text', opening_balance: 'money', active: 'bool' } },
   patients: { permission: 'patients', fields: { name: 'text!', phone: 'text', age: 'age', gender: 'text', notes: 'text', active: 'bool' } },
-  staff: { permission: 'staff', fields: { name: 'text!', phone: 'text', position: 'text', salary: 'money', hired_on: 'date', active: 'bool' } },
+  staff: { permission: ['staff','employees'], fields: { name: 'text!', phone: 'text', position: 'text', salary: 'money', hired_on: 'date', active: 'bool' } },
   locations: { permission: 'inventory', fields: { name: 'text!', description: 'text', active: 'bool' } },
   medicines: { permission: ['medicines','inventory'], fields: { name: 'text!', generic_name: 'text', brand: 'text', sku: 'text!', barcode: 'barcode', barcode_type: 'text', category_id: 'id', manufacturer_id: 'id', unit: 'text!', dosage_form: 'text', cost: 'money', price: 'money!', reorder_level: 'int', reorder_qty: 'int', rx_required: 'bool', storage: 'text', active: 'bool' } },
   offers: { permission: 'offers', fields: { name: 'text!', kind: 'text!', value: 'money!', min_total: 'money', starts: 'date!', ends: 'date!', active: 'bool' } },
   accounts: { permission: 'banking', fields: { code: 'text!', name: 'text!', type: 'text!', active: 'bool' } }
 };
-const modules = ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','supplierpayments','expenses','ledger','barcodes','purchases','suppliers','finance','staff','register','prescriptions','categories','patients','manufacturers','locations','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
+const modules = ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','supplierpayments','expenses','ledger','barcodes','purchases','suppliers','finance','staff','employees','salaries','advances','register','prescriptions','categories','patients','manufacturers','locations','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
 const rolePermissions = {
   admin: modules,
-  pharmacist: ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','supplierpayments','expenses','ledger','barcodes','purchases','suppliers','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],
+  pharmacist: ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','supplierpayments','expenses','ledger','barcodes','purchases','suppliers','employees','salaries','advances','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],
   cashier: ['dashboard','pos','sales','returns','customers','customerpayments','patients','prescriptions','register','barcodes'],
-  accountant: ['dashboard','sales','returns','customers','customerpayments','suppliers','supplierpayments','expenses','ledger','purchases','finance','staff','register','banking','reports','pricelist','backup']
+  accountant: ['dashboard','sales','returns','customers','customerpayments','suppliers','supplierpayments','expenses','ledger','purchases','finance','staff','employees','salaries','advances','register','banking','reports','pricelist','backup']
 };
 function cleanEntity(entity, input, editing = false) {
   const config = entities[entity];

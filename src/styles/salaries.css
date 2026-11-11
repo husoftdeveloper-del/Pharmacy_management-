@@ -1,0 +1,32 @@
+/* Monthly Salaries: two totals, the year/month/status filter and the payroll table. */
+.salaries-heading{align-items:flex-end;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:22px;gap:12px}
+.salaries-heading h1{font-size:26px;letter-spacing:-.6px}
+.salaries-heading .btn{min-height:42px;padding-inline:18px;font-size:12.5px;border-radius:9px}
+.salaries-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:18px}
+.salaries-stats .stat-card{padding:20px 22px}
+.salaries-stats .stat-value{font-size:26px}
+.salaries-filter{display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:18px;border-radius:12px;flex-wrap:wrap}
+.salaries-select{position:relative;display:flex;align-items:center;flex:0 0 170px}
+.salaries-select select{appearance:none;width:100%;border:1px solid var(--border);border-radius:9px;padding:11px 36px 11px 13px;font-size:12.5px;background:var(--surface);color:var(--text);cursor:pointer}
+[dir=rtl] .salaries-select select{padding:11px 13px 11px 36px}
+.salaries-select>svg{position:absolute;inset-inline-end:12px;transform:rotate(90deg);pointer-events:none;color:var(--muted)}
+.salaries-month{display:flex;align-items:center;flex:0 0 170px}
+.salaries-month input{border:1px solid var(--border);border-radius:9px;padding:10px 11px;font-size:12.5px;background:var(--surface);color:var(--text);width:100%}
+.salaries-card{border-radius:12px}
+.salaries-table thead{background:var(--surface)}
+.salaries-table th{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:550;color:var(--muted);padding:17px 18px;border-bottom:1px solid var(--border);background:transparent;white-space:nowrap}
+.salaries-table th.text-end,.salaries-table td.text-end{text-align:end}
+.salaries-table td{padding:15px 18px;font-size:12.5px;border-bottom:1px solid var(--border)}
+.salaries-table tbody tr:last-child td{border-bottom:0}
+.salaries-table .sub{font-size:11px;margin-top:2px}
+.salaries-empty-cell{padding:0!important;border-bottom:0!important}
+.salaries-empty{padding:58px 22px;text-align:center}
+.salaries-empty-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--surface2);color:var(--muted);display:grid;place-items:center}
+.salaries-empty h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:7px}
+.salaries-empty p{font-size:12px;color:var(--muted)}
+.salaries-detail,.advances-detail{display:grid;gap:14px}
+.salaries-detail>div,.advances-detail>div{display:flex;justify-content:space-between;gap:14px;font-size:12.5px}
+.salaries-detail span,.advances-detail span{color:var(--muted)}
+.salaries-detail p,.advances-detail p{font-size:12.5px;color:var(--text);line-height:1.7;border-top:1px solid var(--border);padding-top:14px}
+@media(max-width:900px){.salaries-select,.salaries-month{flex:1 1 45%}}
+@media(max-width:650px){.salaries-stats{grid-template-columns:1fr}.salaries-heading{align-items:flex-start;flex-direction:column}.salaries-heading .heading-actions{width:100%}}
