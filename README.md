@@ -92,7 +92,9 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Purchases | Supplier invoices, multi-item receiving, batch/expiry/cost/location, discounts, cash/bank/credit payment, purchase returns |
 | Suppliers | Supplier name, contact person, phone, purchase count, total spent, last purchase date, status, with edit and payment actions |
 | Supplier payments | Four totals (purchased / paid / credited / owed), Balances and History views, supplier search, an only-with-dues switch, and a Pay action per supplier |
-| Finance | Expenses, party payments, double-entry journals, profit and loss, trial balance |
+| Expenses | New Expense form (category, description, amount, cash/bank account), this-month/total/entries totals, search, category and date filters, table with date, category, description, amount, recorded by and a detail dialog |
+| Ledger & P&L | From/To range, P&L Statement and Transactions tabs, sales revenue, sale returns, net revenue, COGS, COGS returned, net COGS, operating expenses and net profit, with Cash In / Cash Out / Net Cash Flow / Total Purchases cards and CSV/PDF export |
+| Finance | Party payments, double-entry journals, profit and loss, trial balance |
 | Staff/payroll | Staff records, monthly salary uniqueness, advances, automatic advance deduction, net salary payment |
 | Cash register | One shared open register, opening float, cash in/out, expected cash from ledger, counted close and over/short entry |
 | Prescriptions | Patient/doctor/date/notes, PNG/JPEG/PDF attachment up to 5 MB, pending/dispensed/cancelled states, sale linkage |
@@ -100,7 +102,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Stock operations | Location transfers, signed stock adjustments, physical count sheets, count completion with stock/audit updates |
 | Banking | System cash/bank accounts, additional bank accounts, accounting balances |
 | Offers | Percentage/fixed discounts, minimum sale, date range, active flag; validated again at checkout |
-| Reports | Sales, purchases, inventory valuation, expiry, stock movements, P&L, trial balance, receivables, payables; PDF and CSV |
+| Reports | Nine tabs (Overview, Sales, Profit, Inventory, Expiry, Purchases, Expenses, Customers, Suppliers); Overview has a period picker, eight KPI cards and a revenue/profit trend chart; every tab exports PDF and CSV |
 | Users/permissions | Administrator, pharmacist, cashier, accountant defaults; per-module overrides; password changes; last-admin/self-demotion protection |
 | Audit | Append-only application audit records, including logins, changes, transactions, exports and backups |
 | Settings | Pharmacy details, currency, tax, expiry warning, receipt footer, English/Pashto/Dari, light/dark themes |
@@ -137,7 +139,7 @@ Screens are served by the main process from `src/` with `cache-control: no-store
 │   ├── barcode.js               Local CODE128-B generator
 │   └── pdf.js                   Electron printToPDF (no PDF framework)
 ├── src/
-│   ├── pages/                   26 module HTML files + matching JavaScript modules
+│   ├── pages/                   34 module HTML files + matching JavaScript modules
 │   ├── components/              Reusable Vanilla JS forms, tables, dialogs, documents
 │   ├── styles/                  Shared design system and per-page stylesheet files
 │   ├── scripts/                 Shell, API adapter, navigation, translations
