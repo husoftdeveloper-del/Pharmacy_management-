@@ -91,29 +91,83 @@ export async function render(root,params={}){
     </section>`;
   };
 
-  const paintReceipt=()=>{
+  // Receipt: a printed layout picker, the paper and copy count, and a live
+  // preview that is rebuilt from the same preferences the PDF renderer reads.
+  const RECEIPT_TEMPLATES=[
+    {key:'classic',label:'templateClassic',hint:'templateClassicHint'},
+    {key:'compact',label:'templateCompact',hint:'templateCompactHint'},
+    {key:'boxed',label:'templateBoxed',hint:'templateBoxedHint'}
+  ];
+  const RECEIPT_PAPERS=['80mm','58mm','A4'];
+  const receiptConfig=()=>{
     const p=state.preferences;
-    return `<div class="settings-grid">
-      <section class="card settings-card">
-        <header class="settings-card-head">${icon('file',18)}<div><h2>${e(t('receipt'))}</h2><p>${e(t('receiptHint'))}</p></div></header>
-        <form class="record-form" id="receipt-form">
-          <div class="form-grid">
-            ${field('receipt_footer',p.receipt_footer,{type:'textarea',label:'receiptFooter',hint:t('receiptFooterHint')})}
-          </div>
-          <div class="form-error" role="alert"></div>
-          <footer class="form-footer"><button class="btn btn-primary" type="submit"><span>${e(t('save'))}</span></button></footer>
-        </form>
-      </section>
-      <section class="card settings-card settings-preview">
-        <header class="settings-card-head">${icon('printer',18)}<div><h2>${e(t('receiptPreview'))}</h2><p>${e(t('receiptPreviewHint'))}</p></div></header>
-        <div class="receipt-preview">
-          <strong>${e(p.pharmacy_name||'')}</strong>
-          <span class="muted">${e(p.address||'')} ${e(p.phone||'')}</span>
-          <div class="receipt-rule"></div>
-          <span class="muted">${e(t('invoiceNoShort'))} 0001 · ${e(t('total'))} ${e(p.currency||'')} 0.00</span>
-          <div class="receipt-rule"></div>
-          <span>${e(p.receipt_footer||'')}</span>
+    return {
+      template:RECEIPT_TEMPLATES.some(item=>item.key===p.receipt_template)?p.receipt_template:'classic',
+      paper:RECEIPT_PAPERS.includes(p.receipt_paper)?p.receipt_paper:'80mm',
+      copies:Math.min(5,Math.max(1,Number(p.receipt_copies)||1))
+    };
+  };
+  const receiptPreview=(config)=>{
+    const p=state.preferences;
+    const money=value=>Number(value).toFixed(2);
+    const items=[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}];
+    const subtotal=items.reduce((sum,item)=>sum+item.quantity*item.price,0);
+    const discount=1,total=subtotal-discount;
+    const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
+    return `<div class="receipt-sheet t-${config.template} p-${config.paper}">
+        <header class="receipt-head"><strong>${e(p.pharmacy_name||'Pharmacy Management')}</strong>
+          ${p.address?`<small>${e(p.address)}</small>`:''}
+          ${p.phone?`<small>${e(p.phone)}</small>`:''}
+        </header>
+        <div class="receipt-meta"><span>${e(t('invoiceNoShort'))}</span><b>INV-1001</b><span>${e(t('date'))}</span><b>${e(stamp)}</b><span>${e(t('cashier'))}</span><b>${e(state.user.name)}</b></div>
+        <div class="receipt-items">
+          <div class="receipt-line receipt-line-head"><span>${e(t('item'))}</span><span>${e(t('total'))}</span></div>
+          ${items.map(item=>`<div class="receipt-line"><span class="receipt-name">${e(item.name)}<small>${item.quantity} × ${money(item.price)}</small></span><span>${money(item.quantity*item.price)}</span></div>`).join('')}
         </div>
+        <div class="receipt-totals">
+          <div><span>${e(t('subtotal'))}</span><b>${money(subtotal)}</b></div>
+          <div><span>${e(t('discount'))}</span><b>- ${money(discount)}</b></div>
+          <div class="receipt-grand"><span>${e(t('total').toUpperCase())}</span><b>${money(total)}</b></div>
+        </div>
+        <footer class="receipt-foot">${e(p.receipt_footer||'')}</footer>
+      </div>`;
+  };
+
+  const paintReceipt=()=>{
+    const config=receiptConfig();
+    return `<div class="settings-grid receipt-grid">
+      <div class="settings-stack">
+        <section class="card settings-card">
+          <header class="settings-card-head">${icon('file',18)}<div><h2>${e(t('receiptTemplate'))}</h2><p>${e(t('receiptTemplateHint'))}</p></div></header>
+          <div class="template-row" role="radiogroup" aria-label="${e(t('receiptTemplate'))}">
+            ${RECEIPT_TEMPLATES.map(item=>`<button type="button" class="template-card ${item.key===config.template?'active':''}" role="radio" aria-checked="${item.key===config.template}" data-template="${item.key}">
+              <span class="template-check">${icon('check',13)}</span>
+              <strong>${e(t(item.label))}</strong>
+              <small>${e(t(item.hint))}</small>
+            </button>`).join('')}
+          </div>
+        </section>
+        <section class="card settings-card">
+          <header class="settings-card-head">${icon('printer',18)}<div><h2>${e(t('receiptLayout'))}</h2><p>${e(t('receiptLayoutHint'))}</p></div></header>
+          <div class="form-grid receipt-fields">
+            <label class="field"><span>${e(t('paperSize'))}</span>
+              <select name="receipt_paper" id="receipt-paper">${RECEIPT_PAPERS.map(paper=>`<option value="${paper}" ${paper===config.paper?'selected':''}>${paper}</option>`).join('')}</select>
+            </label>
+            <label class="field"><span>${e(t('copiesToPrint'))}</span>
+              <input name="receipt_copies" id="receipt-copies" type="number" min="1" max="5" step="1" value="${config.copies}">
+            </label>
+            <label class="field full"><span>${e(t('receiptFooter'))}</span>
+              <textarea name="receipt_footer" id="receipt-footer" rows="2" maxlength="400">${e(state.preferences.receipt_footer||'')}</textarea>
+              <small>${e(t('receiptFooterHint'))}</small>
+            </label>
+          </div>
+          <p class="settings-note">${icon('lock',15)}<span>${e(t('receiptAutoHint'))}</span></p>
+        </section>
+      </div>
+      <section class="card settings-card settings-preview">
+        <header class="settings-card-head"><div><h2>${e(t('livePreview'))}</h2><p>${e(t('livePreviewHint'))}</p></div></header>
+        <div class="receipt-preview" id="receipt-preview">${receiptPreview(config)}</div>
+        <p class="settings-role">${e(t('receiptCopiesNote'))}: <strong>${config.copies}</strong> · ${e(config.paper)}</p>
       </section>
     </div>`;
   };
@@ -217,7 +271,41 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='pharmacy')bindSettingsForm('#pharmacy-form');
-    if(tab==='receipt')bindSettingsForm('#receipt-form',()=>{refreshLanding();});
+    if(tab==='receipt'){
+      const body=root.querySelector('#settings-body');
+      const config=receiptConfig();
+      let pending=null;
+      const repaint=()=>{
+        const next=receiptConfig();
+        body.querySelectorAll('[data-template]').forEach(node=>{
+          const active=node.dataset.template===next.template;
+          node.classList.toggle('active',active);
+          node.setAttribute('aria-checked',String(active));
+        });
+        body.querySelector('#receipt-preview').innerHTML=receiptPreview(next);
+        const note=body.querySelector('.settings-preview .settings-role');
+        if(note)note.innerHTML=`${e(t('receiptCopiesNote'))}: <strong>${next.copies}</strong> · ${e(next.paper)}`;
+      };
+      const save=async(patch)=>{
+        try{
+          await api('settings',patch);
+          await refreshPreferences();
+          repaint();
+          toast(t('recordSaved'));
+        }catch(error){toast(error.message);}
+      };
+      body.querySelectorAll('[data-template]').forEach(node=>node.onclick=()=>save({receipt_template:node.dataset.template}));
+      body.querySelector('#receipt-paper').onchange=event=>save({receipt_paper:event.target.value});
+      const footer=body.querySelector('#receipt-footer');
+      footer.onchange=()=>save({receipt_footer:footer.value});
+      const copies=body.querySelector('#receipt-copies');
+      copies.onchange=()=>{
+        const value=Math.min(5,Math.max(1,Number(copies.value)||config.copies));
+        copies.value=String(value);
+        save({receipt_copies:value});
+      };
+      return;
+    }
     if(tab==='appearance'){
       let theme=state.preferences.theme;
       body.querySelectorAll('[data-theme-choice]').forEach(node=>node.onclick=()=>{
@@ -285,9 +373,8 @@ export async function render(root,params={}){
     };
   };
 
-  const refreshLanding=()=>{ if(tab==='receipt')paint(); };
-
   const paint=async()=>{
+    if(tab==='receipt')await refreshPreferences();
     root.querySelectorAll('[data-tab]').forEach(node=>{const active=node.dataset.tab===tab;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     const body=root.querySelector('#settings-body');
     if(tab==='users'){

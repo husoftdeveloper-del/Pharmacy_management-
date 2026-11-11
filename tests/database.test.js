@@ -394,7 +394,10 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.throws(()=>s.profile(s.get('SELECT * FROM users WHERE id=?',second),{name:'X',username:'admin'}),/already taken/);
  assert.throws(()=>s.profile(admin,{name:'',username:'admin'}),/Invalid name/);
  assert.throws(()=>s.changePassword(admin,{currentPassword:'WrongPassword1',newPassword:'NewPassword123'}),/current password/);
- assert.throws(()=>s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'short'}),/10–128/);
+ assert.throws(()=>s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'fives'}),/6–128/);
+ assert.deepEqual(s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'SixSix'}),{ok:true});
+ assert.ok(s.login({username:'admin',password:'SixSix'}).user.id);
+ assert.deepEqual(s.changePassword(admin,{currentPassword:'SixSix',newPassword:'CorrectHorse42!'}),{ok:true});
  assert.throws(()=>s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'CorrectHorse42!'}),/different/);
  assert.deepEqual(s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'NewPassword123'}),{ok:true});
  assert.ok(s.login({username:'admin',password:'NewPassword123'}).user.id);
@@ -403,9 +406,36 @@ test('settings: profile, password and notification preferences',(t)=>{
  const prefs=s.preferences(admin);
  assert.equal(prefs.notify_low_stock,'1');assert.equal(prefs.notify_expiry,'0');assert.equal(prefs.notify_register,'1');
  assert.equal(prefs.low_stock_days,'45');assert.equal(prefs.receipt_footer,'Thank you');
+ // Receipt layout: template, paper and copy count feed the printed receipt.
+ assert.equal(prefs.receipt_template,'classic');assert.equal(prefs.receipt_paper,'80mm');assert.equal(prefs.receipt_copies,'1');
+ s.settings(admin,{receipt_template:'boxed',receipt_paper:'58mm',receipt_copies:3});
+ assert.equal(s.preferences(admin).receipt_template,'boxed');assert.equal(s.preferences(admin).receipt_paper,'58mm');assert.equal(s.preferences(admin).receipt_copies,'3');
+ assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
+ assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
+ assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);
  // Everyone may change their own profile, even without the users module.
  const cashierUser=s.saveUser(admin,{username:'cashier7',name:'Cashier Seven',password:'CashierPassword1',role:'cashier',active:1,permissions:{users:false}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierUser);
  assert.equal(s.profile(cashier,{name:'Cashier Renamed',username:'cashier7'}).name,'Cashier Renamed');
  assert.throws(()=>s.saveUser(cashier,{username:'cashier7',name:'x',role:'cashier',active:1}),/permission/);
+});
+
+test('receipt renderer: template, paper size and copies',()=>{
+ const {receiptHTML}=require('../database/pdf');
+ const data={invoice_no:'INV-1001',created_at:'2026-10-28 13:11:00',cashier:'Admin',items:[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}],subtotal:40,discount:1,total:39};
+ const classic=receiptHTML(data,{pharmacy_name:'PharmaCare',currency:'AFN',receipt_template:'classic',receipt_paper:'80mm',receipt_copies:1,receipt_footer:'Get well'});
+ assert.ok(classic.includes('class="receipt t-classic p-80mm"'));
+ assert.ok(classic.includes('PharmaCare'));assert.ok(classic.includes('INV-1001'));assert.ok(classic.includes('Cashier'));assert.ok(classic.includes('39.00'));assert.ok(!classic.includes('AFN 39.00'),'receipt totals print without a currency prefix');assert.ok(classic.includes('Get well'));
+ assert.ok(classic.includes('2 × 10.00'));
+ const compact=receiptHTML(data,{receipt_template:'compact',receipt_paper:'58mm',receipt_copies:2});
+ assert.equal(compact.match(/t-compact/g).length,2,'two printed copies');
+ assert.ok(compact.includes('p-58mm'));
+ const boxed=receiptHTML(data,{receipt_template:'boxed',receipt_paper:'A4',receipt_copies:3});
+ assert.equal(boxed.match(/t-boxed/g).length,3);
+ assert.ok(boxed.includes('p-A4'));
+ const fallback=receiptHTML(data,{receipt_template:'fancy',receipt_paper:'A5',receipt_copies:0});
+ assert.ok(fallback.includes('t-classic'));assert.ok(fallback.includes('p-80mm'));
+ assert.equal(fallback.match(/class="receipt/g).length,1,'unknown copies fall back to one');
+ const escaped=receiptHTML({...data,items:[{name:'<script>x</script>',quantity:1,price:1}]},{receipt_template:'classic'});
+ assert.ok(!escaped.includes('<script>'),'item names are escaped');
 });

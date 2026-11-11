@@ -806,7 +806,8 @@ class PharmacyService {
     if (!row) fail('Document not found.');
     const items = type==='stockcount' ? this.all('SELECT i.*,m.name,b.batch_no FROM stock_count_items i JOIN batches b ON b.id=i.batch_id JOIN medicines m ON m.id=b.medicine_id WHERE count_id=?',row.id) : this.all(`SELECT i.*,m.name,b.batch_no,b.expiry FROM ${type}_items i JOIN medicines m ON m.id=i.medicine_id JOIN batches b ON b.id=i.batch_id WHERE ${type}_id=?`,row.id);
     const party = type==='sale' ? (row.customer_id?this.party('customer',row.customer_id):null) : type==='purchase'?this.party('supplier',row.supplier_id):null;
-    return {...row,items,party,returns:type==='stockcount'?[]:this.all(`SELECT * FROM ${type}_returns WHERE ${type}_id=?`,row.id)};
+    const cashier=row.user_id?this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||'':'';
+    return {...row,cashier,items,party,returns:type==='stockcount'?[]:this.all(`SELECT * FROM ${type}_returns WHERE ${type}_id=?`,row.id)};
   }
   receivePurchase(user,input) {
     this.require(user,'purchases',true);
@@ -1148,7 +1149,7 @@ class PharmacyService {
     const row = this.get('SELECT * FROM users WHERE id=?', user.id);
     if (!row || !verifyPassword(String(input.currentPassword || ''), row.password_hash)) fail('The current password is incorrect.');
     const next = String(input.newPassword || '');
-    if (next.length < 10 || next.length > 128) fail('New password must contain 10–128 characters.');
+    if (next.length < 6 || next.length > 128) fail('New password must contain 6–128 characters.');
     if (next === String(input.currentPassword || '')) fail('Choose a different password from the current one.');
     return transaction(this.db, () => {
       this.run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(next), user.id);
@@ -1162,7 +1163,7 @@ class PharmacyService {
     const role=input.role;if(!Object.hasOwn(rolePermissions,role))fail('Invalid role.');const active=bool(input.active??1);
     if(old?.id===user.id&&(!active||role!=='admin'))fail('You cannot disable or demote your own account.');
     if(old?.role==='admin'&&old.active&&(!active||role!=='admin')&&!this.get("SELECT id FROM users WHERE role='admin' AND active=1 AND id<>?",old.id))fail('Keep at least one active administrator.');
-    const password=String(input.password||'');if((!old||password)&&(password.length<10||password.length>128))fail('Password must contain 10–128 characters.');
+    const password=String(input.password||'');if((!old||password)&&(password.length<6||password.length>128))fail('Password must contain 6–128 characters.');
     const permissions={};for(const m of modules)if(typeof input.permissions?.[m]==='boolean')permissions[m]=input.permissions[m];
     // An administrator always keeps every module, so the account that can fix
     // permissions can never be locked out by its own saved set.
@@ -1170,8 +1171,8 @@ class PharmacyService {
     return transaction(this.db,()=>{let userIdFinal;if(old){this.run('UPDATE users SET username=?,name=?,role=?,active=?,permissions=? WHERE id=?',username,text(input.name,'name',true,100),role,active,JSON.stringify(permissions),old.id);if(password)this.run('UPDATE users SET password_hash=? WHERE id=?',hashPassword(password),old.id);userIdFinal=old.id;}else{const r=this.run('INSERT INTO users(username,name,password_hash,role,active,permissions) VALUES(?,?,?,?,?,?)',username,text(input.name,'name',true,100),hashPassword(password),role,active,JSON.stringify(permissions));userIdFinal=Number(r.lastInsertRowid);}audit(this.db,user,old?'update_user':'create_user','users',userIdFinal,{role,active,permissions});return {id:userIdFinal};});
   }
   settings(user,input) {
-    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','language','theme','notify_low_stock','notify_expiry','notify_register'];
-    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');if(key.startsWith('notify_'))value=input[key]===true||input[key]===1||input[key]==='1'||input[key]==='true'?'1':'0';this.run('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,value);}audit(this.db,user,'update','settings');return {ok:true};});
+    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','receipt_template','receipt_paper','receipt_copies','language','theme','notify_low_stock','notify_expiry','notify_register'];
+    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='receipt_template'&&!['classic','compact','boxed'].includes(value))fail('Unsupported receipt template.');if(key==='receipt_paper'&&!['80mm','58mm','A4'].includes(value))fail('Unsupported paper size.');if(key==='receipt_copies'){const copies=integer(value,'receipt copies',1);if(copies>5)fail('Receipt copies must be between 1 and 5.');value=String(copies);}if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');if(key.startsWith('notify_'))value=input[key]===true||input[key]===1||input[key]==='1'||input[key]==='true'?'1':'0';this.run('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,value);}audit(this.db,user,'update','settings');return {ok:true};});
   }
   preference(user,input) { const data={}; if(input.language!==undefined){if(!['en','ps','fa-AF'].includes(input.language))fail('Unsupported language.');data.language=input.language;}if(input.theme!==undefined){if(!['light','dark'].includes(input.theme))fail('Unsupported theme.');data.theme=input.theme;}for(const [key,value] of Object.entries(data))this.run('UPDATE settings SET value=? WHERE key=?',value,key);return data; }
   preferences(user) {this.requireSession(user);return Object.fromEntries(this.all('SELECT key,value FROM settings').map(r=>[r.key,r.value]));}

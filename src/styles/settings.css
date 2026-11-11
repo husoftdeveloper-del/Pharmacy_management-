@@ -52,3 +52,63 @@
 #user-rows th:last-child,#user-rows td:last-child{text-align:end}
 @media(max-width:980px){.settings-grid{grid-template-columns:1fr}}
 @media(max-width:720px){.license-grid{grid-template-columns:1fr}.settings-data .settings-action-row{flex-direction:column;align-items:flex-start}}
+
+/* Receipt tab: template picker, layout fields and the live paper preview.
+   The sheet classes mirror database/pdf.js so the preview matches print. */
+.receipt-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr)}
+.settings-stack{display:grid;gap:18px;align-content:start}
+.template-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.template-card{position:relative;display:grid;gap:5px;align-content:start;text-align:start;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:12px 13px 14px;cursor:pointer;transition:border-color .15s,background .15s}
+.template-card strong{font-size:12.5px;font-weight:600;color:var(--text)}
+.template-card small{font-size:11px;line-height:1.5;color:var(--muted)}
+.template-card:hover{border-color:var(--primary)}
+.template-card.active{border-color:var(--primary);background:var(--primary-soft)}
+.template-card.active strong{color:var(--primary)}
+.template-check{position:absolute;top:9px;inset-inline-end:9px;display:none;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--primary);color:#fff}
+.template-card.active .template-check{display:flex}
+.receipt-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.settings-preview .receipt-preview{padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;justify-items:stretch;text-align:start}
+.receipt-sheet{box-sizing:border-box;margin:0 auto;width:100%;background:#fff;color:#152536;border:1px solid #dfe7ec;border-radius:6px;padding:16px 14px;font-size:11.5px;line-height:1.5;box-shadow:0 4px 14px #0b1c2b10}
+.receipt-sheet.p-58mm{max-width:236px}
+.receipt-sheet.p-80mm{max-width:320px}
+.receipt-sheet.p-A4{max-width:100%}
+.receipt-head{text-align:center;margin-bottom:12px}
+.receipt-head strong{display:block;font-size:14px;color:#152536}
+.receipt-head small{display:block;font-size:10px;color:#627080}
+.receipt-meta{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:10.5px;color:#627080;margin-bottom:10px}
+.receipt-meta b{font-weight:600;text-align:end;color:#152536}
+.receipt-line{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:11px;color:#152536}
+.receipt-line-head{font-weight:600}
+.receipt-name small{display:block;font-size:9.5px;color:#627080}
+.receipt-totals{margin-top:8px}
+.receipt-totals>div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:11px;color:#2c3b49}
+.receipt-grand{font-weight:700;font-size:12px;color:#152536}
+.receipt-foot{text-align:center;font-size:10px;color:#627080;margin-top:12px}
+.receipt-sheet.t-classic .receipt-meta{border-top:1px dashed #93a1ad;padding-top:8px}
+.receipt-sheet.t-classic .receipt-items{border-top:1px dashed #93a1ad;border-bottom:1px dashed #93a1ad}
+.receipt-sheet.t-classic .receipt-line{border-bottom:1px dashed #d7dee5}
+.receipt-sheet.t-classic .receipt-line:last-child{border-bottom:0}
+.receipt-sheet.t-classic .receipt-totals{border-bottom:1px dashed #93a1ad;padding-bottom:6px}
+.receipt-sheet.t-compact{font-size:11px;line-height:1.3}
+.receipt-sheet.t-compact .receipt-line{padding:2px 0}
+.receipt-sheet.t-compact .receipt-meta{margin-bottom:6px}
+.receipt-sheet.t-compact .receipt-head{margin-bottom:8px}
+.receipt-sheet.t-boxed .receipt-head,.receipt-sheet.t-boxed .receipt-meta,.receipt-sheet.t-boxed .receipt-items,.receipt-sheet.t-boxed .receipt-totals{border:1px solid #b9c4cd;border-radius:6px;padding:9px 10px;margin-bottom:9px}
+.receipt-sheet.t-boxed .receipt-grand{border-top:1px solid #b9c4cd;margin-top:5px;padding-top:5px}
+@media(max-width:1100px){.receipt-grid{grid-template-columns:1fr}.template-row{grid-template-columns:1fr}}
+
+/* Screenshot polish: a slimmer white tab strip, small tab icons, 38px inputs
+   and teal action buttons, matching the approved Settings design. */
+.settings-tabs{background:var(--surface2);gap:2px;padding:5px;border-radius:10px;margin-bottom:20px}
+.settings-tab{font-size:12px;padding:8px 12px;gap:6px;border-radius:7px;border:1px solid transparent}
+.settings-tab svg{width:14px;height:14px}
+.settings-tab.active{background:var(--surface);border-color:var(--border);color:var(--text);box-shadow:0 1px 3px #0b1c2b10;font-weight:600}
+.settings-tab:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+.settings-card{border-radius:12px;padding:20px 22px;gap:16px}
+.settings-card-head h2{font-size:15px;font-weight:600}
+.settings-card-head p{font-size:11.5px}
+.settings-card .field>span{font-size:11px;font-weight:550}
+.settings-card .field input:not([type=checkbox]),.settings-card .field select{min-height:38px;border-radius:8px;font-size:12px}
+.settings-card .field input:focus,.settings-card .field select:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 14%,transparent)}
+.settings-heading h1{font-size:24px}
+.settings-heading p{font-size:12px}

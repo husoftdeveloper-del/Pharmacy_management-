@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.53**
+Verified release: **v1.0.0-build.55**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.53
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.53/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.53/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.55
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-382de244739728924b11aec51c2210385ba407a4e6c88a5ad3c41760fa3186ba  Pharmacy-1.0.0-x64.exe
-e92ef0149d51a2796a6a4df84467a264a41cf9cce6eb16639c2d92797342d958  Pharmacy-1.0.0-Portable.exe
+717afe384a7c0a2d6babc2cfe61cbad75da36a2b65200978f93b16dd227bc12d  Pharmacy-1.0.0-x64.exe
+59797183b556ba314d61dab6c951104de40b75bf77e60902916fd8708a8055f6  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,42 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Receipt tab matches the design pixel-for-pixel (build 55)
+
+Build 54 rebuilt the tab; build 55 closes the remaining visual gaps against the approved screenshot:
+
+- **Amounts carry no currency prefix.** Item totals, subtotal, discount and TOTAL print as plain numbers (`6.00`, `12.00`, `18.00`, `- 1.00`, `17.00`) in both the live preview and the printed PDF, exactly as drawn. `TOTAL` is capitalised.
+- **Paper and panel.** The live preview sits on a pale panel with a white receipt sheet inside it, hairline border and a soft shadow; the sheet keeps the dashed rules of the Classic template.
+- **Tab strip.** Pale track, white active pill with a hairline border and a 1 px shadow — the design's active state rather than an inverted one.
+- **Card copy.** The Live Preview card drops its icon, the page hint now reads “Manage your profile, pharmacy details, users and preferences.”, and the role line reads `Role: Admin`.
+
+Everything from build 54 stays: three templates, paper size, copies, the editable footer and the cashier name on the receipt.
+
+## Receipt tab rebuilt (build 54)
+
+**Settings → Receipt** now works like a small receipt designer, and the printed PDF follows the same design:
+
+```
+Receipt Template   Classic · Compact · Boxed      (picked card: teal border + tick)
+Receipt Layout     Paper Size 80mm / 58mm / A4 · Copies to Print 1-5 · Receipt footer
+Live Preview       the actual layout, item lines, totals and footer
+```
+
+- **Classic** keeps dashed dividers and one line per item (the default). **Compact** drops the dividers and tightens rows so more items fit. **Boxed** frames the header, meta, items and totals for a formal invoice look.
+- **Paper Size** is a real print setting: 58mm and 80mm receipts use narrow pages with zero margins, A4 uses a normal page. **Copies to Print** repeats the receipt, one per page, up to five.
+- **Live Preview** is rebuilt from the same preferences the printer reads, so what you see is what comes out. Every change saves immediately.
+- The **receipt footer** stays editable on the same tab and appears in the preview.
+- Printed receipts now show the **cashier** name from the sale alongside invoice number and date; medicine names are XML-escaped.
+- `database/pdf.js` exports `receiptHTML()` so the template logic is unit-tested without Electron.
+
+### Password rule is now 6 characters
+
+At the request of the user, the minimum password length dropped from 10 to **6** characters (maximum stays 128) in `changePassword`, `saveUser`, the three language hints and the database tests. The Change Password card explains it: “Use a strong password of at least 6 characters.”
+
+### Settings look
+
+The tab strip, cards, inputs and buttons were tightened to match the approved screenshot: slim white strip with small tab icons, 38px inputs with a teal focus ring, teal action buttons and 12px cards.
 
 ## Settings page rebuilt (build 53)
 
@@ -386,7 +422,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.53` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.55` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
