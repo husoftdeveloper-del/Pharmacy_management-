@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.51**
+Verified release: **v1.0.0-build.52**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.51
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.51/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.51/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.52
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.52/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.52/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-d0f07278ce4473fdacaa22280698b3175f7e0772e24e1af0a5749cf87f037b70  Pharmacy-1.0.0-x64.exe
-e25ca5569fafc5cd8f10819bec18f542287044bba0023f9d7bcf4ed9bfd4113f  Pharmacy-1.0.0-Portable.exe
+e3bbc37a6a180e5b14dc6c91d993b12fe40bd2ebf13f38f147c66a40d6c73cc4  Pharmacy-1.0.0-x64.exe
+55bb4485a78fa6d8d3a3def6c1e572476ed6476e3bc29cead8347ca7ce162e33  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `8c121e0`. The branch also contains the refreshed installer commit `4ca7b67`.
+Complete source is on branch `arena/17a27247-pharmacy-management`. Application source commit: `e3d2b17`. The branch also contains the refreshed installer commit `8f95b5f`.
 
 ```powershell
 git clone --branch arena/17a27247-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -74,6 +74,26 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
 
+## Administration trimmed (build 52)
+
+**Categories**, **Patients**, **Manufacturers** and **Users & permissions** no longer appear in the sidebar, so **ADMINISTRATION** now holds only **Audit**, **Settings** and **Backup**:
+
+```
+MANAGEMENT      Medicines · Inventory · Price list · Print Labels
+PURCHASING      Purchases · Suppliers · Supplier Payments
+FINANCE         Expenses · Ledger & P&L · Reports
+STAFF           Employees · Monthly Salaries · Salary Advances
+ADMINISTRATION  Audit · Settings · Backup
+```
+
+The categories, patients, manufacturers and users modules, their permissions, pages and every record stay in place, because other screens read them:
+
+- **Categories** and **Manufacturers** are the pickers on the New Medicine form, and categories drive the medicine filter.
+- **Patients** is used by the point of sale and by prescriptions.
+- **Users** still holds every account, role and permission — an administrator keeps all modules (build 50) and can still reach the page through the router, for example `window.dispatchEvent(new CustomEvent('navigate',{detail:'users'}))`.
+
+Restoring any of them is one line in `src/scripts/navigation.js`.
+
 ## OPERATIONS group removed (build 51)
 
 The **OPERATIONS** group is gone too: **Finance** (payments and journals) and **Banking** no longer appear in the sidebar. The sidebar is now five groups:
@@ -83,7 +103,7 @@ MANAGEMENT      Medicines · Inventory · Price list · Print Labels
 PURCHASING      Purchases · Suppliers · Supplier Payments
 FINANCE         Expenses · Ledger & P&L · Reports
 STAFF           Employees · Monthly Salaries · Salary Advances
-ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
+ADMINISTRATION  Audit · Settings · Backup
 ```
 
 As with the stock pages, nothing was deleted:
@@ -113,7 +133,7 @@ MANAGEMENT      Medicines · Inventory · Price list · Print Labels
 PURCHASING      Purchases · Suppliers · Supplier Payments
 FINANCE         Expenses · Ledger & P&L · Reports
 STAFF           Employees · Monthly Salaries · Salary Advances
-ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
+ADMINISTRATION  Audit · Settings · Backup
 ```
 
 Nothing was deleted from the database or from the business logic:
@@ -133,7 +153,7 @@ MANAGEMENT   Medicines · Inventory · Price list · Print Labels
 PURCHASING   Purchases · Suppliers · Supplier Payments
 FINANCE      Expenses · Ledger & P&L · Reports
 STAFF        Employees · Monthly Salaries · Salary Advances
-ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
+ADMINISTRATION  Audit · Settings · Backup
 ```
 
 Only the sidebar order changed — no page, permission or database change. The Windows Electron smoke test asserts the heading order (`MANAGEMENT|PURCHASING|FINANCE|STAFF`) and that Employees, Monthly Salaries and Salary Advances are the three pages directly after the finance pages.
@@ -188,7 +208,7 @@ MANAGEMENT   Medicines · Inventory · Price list · Print Labels
 PURCHASING   Purchases · Suppliers · Supplier Payments
 FINANCE      Expenses · Ledger & P&L · Reports
 STAFF        Employees · Monthly Salaries · Salary Advances
-ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
+ADMINISTRATION  Audit · Settings · Backup
 ```
 
 Build 44 trimmed the medicines group so **PURCHASING starts straight after Print Labels**, and moved the remaining stock pages (Prescriptions, Stock count, Locations, Transfers, Adjustments, Barcodes, Offers) into their own **STOCK** group below it. It also fixed two sidebar items that were printing their raw keys — `printlabels` → **Print Labels** and `supplierpayments` → **Supplier Payments** — in English, Pashto and Dari.
@@ -337,7 +357,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.51` = `build.51` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.52` = `build.52` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -359,7 +379,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 37 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42987674808
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42989314985
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
