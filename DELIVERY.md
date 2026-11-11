@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.40**
+Verified release: **v1.0.0-build.41**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.40
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.40/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.40/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.41
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.41/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.41/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-e8063b67faaacfad9137f4f2b037ddca44a05a2749bd2e94c63d3d6a379ac705  Pharmacy-1.0.0-x64.exe
-e755ab6da484a4cd9332a7e0dc39770ce291344f05ae180a7cedc25408d0cc67  Pharmacy-1.0.0-Portable.exe
+e302a32313f617426d07f312681e860d63ebecd41e8d303fc78e07d3d76f0afa  Pharmacy-1.0.0-x64.exe
+3dc1a15e1a781469e20503d349b125bc94d0da158ab4dd213f19853d18c4b4f9  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,7 +28,7 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `e60c130`. The branch also contains the refreshed installer commit `afa985b`.
+Complete source is on branch `arena/0746dde2-pharmacy-management`. Application source commit: `df6e192`. The branch also contains the refreshed installer commit `ebf3199`.
 
 ```powershell
 git clone --branch arena/0746dde2-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
@@ -73,6 +73,19 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Print Labels page (build 41)
+
+A **Print Labels** page sits directly after **Price list** in the Management group:
+
+1. The **Print Labels** title with the subtitle “Filter your medicines and quickly print barcode labels in bulk.”
+2. A filter card: search by name, barcode, generic or brand, plus **All categories**, **Any expiry** (any / expiring soon / expired / no expiry) and **Any stock** (any / in stock / low stock / out of stock), then **Select all visible**, **Copies = current stock** and an “N of M” counter.
+3. A table with a tick box per row, **Medicine** (name with generic name under it and a pill icon), **Barcode**, **Stock** (badge with the unit), **Selling Price**, **Expiry** and a **Copies** box, plus the centred *Showing all N* footer.
+4. A pinned bar at the bottom with the label count and the **Print** button, disabled until at least one label is chosen.
+
+Printing goes through a new `printLabels` channel: it validates every medicine and copy count (1–200 copies each, 500 labels per run), builds CODE128 barcodes locally, and lays them out on an A4 sheet (three 60 × 32 mm labels per row, dashed cut guides). Medicines without a barcode print their SKU instead. Like the other exports, the PDF is written wherever you choose in the save dialog and an `export_pdf` audit entry is recorded.
+
+The page has its own **printlabels** permission, granted to administrators and pharmacists by default and available as a checkbox on the Users page.
 
 ## Editing prices from the price list (build 40)
 
@@ -186,7 +199,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.40` = `build.22` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.41` = `build.22` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -208,7 +221,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 26 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42965792984
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42967883665
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
