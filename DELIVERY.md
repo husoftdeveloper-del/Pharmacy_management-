@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.54**
+Verified release: **v1.0.0-build.55**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.54
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.54/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.54/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.55
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-cfccc61351f0bdcf3d3c0d3cc64ccd0bc7db075a3f7dfe44eeba27cefffdf2e8  Pharmacy-1.0.0-x64.exe
-f05fcd92741cc906a3ad5cb588b77b236d18d18837856043d4b38795ea5a0849  Pharmacy-1.0.0-Portable.exe
+717afe384a7c0a2d6babc2cfe61cbad75da36a2b65200978f93b16dd227bc12d  Pharmacy-1.0.0-x64.exe
+59797183b556ba314d61dab6c951104de40b75bf77e60902916fd8708a8055f6  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,17 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Receipt tab matches the design pixel-for-pixel (build 55)
+
+Build 54 rebuilt the tab; build 55 closes the remaining visual gaps against the approved screenshot:
+
+- **Amounts carry no currency prefix.** Item totals, subtotal, discount and TOTAL print as plain numbers (`6.00`, `12.00`, `18.00`, `- 1.00`, `17.00`) in both the live preview and the printed PDF, exactly as drawn. `TOTAL` is capitalised.
+- **Paper and panel.** The live preview sits on a pale panel with a white receipt sheet inside it, hairline border and a soft shadow; the sheet keeps the dashed rules of the Classic template.
+- **Tab strip.** Pale track, white active pill with a hairline border and a 1 px shadow — the design's active state rather than an inverted one.
+- **Card copy.** The Live Preview card drops its icon, the page hint now reads “Manage your profile, pharmacy details, users and preferences.”, and the role line reads `Role: Admin`.
+
+Everything from build 54 stays: three templates, paper size, copies, the editable footer and the cashier name on the receipt.
 
 ## Receipt tab rebuilt (build 54)
 
@@ -411,7 +422,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.54` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.55` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
