@@ -374,6 +374,7 @@ export async function render(root,params={}){
   };
 
   const paint=async()=>{
+    if(tab==='receipt')await refreshPreferences();
     root.querySelectorAll('[data-tab]').forEach(node=>{const active=node.dataset.tab===tab;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     const body=root.querySelector('#settings-body');
     if(tab==='users'){
