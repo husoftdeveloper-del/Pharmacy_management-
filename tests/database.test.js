@@ -383,3 +383,29 @@ test('a saved permission set can never lock the administrator out of the app',(t
  s.db.prepare('UPDATE users SET permissions=? WHERE id=?').run('not json',cashierId);
  assert.deepEqual(s.permissions(s.get('SELECT * FROM users WHERE id=?',cashierId)),['dashboard','pos','sales','returns','customers','customerpayments','barcodes','register','prescriptions','patients'],'a corrupt payload falls back to the role defaults instead of crashing');
 });
+
+test('settings: profile, password and notification preferences',(t)=>{
+ const {s,admin}=fixture(t);
+ const updated=s.profile(admin,{name:'Renamed Administrator',username:'admin'});
+ assert.equal(updated.name,'Renamed Administrator');
+ const staff=s.saveEntity(admin,'staff',{name:'Cashier Person',active:1}).id;
+ assert.ok(staff);
+ const second=s.saveUser(admin,{username:'second.user',name:'Second',password:'SecondPassword1',role:'pharmacist',active:1}).id;
+ assert.throws(()=>s.profile(s.get('SELECT * FROM users WHERE id=?',second),{name:'X',username:'admin'}),/already taken/);
+ assert.throws(()=>s.profile(admin,{name:'',username:'admin'}),/Invalid name/);
+ assert.throws(()=>s.changePassword(admin,{currentPassword:'WrongPassword1',newPassword:'NewPassword123'}),/current password/);
+ assert.throws(()=>s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'short'}),/10–128/);
+ assert.throws(()=>s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'CorrectHorse42!'}),/different/);
+ assert.deepEqual(s.changePassword(admin,{currentPassword:'CorrectHorse42!',newPassword:'NewPassword123'}),{ok:true});
+ assert.ok(s.login({username:'admin',password:'NewPassword123'}).user.id);
+ assert.throws(()=>s.login({username:'admin',password:'CorrectHorse42!'}),/Invalid/);
+ s.settings(admin,{notify_low_stock:1,notify_expiry:0,notify_register:true,low_stock_days:45,receipt_footer:'Thank you'});
+ const prefs=s.preferences(admin);
+ assert.equal(prefs.notify_low_stock,'1');assert.equal(prefs.notify_expiry,'0');assert.equal(prefs.notify_register,'1');
+ assert.equal(prefs.low_stock_days,'45');assert.equal(prefs.receipt_footer,'Thank you');
+ // Everyone may change their own profile, even without the users module.
+ const cashierUser=s.saveUser(admin,{username:'cashier7',name:'Cashier Seven',password:'CashierPassword1',role:'cashier',active:1,permissions:{users:false}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierUser);
+ assert.equal(s.profile(cashier,{name:'Cashier Renamed',username:'cashier7'}).name,'Cashier Renamed');
+ assert.throws(()=>s.saveUser(cashier,{username:'cashier7',name:'x',role:'cashier',active:1}),/permission/);
+});

@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.52')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.53')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -60,6 +60,34 @@ app.whenReady().then(async()=>{
     assert.ok(!text.includes('Something went wrong'),page+': '+text);
     if(['dashboard','pos','inventory','reports'].includes(page)){const image=await win.webContents.capturePage();fs.writeFileSync(path.join(artifacts,`electron-${page}.png`),image.toPNG());}
   }
+  // Settings rebuild: eight tabs, two profile cards, working profile and password forms.
+  await run("document.querySelector('[data-page=settings]').click();return true;");
+  await until(()=>run("return !!document.querySelector('.settings-tabs')"),'settings page');
+  assert.equal(await run("return document.querySelectorAll('.settings-tab').length"),8,'settings shows eight tabs');
+  assert.equal(await run("return [...document.querySelectorAll('.settings-tab')].map(x=>x.dataset.tab).join(',')"),'profile,pharmacy,receipt,notifications,appearance,users,data,license','settings tab order');
+  assert.equal(await run("return [...document.querySelectorAll('.settings-tab')].map(x=>x.textContent.trim()).join('|')"),'Profile|Pharmacy|Receipt|Notifications|Appearance|Users|Data|License','settings tab labels');
+  assert.equal(await run("return document.querySelector('#page-content h1').textContent"),'Settings','settings heading');
+  assert.ok(await run("return document.querySelector('.settings-heading p').textContent.includes('preferences')"),'settings hint sits under the heading');
+  assert.equal(await run("return document.querySelectorAll('.settings-card').length"),2,'profile tab shows two cards');
+  assert.equal(await run("return [...document.querySelectorAll('.settings-card h2')].map(x=>x.textContent).join('|')"),'Your Profile|Change Password','profile cards are titled');
+  assert.equal(await run("return [...document.querySelectorAll('#profile-form [name]')].map(x=>x.name).join(',')"),'name,username','profile form fields');
+  assert.equal(await run("return [...document.querySelectorAll('#password-form [name]')].map(x=>x.name).join(',')"),'currentPassword,newPassword,confirmPassword','password form fields');
+  assert.ok(await run("return document.querySelector('.settings-role').textContent.includes('Admin')"),'profile shows the role');
+  await run("const f=document.querySelector('#profile-form');f.querySelector('[name=name]').value='Renamed Administrator';f.requestSubmit();return true;");
+  await until(()=>run("return document.querySelector('.profile strong')?.textContent==='Renamed Administrator'"),'profile save');
+  await run("const f=document.querySelector('#profile-form');f.querySelector('[name=name]').value='Test Administrator';f.requestSubmit();return true;");
+  await until(()=>run("return document.querySelector('.profile strong')?.textContent==='Test Administrator'"),'profile restore');
+  await run("const f=document.querySelector('#password-form');f.querySelector('[name=currentPassword]').value='SmokeTestPassword123!';f.querySelector('[name=newPassword]').value='AnotherPassword123';f.querySelector('[name=confirmPassword]').value='MismatchPassword123';f.requestSubmit();return true;");
+  await until(()=>run("return document.querySelector('#password-form .form-error').textContent.length>0"),'password mismatch message');
+  assert.ok(await run("return /do not match/i.test(document.querySelector('#password-form .form-error').textContent)"),'mismatched passwords are rejected');
+  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt preview'],['notifications','Low stock alerts'],['appearance','Appearance'],['users','Users'],['data','Back up database'],['license','Registered to']]){
+    await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
+    await pause(200);
+    const tabText=await run("return document.querySelector('#settings-body').innerText");
+    assert.ok(tabText.includes(needle),tabKey+' tab renders '+needle+': '+tabText.slice(0,140));
+  }
+  await run("document.querySelector('[data-tab=profile]').click();return true;");
+  await pause(200);
   // Regression: submit the actual Purchase form, not only the camelCase IPC API.
   await run("const {refreshOptions}=await import('../components/ui.js');await refreshOptions();return true;");
   await run("document.querySelector('[data-page=purchases]').click();return true;");

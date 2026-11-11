@@ -1129,6 +1129,33 @@ class PharmacyService {
   }
   prescriptionFile(user,value) {this.require(user,'prescriptions');const row=this.get('SELECT mime,attachment FROM prescriptions WHERE id=?',id(value));if(!row?.attachment)fail('No attachment.');return {mime:row.mime,data:row.attachment.toString('base64')};}
   cancelPrescription(user,value) {this.require(user,'prescriptions',true);return transaction(this.db,()=>{const r=this.run("UPDATE prescriptions SET status='cancelled' WHERE id=? AND status='pending'",id(value));if(!r.changes)fail('Only pending prescriptions can be cancelled.');audit(this.db,user,'cancel','prescriptions',value);return {ok:true};});}
+  // Settings → Profile: the signed-in user renames their own account.
+  profile(user, input = {}) {
+    this.requireSession(user);
+    const name = text(input.name, 'name', true, 100);
+    const username = text(input.username ?? user.username, 'username', true, 40).toLowerCase();
+    if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail('Username must be 3–40 letters, numbers, dots or underscores.');
+    if (this.get('SELECT id FROM users WHERE username=? AND id<>?', username, user.id)) fail('That username is already taken.');
+    return transaction(this.db, () => {
+      this.run('UPDATE users SET name=?,username=? WHERE id=?', name, username, user.id);
+      audit(this.db, user, 'update', 'profile', user.id, { name, username });
+      return this.publicUser(this.get('SELECT * FROM users WHERE id=?', user.id));
+    });
+  }
+  // Settings → Profile: change your own password by proving the current one.
+  changePassword(user, input = {}) {
+    this.requireSession(user);
+    const row = this.get('SELECT * FROM users WHERE id=?', user.id);
+    if (!row || !verifyPassword(String(input.currentPassword || ''), row.password_hash)) fail('The current password is incorrect.');
+    const next = String(input.newPassword || '');
+    if (next.length < 10 || next.length > 128) fail('New password must contain 10–128 characters.');
+    if (next === String(input.currentPassword || '')) fail('Choose a different password from the current one.');
+    return transaction(this.db, () => {
+      this.run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(next), user.id);
+      audit(this.db, user, 'change_password', 'users', user.id);
+      return { ok: true };
+    });
+  }
   saveUser(user,input) {
     this.require(user,'users',true);const userId=input.id?id(input.id):null;const old=userId?this.get('SELECT * FROM users WHERE id=?',userId):null;if(userId&&!old)fail('User not found.');
     const username=text(input.username,'username',true,40).toLowerCase();if(!/^[a-z0-9._-]{3,40}$/.test(username))fail('Invalid username.');
@@ -1143,8 +1170,8 @@ class PharmacyService {
     return transaction(this.db,()=>{let userIdFinal;if(old){this.run('UPDATE users SET username=?,name=?,role=?,active=?,permissions=? WHERE id=?',username,text(input.name,'name',true,100),role,active,JSON.stringify(permissions),old.id);if(password)this.run('UPDATE users SET password_hash=? WHERE id=?',hashPassword(password),old.id);userIdFinal=old.id;}else{const r=this.run('INSERT INTO users(username,name,password_hash,role,active,permissions) VALUES(?,?,?,?,?,?)',username,text(input.name,'name',true,100),hashPassword(password),role,active,JSON.stringify(permissions));userIdFinal=Number(r.lastInsertRowid);}audit(this.db,user,old?'update_user':'create_user','users',userIdFinal,{role,active,permissions});return {id:userIdFinal};});
   }
   settings(user,input) {
-    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','language','theme'];
-    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');this.run('UPDATE settings SET value=? WHERE key=?',value,key);}audit(this.db,user,'update','settings');return {ok:true};});
+    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','language','theme','notify_low_stock','notify_expiry','notify_register'];
+    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');if(key.startsWith('notify_'))value=input[key]===true||input[key]===1||input[key]==='1'||input[key]==='true'?'1':'0';this.run('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,value);}audit(this.db,user,'update','settings');return {ok:true};});
   }
   preference(user,input) { const data={}; if(input.language!==undefined){if(!['en','ps','fa-AF'].includes(input.language))fail('Unsupported language.');data.language=input.language;}if(input.theme!==undefined){if(!['light','dark'].includes(input.theme))fail('Unsupported theme.');data.theme=input.theme;}for(const [key,value] of Object.entries(data))this.run('UPDATE settings SET value=? WHERE key=?',value,key);return data; }
   preferences(user) {this.requireSession(user);return Object.fromEntries(this.all('SELECT key,value FROM settings').map(r=>[r.key,r.value]));}

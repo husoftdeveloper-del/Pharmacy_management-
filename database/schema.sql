@@ -77,4 +77,4 @@ INSERT OR IGNORE INTO accounts(id,code,name,type,system) VALUES
 (7,'2100','Tax payable','liability',1),(8,'3000','Opening equity','equity',1),(9,'4000','Medicine sales','income',1),
 (10,'4100','Sales returns','income',1),(11,'4200','Sales discounts','income',1),(12,'5000','Cost of goods sold','expense',1),
 (13,'6000','Operating expenses','expense',1),(14,'6100','Salaries','expense',1),(15,'6200','Stock write-offs','expense',1),(16,'4300','Other income','income',1);
-INSERT OR IGNORE INTO settings(key,value) VALUES ('pharmacy_name','Pharmacy Management'),('currency','AFN'),('language','en'),('theme','light'),('tax_percent','0'),('address',''),('phone',''),('low_stock_days','90'),('receipt_footer','Thank you. Get well soon.'),('schema_version','1');
+INSERT OR IGNORE INTO settings(key,value) VALUES ('pharmacy_name','Pharmacy Management'),('currency','AFN'),('language','en'),('theme','light'),('tax_percent','0'),('address',''),('phone',''),('low_stock_days','90'),('receipt_footer','Thank you. Get well soon.'),('notify_low_stock','1'),('notify_expiry','1'),('notify_register','1'),('schema_version','1');

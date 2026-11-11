@@ -206,6 +206,8 @@ async function dispatch(event, request) {
   if(c==='cancelPrescription')return service.cancelPrescription(user,p.id);
   if(c==='saveUser')return service.saveUser(user,p);
   if(c==='settings')return service.settings(user,p);
+  if(c==='profile')return service.profile(user,p);
+  if(c==='changePassword')return service.changePassword(user,p);
   if(c==='report')return service.report(user,p);
   if(c==='generateBarcode')return service.generateBarcode(user);
   if(c==='barcode')return service.barcode(user,p);
