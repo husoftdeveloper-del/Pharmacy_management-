@@ -38,6 +38,29 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('purchase book, supplier book and supplier accounts share one ledger',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
+ const supplierId=s.get('SELECT supplier_id FROM purchases ORDER BY id DESC LIMIT 1').supplier_id;
+ s.saveEntity(admin,'suppliers',{id:supplierId,name:'Health Supplies',contact_person:'Ahmad Khan',phone:'0700111222',opening_balance:0,active:1});
+ const purchases=s.purchaseBook(admin);const row=purchases.rows[0];
+ assert.equal(purchases.rows.length,1);assert.equal(row.invoice_no,'PUR-001');assert.equal(row.supplier,'Health Supplies');assert.equal(row.recorded_by,'Administrator');
+ assert.equal(row.total,180);assert.equal(row.paid,0);assert.equal(row.due,180);assert.equal(row.returned,0);
+ assert.equal(purchases.totals.purchases,1);assert.equal(purchases.totals.due,180);
+ const book=s.supplierBook(admin);const supplier=book.rows.find(r=>r.id===supplierId);
+ assert.equal(supplier.contact_person,'Ahmad Khan');assert.equal(supplier.purchases,1);assert.equal(supplier.spent,180);assert.ok(supplier.last_purchase);assert.equal(supplier.balance,180);
+ const accounts=s.supplierAccounts(admin);const account=accounts.rows.find(r=>r.id===supplierId);
+ assert.equal(account.purchased,180);assert.equal(account.paid,0);assert.equal(account.credited,0);assert.equal(account.balance,180);assert.equal(account.contact,'Ahmad Khan');
+ assert.deepEqual(accounts.totals,{purchased:180,paid:0,credited:0,owed:180});
+ s.partyPayment(admin,{partyType:'supplier',partyId:supplierId,amount:80,method:'cash',accountId:1});
+ const after=s.supplierAccounts(admin);assert.equal(after.rows.find(r=>r.id===supplierId).paid,80);assert.equal(after.totals.owed,100);assert.ok(after.rows.find(r=>r.id===supplierId).lastPayment);
+ assert.equal(s.purchaseBook(admin).rows[0].due,100);
+ const history=s.documents(admin,'supplierpayments');assert.equal(history.length,1);assert.equal(history[0].supplier,'Health Supplies');assert.equal(history[0].amount,80);assert.equal(history[0].user,'Administrator');
+ const cashierId=s.saveUser(admin,{username:'buys',name:'Buys',password:'BuysPass1234',role:'cashier',active:1,permissions:{}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ for(const call of [()=>s.purchaseBook(cashier),()=>s.supplierBook(cashier),()=>s.supplierAccounts(cashier)])assert.throws(call,/permission/i);
+ assert.throws(()=>s.partyPayment(cashier,{partyType:'supplier',partyId:supplierId,amount:1,method:'cash'}),/permission/i);
+ balanced(s);
+});
 test('label book lists medicines and printing validates copies and barcodes',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  s.saveMedicine(admin,{name:'No Barcode',sku:'NB-1',unit:'tablet',cost:2,price:4,reorder_level:0,active:1,opening_stock:{quantity:4,expiry:'2031-01-31',cost:2,price:4}});

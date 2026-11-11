@@ -161,6 +161,88 @@ class PharmacyService {
       currency: this.setting('currency')
     };
   }
+  // Purchases page: every received purchase with what is still owed on it.
+  purchaseBook(user) {
+    this.require(user,'purchases');
+    const rows = this.all(`SELECT p.id,p.invoice_no,p.date,p.total,p.paid,p.status,s.name AS supplier,u.name AS recorded_by,
+        (SELECT COALESCE(SUM(r.total),0) FROM purchase_returns r WHERE r.purchase_id=p.id) AS returned,
+        (SELECT COALESCE(SUM(a.amount),0) FROM payment_allocations a WHERE a.invoice_type='purchase' AND a.invoice_id=p.id) AS allocated
+      FROM purchases p LEFT JOIN suppliers s ON s.id=p.supplier_id LEFT JOIN users u ON u.id=p.user_id
+      ORDER BY p.date DESC,p.id DESC`).map(row => ({
+        ...row,
+        total: round(row.total),
+        paid: round(row.paid),
+        returned: round(row.returned),
+        allocated: round(row.allocated),
+        due: round(Math.max(0, Number(row.total) - Number(row.paid) - Number(row.returned) - Number(row.allocated)))
+      }));
+    return {
+      rows,
+      totals: {
+        purchases: rows.length,
+        total: round(rows.reduce((sum,row)=>sum+row.total,0)),
+        due: round(rows.reduce((sum,row)=>sum+row.due,0))
+      },
+      currency: this.setting('currency')
+    };
+  }
+  // Suppliers page: contact details plus how much has been bought from each one.
+  supplierBook(user) {
+    this.require(user,'suppliers');
+    const rows = this.all(`SELECT s.id,s.name,s.contact_person,s.phone,s.address,s.active,
+        COUNT(p.id) AS purchases, COALESCE(SUM(p.total),0) AS spent, MAX(p.date) AS last_purchase
+      FROM suppliers s LEFT JOIN purchases p ON p.supplier_id=s.id
+      GROUP BY s.id ORDER BY s.name`).map(row => ({
+        ...row,
+        purchases: Number(row.purchases),
+        spent: round(row.spent),
+        last_purchase: row.last_purchase || null,
+        balance: this.party('supplier',row.id).balance
+      }));
+    return {
+      rows,
+      totals: {
+        suppliers: rows.length,
+        active: rows.filter(row=>Number(row.active)===1).length,
+        spent: round(rows.reduce((sum,row)=>sum+row.spent,0)),
+        owed: round(rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+      },
+      currency: this.setting('currency')
+    };
+  }
+  // Supplier payments page: what was bought, paid and credited, and what is owed.
+  supplierAccounts(user, query = {}) {
+    this.require(user,'supplierpayments');
+    const from = query.from ? date(query.from) : '0000-01-01';
+    const to = query.to ? date(query.to) : '9999-12-31';
+    if (from > to) fail('Start date must be before end date.');
+    const byId = rows => new Map(rows.map(row => [row.id, row]));
+    const purchases = byId(this.all('SELECT supplier_id AS id,SUM(total) AS total,COUNT(*) AS n FROM purchases WHERE date(date) BETWEEN ? AND ? GROUP BY supplier_id',from,to));
+    const payments = byId(this.all("SELECT party_id AS id,SUM(amount) AS total,MAX(date) AS last FROM payments WHERE party_type='supplier' AND date(date) BETWEEN ? AND ? GROUP BY party_id",from,to));
+    const returns = byId(this.all("SELECT p.supplier_id AS id,SUM(r.total) AS total FROM purchase_returns r JOIN purchases p ON p.id=r.purchase_id WHERE date(r.date) BETWEEN ? AND ? GROUP BY p.supplier_id",from,to));
+    const rows = this.all('SELECT id,name,contact_person,phone,opening_balance FROM suppliers WHERE active=1 ORDER BY name').map(supplier => ({
+      id: supplier.id,
+      name: supplier.name,
+      contact: supplier.contact_person,
+      phone: supplier.phone,
+      purchases: Number(purchases.get(supplier.id)?.n||0),
+      purchased: round(purchases.get(supplier.id)?.total||0),
+      paid: round(payments.get(supplier.id)?.total||0),
+      credited: round(returns.get(supplier.id)?.total||0),
+      balance: this.party('supplier',supplier.id).balance,
+      lastPayment: payments.get(supplier.id)?.last||null
+    }));
+    return {
+      rows,
+      totals: {
+        purchased: round(rows.reduce((sum,row)=>sum+row.purchased,0)),
+        paid: round(rows.reduce((sum,row)=>sum+row.paid,0)),
+        credited: round(rows.reduce((sum,row)=>sum+row.credited,0)),
+        owed: round(rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+      },
+      currency: this.setting('currency')
+    };
+  }
   // Label printing: the shelf facts needed to choose medicines, then a batch of
   // labels (medicine, price, barcode) rendered locally as CODE128.
   labelBook(user) {
@@ -358,7 +440,7 @@ class PharmacyService {
     });
   }
   documents(user, type, query = {}) {
-    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], customerpayments:['payments','customerpayments'], purchases:['purchases','purchases'], purchasereturns:['purchase_returns','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
+    const config = { sales:['sales','sales'], salereturns:['sale_returns','sales'], customerpayments:['payments','customerpayments'], purchases:['purchases','purchases'],supplierpayments:['payments','supplierpayments'], purchasereturns:['purchase_returns','purchases'], payments:['payments','finance'], expenses:['expenses','finance'], advances:['advances','staff'], salaries:['salaries','staff'], transfers:['transfers','transfers'], adjustments:['adjustments','adjustments'], prescriptions:['prescriptions','prescriptions'], stockcount:['stock_counts','stockcount'], audit:['audit_logs','audit'] }[type];
     if (!config) fail('Unknown history.');
     this.require(user,config[1]);
     const from = query.from ? date(query.from) : '0000-01-01';
@@ -369,7 +451,7 @@ class PharmacyService {
     let sql = `SELECT * FROM ${table}`;
     const dateField = type==='audit' ? 'created_at' : 'date';
     sql += ` WHERE date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`;
-    const rows = type==='customerpayments' ? this.all(`SELECT * FROM payments WHERE party_type='customer' AND date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`,from,to,limit) : this.all(sql,from,to,limit);
+    const rows = ['customerpayments','supplierpayments'].includes(type) ? this.all(`SELECT * FROM payments WHERE party_type=? AND date(${dateField}) BETWEEN ? AND ? ORDER BY id DESC LIMIT ?`,type==='customerpayments'?'customer':'supplier',from,to,limit) : this.all(sql,from,to,limit);
     return rows.map(row => {
       if (type==='sales') return {...row,customer:this.get('SELECT name FROM customers WHERE id=?',row.customer_id)?.name||'Walk-in',returns:this.get('SELECT COALESCE(SUM(total),0) AS n FROM sale_returns WHERE sale_id=?',row.id).n};
       if (type==='salereturns') {
@@ -382,6 +464,7 @@ class PharmacyService {
       }
       if (type==='purchases') return {...row,supplier:this.get('SELECT name FROM suppliers WHERE id=?',row.supplier_id)?.name};
       if (type==='customerpayments') return {...row,customer:this.get('SELECT name FROM customers WHERE id=?',row.party_id)?.name||'',account:this.get('SELECT name FROM accounts WHERE id=?',row.account_id)?.name||'',user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||'',allocated:this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payment_allocations WHERE payment_id=?',row.id).n};
+      if (type==='supplierpayments') return {...row,supplier:this.get('SELECT name FROM suppliers WHERE id=?',row.party_id)?.name||'',account:this.get('SELECT name FROM accounts WHERE id=?',row.account_id)?.name||'',user:this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||'',allocated:this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payment_allocations WHERE payment_id=?',row.id).n};
       if (type==='payments') return {...row,party:this.get(`SELECT name FROM ${row.party_type==='customer'?'customers':'suppliers'} WHERE id=?`,row.party_id)?.name};
       if (['advances','salaries'].includes(type)) return {...row,staff:this.get('SELECT name FROM staff WHERE id=?',row.staff_id)?.name};
       if (type==='prescriptions') return {...row,patient:this.get('SELECT name FROM patients WHERE id=?',row.patient_id)?.name,attachment:undefined};
@@ -486,7 +569,7 @@ class PharmacyService {
   }
   partyPayment(user,input) {
     if (!['customer','supplier'].includes(input.partyType)) fail('Invalid party type.');
-    const type=input.partyType; this.require(user,type==='customer'?'customers':'finance',true);
+    const type=input.partyType; this.require(user,type==='customer'?'customers':'suppliers',true);
     const party=this.party(type,input.partyId),amount=round(number(input.amount,'amount',0.01));
     if(amount>party.balance+0.005) fail('Payment exceeds outstanding balance.');
     const payment=method(input.method);if(payment==='credit') fail('Choose cash or bank.');

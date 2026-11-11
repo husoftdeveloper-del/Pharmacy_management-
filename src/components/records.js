@@ -5,7 +5,7 @@ const schemas={
  categories:{fields:['name','description'],columns:['name','description','active']},
  manufacturers:{fields:['name','country','phone'],columns:['name','country','phone','active']},
  customers:{fields:['name','phone','email','address','opening_balance','credit_limit'],columns:['name','phone','email','balance','credit_limit','active']},
- suppliers:{fields:['name','phone','address','opening_balance'],columns:['name','phone','balance','active']},
+ suppliers:{fields:['name','contact_person','phone','address','opening_balance'],columns:['name','contact_person','phone','balance','active']},
  patients:{fields:['name','phone','age','gender','notes'],columns:['name','phone','age','gender','active']},
  staff:{fields:['name','phone','position','salary','hired_on'],columns:['name','position','phone','salary','active']},
  locations:{fields:['name','description'],columns:['name','description','active']},

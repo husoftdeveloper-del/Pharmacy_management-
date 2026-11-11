@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.41')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.42')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -376,6 +376,66 @@ app.whenReady().then(async()=>{
   assert.ok(!(await run("return document.querySelector('#payment-body').innerText.includes('Payment Customer')")),'a settled customer is hidden by the dues filter');
   await run("const box=document.querySelector('#only-dues');box.checked=false;box.dispatchEvent(new Event('change'));return true;");
   await pause(200);
+  // Purchasing: purchases, suppliers and supplier payments.
+  await run(`await window.pharmacy.invoke('save',{entity:'suppliers',record:{name:'Genix Pharma',contact_person:'Shahid Ali',phone:'0799888777',opening_balance:0,active:1}});return true;`);
+  await run("document.querySelector('[data-page=purchases]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#purchase-rows') && !!document.querySelector('#new-purchase')"),'purchases page');
+  assert.ok(await run("return document.querySelector('#page-content h1').textContent==='Purchases'"),'page titled purchases');
+  assert.equal(await run("return document.querySelectorAll('.purchase-table thead th').length"),7,'seven purchase columns');
+  const purchaseHeadings=await run("return [...document.querySelectorAll('.purchase-table thead th')].map(t=>t.textContent.trim().toLowerCase()).join('|')");
+  assert.equal(purchaseHeadings,'invoice #|supplier|date|total|balance due|recorded by|actions','purchase column order');
+  const purchaseRow=await run("return [...document.querySelectorAll('#purchase-rows tr')].find(r=>r.textContent.includes('PUR-UI-CREDIT'))?.innerText||''");
+  assert.ok(purchaseRow.includes('Kabul Health Supplies'),'purchases list the supplier');
+  assert.ok(purchaseRow.includes('30.00'),'purchases show the total');
+  assert.ok(purchaseRow.includes('Test Administrator'),'purchases show who recorded them');
+  const beforePay=await run("return document.querySelectorAll('#purchase-rows tr').length");
+  await run("const box=document.querySelector('#purchase-search');box.value='nothing-matches';box.dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  assert.ok(await run("return document.querySelector('#purchase-rows').innerText.toLowerCase().includes('no purchases')"),'empty search state');
+  await run("const box=document.querySelector('#purchase-search');box.value='';box.dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  assert.equal(await run("return document.querySelectorAll('#purchase-rows tr').length"),beforePay,'clearing the search restores the rows');
+
+  await run("document.querySelector('[data-page=suppliers]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#supplier-rows') && !!document.querySelector('#new-supplier')"),'suppliers page');
+  assert.ok(await run("return document.querySelector('#page-content h1').textContent==='Suppliers'"),'page titled suppliers');
+  const supplierHeadings=await run("return [...document.querySelectorAll('.supplier-table thead th')].map(t=>t.textContent.trim().toLowerCase()).join('|')");
+  assert.equal(supplierHeadings,'supplier name|contact person|phone|purchases|total spent|last purchase|status|actions','supplier column order');
+  const supplierRow=await run("return [...document.querySelectorAll('#supplier-rows tr')].find(r=>r.textContent.includes('Genix Pharma'))?.innerText||''");
+  assert.ok(supplierRow.includes('Shahid Ali'),'suppliers show the contact person');
+  assert.ok(supplierRow.includes('0799888777'),'suppliers show the phone');
+  assert.ok(await run("return !!document.querySelector('#supplier-rows [data-payment]')"),'every supplier row offers a payment action');
+
+  await run("document.querySelector('[data-page=supplierpayments]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#supplierpay-body') && !!document.querySelector('#record-supplier-payment')"),'supplier payments page');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Supplier Payments')"),'page titled supplier payments');
+  await until(()=>run("return document.querySelectorAll('.supplierpay-stats .stat-value').length===4"),'four supplier payment totals');
+  const supplierTotals=await run("return [...document.querySelectorAll('.supplierpay-stats .stat-value span')].map(v=>v.textContent).join('|')");
+  assert.equal(supplierTotals.split('|').length,4,'four totals are filled in');
+  assert.ok(await run("return document.querySelector('[data-view=balances]').classList.contains('active')"),'balances selected by default');
+  assert.ok(await run("return document.querySelector('#supplierpay-body').innerText.includes('Kabul Health Supplies')"),'balances list the supplier');
+  await run("document.querySelector('[data-view=history]').click();return true;");
+  await until(()=>run("return document.querySelector('[data-view=history]').classList.contains('active')"),'history selected');
+  assert.ok(await run("return !document.querySelector('#supplierpay-body').innerText.includes('Something went wrong')"),'history renders');
+  await run("document.querySelector('[data-view=balances]').click();return true;");
+  await pause(250);
+  await run("document.querySelector('#record-supplier-payment').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root [name=party_id]')"),'supplier payment form');
+  await run(`const modal=document.querySelector('#modal-root');
+    const option=[...modal.querySelector('[name=party_id]').options].find(o=>o.textContent==='Kabul Health Supplies');
+    if(!option)throw new Error('supplier option missing');
+    modal.querySelector('[name=party_id]').value=option.value;
+    modal.querySelector('[name=amount]').value='10';
+    modal.querySelector('[name=method]').value='cash';
+    modal.querySelector('[name=method]').dispatchEvent(new Event('change'));
+    modal.querySelector('[name=reference]').value='SMOKE-SUP-1';
+    modal.querySelector('form').requestSubmit();return true;`);
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'supplier payment saved');
+  await pause(300);
+  await run("document.querySelector('[data-view=history]').click();return true;");
+  await until(()=>run("return document.querySelector('#supplierpay-body').innerText.includes('SMOKE-SUP-1')"),'supplier payment listed in history');
+  await run("document.querySelector('[data-view=balances]').click();return true;");
+  await pause(250);
   // The sales page holds only the sales history, with no returns table.
   // The returns page offers both lists behind two buttons.
   await run("document.querySelector('[data-page=returns]').click();return true;");
@@ -400,7 +460,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.41'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.42'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
