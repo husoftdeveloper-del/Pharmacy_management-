@@ -108,8 +108,8 @@ export async function render(root,params={}){
     };
   };
   const receiptPreview=(config)=>{
-    const p=state.preferences,currency=p.currency||'AFN';
-    const money=value=>`${currency} ${Number(value).toFixed(2)}`;
+    const p=state.preferences;
+    const money=value=>Number(value).toFixed(2);
     const items=[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}];
     const subtotal=items.reduce((sum,item)=>sum+item.quantity*item.price,0);
     const discount=1,total=subtotal-discount;
@@ -165,7 +165,7 @@ export async function render(root,params={}){
         </section>
       </div>
       <section class="card settings-card settings-preview">
-        <header class="settings-card-head">${icon('printer',18)}<div><h2>${e(t('livePreview'))}</h2><p>${e(t('livePreviewHint'))}</p></div></header>
+        <header class="settings-card-head"><div><h2>${e(t('livePreview'))}</h2><p>${e(t('livePreviewHint'))}</p></div></header>
         <div class="receipt-preview" id="receipt-preview">${receiptPreview(config)}</div>
         <p class="settings-role">${e(t('receiptCopiesNote'))}: <strong>${config.copies}</strong> · ${e(config.paper)}</p>
       </section>

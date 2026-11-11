@@ -425,8 +425,8 @@ test('receipt renderer: template, paper size and copies',()=>{
  const data={invoice_no:'INV-1001',created_at:'2026-10-28 13:11:00',cashier:'Admin',items:[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}],subtotal:40,discount:1,total:39};
  const classic=receiptHTML(data,{pharmacy_name:'PharmaCare',currency:'AFN',receipt_template:'classic',receipt_paper:'80mm',receipt_copies:1,receipt_footer:'Get well'});
  assert.ok(classic.includes('class="receipt t-classic p-80mm"'));
- assert.ok(classic.includes('PharmaCare'));assert.ok(classic.includes('INV-1001'));assert.ok(classic.includes('Cashier'));assert.ok(classic.includes('AFN 39.00'));assert.ok(classic.includes('Get well'));
- assert.ok(classic.includes('2 × AFN 10.00'));
+ assert.ok(classic.includes('PharmaCare'));assert.ok(classic.includes('INV-1001'));assert.ok(classic.includes('Cashier'));assert.ok(classic.includes('39.00'));assert.ok(!classic.includes('AFN 39.00'),'receipt totals print without a currency prefix');assert.ok(classic.includes('Get well'));
+ assert.ok(classic.includes('2 × 10.00'));
  const compact=receiptHTML(data,{receipt_template:'compact',receipt_paper:'58mm',receipt_copies:2});
  assert.equal(compact.match(/t-compact/g).length,2,'two printed copies');
  assert.ok(compact.includes('p-58mm'));

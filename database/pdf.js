@@ -5,7 +5,7 @@ const e=escapeXml;
 // Receipts: one printed layout chosen in Settings → Receipt. The template class
 // and the paper width travel into the print stylesheet, so the preview in the
 // app and the PDF that leaves the printer share the same structure.
-const money=(value,currency)=>`${currency?currency+' ':''}${Number(value||0).toFixed(2)}`;
+const money=value=>Number(value||0).toFixed(2);
 const RECEIPT_CSS=`
   @page{margin:0}
   body{margin:0;padding:0;background:#fff;color:#152536;font-family:'Segoe UI',Arial,sans-serif}
@@ -37,14 +37,13 @@ const RECEIPT_CSS=`
   .t-boxed .rgrand{border-top:1px solid #98a6b3;margin-top:1mm;padding-top:1mm}
 `;
 function receiptHTML(data,preferences){
-  const currency=preferences.currency||'';
-  const template=['classic','compact','boxed'].includes(preferences.receipt_template)?preferences.receipt_template:'classic';
+    const template=['classic','compact','boxed'].includes(preferences.receipt_template)?preferences.receipt_template:'classic';
   const paper=['80mm','58mm','A4'].includes(preferences.receipt_paper)?preferences.receipt_paper:'80mm';
   const copies=Math.min(5,Math.max(1,Number(preferences.receipt_copies)||1));
   const items=Array.isArray(data.items)?data.items:[];
   const rows=items.map(item=>{
     const qty=Number(item.quantity||0),price=Number(item.price||0),line=Number(item.total??qty*price)||0;
-    return `<div class="rline"><div class="rname">${e(item.name||'')}${item.batch_no?` <span class="rbatch">${e(item.batch_no)}</span>`:''}<small>${qty} × ${money(price,currency)}</small></div><div class="rsum">${money(line,currency)}</div></div>`;
+    return `<div class="rline"><div class="rname">${e(item.name||'')}${item.batch_no?` <span class="rbatch">${e(item.batch_no)}</span>`:''}<small>${qty} × ${money(price)}</small></div><div class="rsum">${money(line)}</div></div>`;
   }).join('');
   const block=`
   <section class="receipt t-${template} p-${paper}">
@@ -55,10 +54,10 @@ function receiptHTML(data,preferences){
     <div class="rmeta"><span>Invoice</span><b>${e(data.invoice_no||'')}</b><span>Date</span><b>${e((data.created_at||data.date||'').slice(0,16).replace('T',' '))}</b><span>Cashier</span><b>${e(data.cashier||'')}</b></div>
     <div class="ritems"><div class="rline rhead-row"><div class="rname">Item</div><div class="rsum">Total</div></div>${rows}</div>
     <div class="rtotals">
-      <div><span>Subtotal</span><b>${money(data.subtotal,currency)}</b></div>
-      ${Number(data.discount)?`<div><span>Discount</span><b>- ${money(data.discount,currency)}</b></div>`:''}
-      ${Number(data.tax)?`<div><span>Tax</span><b>${money(data.tax,currency)}</b></div>`:''}
-      <div class="rgrand"><span>TOTAL</span><b>${money(data.total,currency)}</b></div>
+      <div><span>Subtotal</span><b>${money(data.subtotal)}</b></div>
+      ${Number(data.discount)?`<div><span>Discount</span><b>- ${money(data.discount)}</b></div>`:''}
+      ${Number(data.tax)?`<div><span>Tax</span><b>${money(data.tax)}</b></div>`:''}
+      <div class="rgrand"><span>TOTAL</span><b>${money(data.total)}</b></div>
     </div>
     <footer class="rfoot">${e(preferences.receipt_footer||'Thank you. Get well soon.')}</footer>
   </section>`;
