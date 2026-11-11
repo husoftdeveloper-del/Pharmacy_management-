@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.52**
+Verified release: **v1.0.0-build.53**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.52
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.52/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.52/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.53
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.53/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.53/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-e3bbc37a6a180e5b14dc6c91d993b12fe40bd2ebf13f38f147c66a40d6c73cc4  Pharmacy-1.0.0-x64.exe
-55bb4485a78fa6d8d3a3def6c1e572476ed6476e3bc29cead8347ca7ce162e33  Pharmacy-1.0.0-Portable.exe
+382de244739728924b11aec51c2210385ba407a4e6c88a5ad3c41760fa3186ba  Pharmacy-1.0.0-x64.exe
+e92ef0149d51a2796a6a4df84467a264a41cf9cce6eb16639c2d92797342d958  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,35 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Settings page rebuilt (build 53)
+
+**Settings** now opens on a page shaped like the approved design: a **Settings** heading with one line of explanation under a rule, then a horizontal strip of eight pill tabs, each with an icon:
+
+```
+Profile · Pharmacy · Receipt · Notifications · Appearance · Users · Data · License
+```
+
+The active pill is a white card on the light grey track (it inverts in the dark theme), and the page keeps the chosen tab in the URL state, so `settings` always reopens where you were.
+
+**Profile** is two cards side by side:
+
+- **Your Profile** — Full Name, Username and a `Role: Administrator` line, with **Save**. Saving goes through a new permission-free `profile` IPC call: it only ever edits the signed-in account, rejects names that are too short and usernames that already exist, writes an audit row and refreshes the name in the top bar.
+- **Change Password** — Current, New and Confirm Password with **Update Password**. The new `changePassword` call proves the current password, enforces 10–128 characters, refuses to reuse the same password, re-hashes with the existing scrypt helper and records `change_password` in the audit log. Mismatched confirmation is caught before anything is sent.
+
+The other tabs keep real data:
+
+| Tab | What it saves |
+| --- | --- |
+| Pharmacy | Name, phone, currency, tax percent and address — printed on receipts and reports. |
+| Receipt | Receipt footer text, beside a live receipt preview. |
+| Notifications | Expiry warning days plus three workplace switches (low stock, expiry, register), stored as `'1'`/`'0'`. |
+| Appearance | Light/dark theme cards and the language picker; the whole shell re-translates immediately. |
+| Users | The same team-account table as the Users page (add/edit, role defaults, administrator boxes locked) — shared from `src/components/user-admin.js`. |
+| Data | Back up the database and restore it, with the existing confirmation. |
+| License | Application, version, build, registered pharmacy, license status and the signed-in account. |
+
+Preference rows are now written with `INSERT … ON CONFLICT DO UPDATE`, so notification keys added by this build appear in databases created by earlier builds without losing any stored setting.
 
 ## Administration trimmed (build 52)
 
@@ -357,7 +386,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.52` = `build.52` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.53` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
