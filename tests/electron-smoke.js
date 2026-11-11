@@ -472,7 +472,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#expense-rows') && !!document.querySelector('#new-expense')"),'expenses page');
   assert.equal(await run("return document.querySelectorAll('.expense-stats .stat-value').length"),3,'three expense totals');
   assert.ok(await run("return document.querySelector('#expense-rows').innerText.includes('Shop rent')"),'expense listed');
-  assert.equal(await run("return document.querySelectorAll('#expense-rows tbody tr').length"),1,'one expense row');
+  assert.equal(await run("return document.querySelectorAll('#expense-rows tr').length"),1,'one expense row');
   assert.ok(await run("return document.querySelector('#expense-category').options.length===2"),'expense category filter is populated');
   await run("document.querySelector('#expense-search').value='nothing-matches';document.querySelector('#expense-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
