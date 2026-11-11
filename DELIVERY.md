@@ -2,12 +2,12 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.48**
+Verified release: **v1.0.0-build.49**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.48
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.48/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.48/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.49
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.49/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.49/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
@@ -74,25 +74,45 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
 
+## STOCK group removed (build 49)
+
+The **STOCK** sidebar group is gone. Prescriptions, Stock count, Locations, Transfers, Adjustments, Barcodes and Offers no longer appear in the sidebar, so the app reads:
+
+```
+MANAGEMENT      Medicines · Inventory · Price list · Print Labels
+PURCHASING      Purchases · Suppliers · Supplier Payments
+FINANCE         Expenses · Ledger & P&L · Reports
+STAFF           Employees · Monthly Salaries · Salary Advances
+OPERATIONS      Finance · Banking
+ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
+```
+
+Nothing was deleted from the database or from the business logic:
+
+- The tables (`prescriptions`, `stock_counts`, `transfers`, `adjustments`, `locations`, `offers`) and every stored record are untouched, so no history is lost.
+- The modules, permissions and page files still exist because other screens depend on them: the point of sale lists prescriptions and active offers, and receiving a purchase picks a stock location. Removing their permissions would have broken those flows, so they stay available to existing roles.
+- Barcode generation is still one click from the **New Medicine** form, and **Print Labels** still prints barcode labels.
+
+Restoring the section later is a one-line change in `src/scripts/navigation.js` — the page files and permissions were kept for exactly that reason. The Windows smoke test now asserts that no stock page keeps a sidebar item and that the barcode page still renders when reached through the router.
+
 ## Staff group moved under Finance (build 48)
 
-The **STAFF** group (Employees · Monthly Salaries · Salary Advances) now sits directly below **FINANCE**, so the money sections read top to bottom: Purchases → Finance → Staff. The stock pages (Prescriptions, Stock count, Locations, Transfers, Adjustments, Barcodes, Offers) moved down one step and still sit in their own **STOCK** group above **OPERATIONS**:
+The **STAFF** group (Employees · Monthly Salaries · Salary Advances) now sits directly below **FINANCE**, so the money sections read top to bottom: Purchases → Finance → Staff. The stock pages (Prescriptions, Stock count, Locations, Transfers, Adjustments, Barcodes, Offers) moved down one step into their own **STOCK** group above **OPERATIONS**; build 49 removed that group again.
 
 ```
 MANAGEMENT   Medicines · Inventory · Price list · Print Labels
 PURCHASING   Purchases · Suppliers · Supplier Payments
 FINANCE      Expenses · Ledger & P&L · Reports
 STAFF        Employees · Monthly Salaries · Salary Advances
-STOCK        Prescriptions · Stock count · Locations · Transfers · Adjustments · Barcodes · Offers
 OPERATIONS   Finance · Banking
 ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
 ```
 
-Only the sidebar order changed — no page, permission or database change. The Windows Electron smoke test asserts both the heading order (`MANAGEMENT|PURCHASING|FINANCE|STAFF` and `STAFF|STOCK|OPERATIONS|ADMINISTRATION`) and that Employees, Monthly Salaries and Salary Advances are the three pages directly after the finance pages.
+Only the sidebar order changed — no page, permission or database change. The Windows Electron smoke test asserts the heading order (`MANAGEMENT|PURCHASING|FINANCE|STAFF`) and that Employees, Monthly Salaries and Salary Advances are the three pages directly after the finance pages.
 
 ## Staff section (build 47)
 
-A new **STAFF** group sits between **STOCK** and **OPERATIONS** with three pages:
+A new **STAFF** group sits directly below **FINANCE** with three pages:
 
 1. **Employees** (`employees`) — the Employees title with **New Employee**, two totals (**Active Employees**, **Monthly Payroll**), a search box with an **Active only / All employees** picker, and the table **Name · Position · Phone · Monthly Salary · Join Date · Status · Actions** (Advance, Edit). Empty state: “No employees yet” / “Add your team members to track salaries and advances.”
 2. **Monthly Salaries** (`salaries`) — the Monthly Salaries title with **Export PDF** and **Issue Salary**, two totals (**Monthly Payroll**, **Pending Salaries**), a filter row (**All Years**, month, All / Paid / Pending) and the payroll table **Month · Employee · Base · Additions · Deductions · Advance Deduction · Net Pay · Status · Paid Date · Actions**. Staff without a salary record for the selected month are listed as **Pending** with a **Pay** action, so the pending card and the list always agree. Empty state: “No salary records for this filter” / “Use “Issue Salary” to create a payroll entry.”
@@ -140,7 +160,6 @@ MANAGEMENT   Medicines · Inventory · Price list · Print Labels
 PURCHASING   Purchases · Suppliers · Supplier Payments
 FINANCE      Expenses · Ledger & P&L · Reports
 STAFF        Employees · Monthly Salaries · Salary Advances
-STOCK        Prescriptions · Stock count · Locations · Transfers · Adjustments · Barcodes · Offers
 OPERATIONS   Finance · Banking
 ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
 ```
@@ -291,7 +310,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.48` = `build.48` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.49` = `build.49` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -313,7 +332,7 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 - JavaScript syntax and strict technology checks passed.
 - Real Electron smoke test on Windows passed: 37 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42983557331
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/WORKFLOW_ID
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
