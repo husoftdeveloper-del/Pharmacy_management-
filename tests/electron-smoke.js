@@ -286,6 +286,8 @@ app.whenReady().then(async()=>{
   await pause(250);
   assert.equal(await run("return document.querySelector('#price-rows')?.querySelector('.price-input')?1:0"),0,'escape closes the editor');
   assert.ok((await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''")).includes('12.50'),'escape keeps the old price');
+  // Put the original price back so later credit-sale totals stay predictable.
+  await run("const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');await window.pharmacy.invoke('updatePrice',{id:m.id,price:10});return true;");
 
   await run("document.querySelector('#price-search').value='nothing-matches';document.querySelector('#price-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
