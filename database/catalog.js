@@ -12,10 +12,10 @@ const entities = {
   offers: { permission: 'offers', fields: { name: 'text!', kind: 'text!', value: 'money!', min_total: 'money', starts: 'date!', ends: 'date!', active: 'bool' } },
   accounts: { permission: 'banking', fields: { code: 'text!', name: 'text!', type: 'text!', active: 'bool' } }
 };
-const modules = ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','barcodes','purchases','suppliers','finance','staff','register','prescriptions','categories','patients','manufacturers','locations','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
+const modules = ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','barcodes','purchases','suppliers','finance','staff','register','prescriptions','categories','patients','manufacturers','locations','transfers','adjustments','banking','offers','stockcount','reports','users','audit','settings','backup'];
 const rolePermissions = {
   admin: modules,
-  pharmacist: ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','barcodes','purchases','suppliers','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],
+  pharmacist: ['dashboard','pos','sales','returns','customers','customerpayments','medicines','inventory','pricelist','printlabels','barcodes','purchases','suppliers','prescriptions','categories','patients','manufacturers','transfers','adjustments','offers','stockcount','reports'],
   cashier: ['dashboard','pos','sales','returns','customers','customerpayments','patients','prescriptions','register','barcodes'],
   accountant: ['dashboard','sales','returns','customers','customerpayments','suppliers','purchases','finance','staff','register','banking','reports','pricelist','backup']
 };

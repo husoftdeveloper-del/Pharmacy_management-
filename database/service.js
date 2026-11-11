@@ -161,6 +161,47 @@ class PharmacyService {
       currency: this.setting('currency')
     };
   }
+  // Label printing: the shelf facts needed to choose medicines, then a batch of
+  // labels (medicine, price, barcode) rendered locally as CODE128.
+  labelBook(user) {
+    this.require(user,'printlabels');
+    const days = Number(this.setting('low_stock_days')) || 90;
+    const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.sku,m.barcode,m.unit,m.price,m.reorder_level,m.category_id,c.name AS category,
+        COALESCE(SUM(b.quantity),0) AS stock,
+        (SELECT MIN(b2.expiry) FROM batches b2 WHERE b2.medicine_id=m.id AND b2.quantity>0) AS expiry
+      FROM medicines m LEFT JOIN categories c ON c.id=m.category_id LEFT JOIN batches b ON b.medicine_id=m.id
+      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => {
+      const stock = Number(row.stock);
+      const expiring = Boolean(row.expiry) && row.expiry <= new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      return { ...row, stock, low: stock > 0 && stock <= Number(row.reorder_level), out: stock === 0, expiring };
+    });
+    return { rows, categories: this.all('SELECT id,name FROM categories WHERE active=1 ORDER BY name'), currency: this.setting('currency'), warningDays: days };
+  }
+  printLabels(user, input) {
+    this.require(user,'printlabels');
+    const list = Array.isArray(input?.items) ? input.items : [];
+    if (!list.length) fail('Choose at least one medicine to print.');
+    if (list.length > 200) fail('Choose 200 medicines or fewer.');
+    let total = 0;
+    const items = list.map(item => {
+      const copies = integer(item.copies, 'copies', 1);
+      if (copies > 200) fail('Each medicine can print 200 labels or fewer.');
+      total += copies;
+      const medicine = this.get('SELECT id,name,generic_name,sku,barcode,price FROM medicines WHERE id=? AND active=1', id(item.id, 'medicine'));
+      if (!medicine) fail('Medicine not found.');
+      const code = medicine.barcode || medicine.sku;
+      return {
+        name: medicine.name,
+        generic: medicine.generic_name,
+        price: round(medicine.price),
+        copies,
+        barcode: code,
+        svg: require('./barcode').code128(code)
+      };
+    });
+    if (total > 500) fail('A single print run can hold 500 labels or fewer.');
+    return { items, total, currency: this.setting('currency'), pharmacyName: this.setting('pharmacy_name') };
+  }
   // Changing a selling price from the price list only touches medicines.price,
   // so it is audited and permission-checked on its own.
   updateMedicinePrice(user, input) {

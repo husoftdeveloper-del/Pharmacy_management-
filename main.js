@@ -174,6 +174,7 @@ async function dispatch(event, request) {
   if(c==='saveMedicine')return service.saveMedicine(user,p.record||p);
   if(c==='priceList')return service.priceList(user);
   if(c==='updatePrice')return service.updateMedicinePrice(user,p);
+  if(c==='labelBook')return service.labelBook(user);
   if(c==='options')return service.options(user);
   if(c==='list')return service.list(user,p.entity,p);
   if(c==='save')return service.saveEntity(user,p.entity,p.record);
@@ -198,12 +199,13 @@ async function dispatch(event, request) {
   if(c==='report')return service.report(user,p);
   if(c==='generateBarcode')return service.generateBarcode(user);
   if(c==='barcode')return service.barcode(user,p);
-  if(c==='pdf'||c==='receipt'||c==='printBarcode'){
+  if(c==='pdf'||c==='receipt'||c==='printBarcode'||c==='printLabels'){
     const isPriceList=c==='pdf'&&p.kind==='pricelist';
-    service.require(user,isPriceList?'pricelist':c==='receipt'?'sales':c==='printBarcode'?'barcodes':'reports');
+    service.require(user,c==='printLabels'?'printlabels':isPriceList?'pricelist':c==='receipt'?'sales':c==='printBarcode'?'barcodes':'reports');
     let data;
     if(c==='receipt')data=service.document(user,'sale',p.id);
     else if(c==='printBarcode')data=service.barcode(user,p);
+    else if(c==='printLabels')data=service.printLabels(user,p);
     else if(isPriceList)data=service.priceListDocument(user);
     else { service.require(user,['profit','balances'].includes(p.kind)?'finance':'reports');data=service.report(user,p); }
     const win=senderWindow(event);

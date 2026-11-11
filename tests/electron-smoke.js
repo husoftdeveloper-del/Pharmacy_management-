@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.40')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.41')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -25,6 +25,7 @@ app.whenReady().then(async()=>{
   assert.equal(pages.slice(0,7).join(','),'dashboard,pos,sales,returns,customers,customerpayments,register','overview group order');
   assert.equal(pages.slice(7,9).join(','),'medicines,inventory','medicines and inventory are separate modules');
   assert.equal(pages.slice(7,10).join(','),'medicines,inventory,pricelist','price list follows inventory');
+  assert.equal(pages.slice(9,11).join(','),'pricelist,printlabels','print labels follows the price list');
   for(const page of pages){
     await run(`document.querySelector('[data-page="${page}"]').click();return true;`);await pause(180);
     await until(()=>run("return !document.querySelector('.loading-state')"),'page '+page);
@@ -253,6 +254,38 @@ app.whenReady().then(async()=>{
   assert.ok(await run("return document.querySelector('#inventory-rows').innerText.includes('Paracetamol 500mg')"),'a scanned barcode finds its medicine');
   await run("document.querySelector('#inventory-search').value='';document.querySelector('#inventory-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
+  // Print labels: filters, select-all, copies from stock and the print button.
+  await run("document.querySelector('[data-page=printlabels]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#labels-rows') && !!document.querySelector('#print-labels')"),'print labels page');
+  assert.ok(await run("return document.querySelector('#page-content h1').textContent==='Print Labels'"),'page titled print labels');
+  assert.equal(await run("return document.querySelectorAll('.labels-table thead th').length"),7,'seven label columns');
+  const labelHeadings=await run("return [...document.querySelectorAll('.labels-table thead th')].map(t=>t.textContent.trim().toLowerCase()).slice(1).join('|')");
+  assert.equal(labelHeadings,'medicine|barcode|stock|selling price|expiry|copies','label column order');
+  assert.equal(await run("return document.querySelectorAll('.labels-filter select').length"),3,'category, expiry and stock filters');
+  assert.ok(await run("return document.querySelector('#labels-shown').textContent.endsWith('of')||/\d+ of/.test(document.querySelector('#labels-shown').textContent)"),'shown counter');
+  assert.ok(await run("return document.querySelector('#print-labels').disabled"),'print is disabled until a label is chosen');
+  assert.ok(await run("return document.querySelector('#labels-rows').innerText.includes('Paracetamol 500mg')"),'labels list the medicines');
+  assert.match(await run("return document.querySelector('#labels-rows').innerText"),/PAR50001/,'labels show the barcode');
+  assert.match(await run("return document.querySelector('#labels-rows').innerText"),/\d+ tablet/i,'labels show the stock badge');
+  await run("document.querySelector('#copies-stock').click();return true;");
+  await pause(200);
+  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'105','copies from stock fills the quantity');
+  assert.ok(await run("return !document.querySelector('#print-labels').disabled"),'print is enabled once copies exist');
+  assert.match(await run("return document.querySelector('#labels-total').textContent"),/\d+ labels/,'the bar counts the labels');
+  await run("document.querySelector('#select-all-visible').click();return true;");
+  await pause(200);
+  assert.equal(await run("return document.querySelectorAll('#labels-rows .labels-check.checked').length"),0,'select all toggles the visible rows off');
+  await run("document.querySelector('#select-all-visible').click();return true;");
+  await pause(200);
+  assert.ok(await run("return document.querySelectorAll('#labels-rows .labels-check.checked').length>=1"),'select all ticks the visible rows');
+  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'1','select all gives one copy each');
+  await run("const box=document.querySelector('#labels-search');box.value='nothing-matches';box.dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  assert.ok(await run("return document.querySelector('#labels-rows').innerText.toLowerCase().includes('no medicines match')"),'empty state for a search with no match');
+  await run("const box=document.querySelector('#labels-search');box.value='';box.dispatchEvent(new Event('input'));return true;");
+  await pause(250);
+  const printed=await run("const r=await window.pharmacy.invoke('printLabels',{items:[{id:1,copies:2}]});return r.total");
+  assert.equal(printed,2,'the print channel returns a label sheet');
   // Price list: name, stock, both prices, profit, a search box and the PDF export.
   await run("document.querySelector('[data-page=pricelist]').click();return true;");
   await until(()=>run("return !!document.querySelector('#price-rows') && !!document.querySelector('#price-search')"),'price list page');
@@ -364,7 +397,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.40'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.41'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

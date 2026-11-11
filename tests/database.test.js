@@ -38,6 +38,27 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('label book lists medicines and printing validates copies and barcodes',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
+ s.saveMedicine(admin,{name:'No Barcode',sku:'NB-1',unit:'tablet',cost:2,price:4,reorder_level:0,active:1,opening_stock:{quantity:4,expiry:'2031-01-31',cost:2,price:4}});
+ const book=s.labelBook(admin);
+ assert.equal(book.rows.length,2);assert.equal(book.currency,s.setting('currency'));
+ const paracetamol=book.rows.find(r=>r.id===m.id);assert.equal(paracetamol.barcode,'PAR50001');assert.equal(paracetamol.stock,30);assert.equal(paracetamol.expiry,'2030-12-31');assert.equal(paracetamol.price,10);
+ assert.equal(book.rows.find(r=>r.name==='No Barcode').out,false);
+ assert.deepEqual(book.categories,[]);
+ const printed=s.printLabels(admin,{items:[{id:m.id,copies:3},{id:book.rows.find(r=>r.name==='No Barcode').id,copies:2}]});
+ assert.equal(printed.total,5);assert.equal(printed.items[0].copies,3);assert.equal(printed.items[0].barcode,'PAR50001');assert.match(printed.items[0].svg,/<svg/);
+ assert.equal(printed.items[1].barcode,'NB-1','a medicine without a barcode prints its SKU');
+ assert.equal(printed.currency,s.setting('currency'));
+ assert.throws(()=>s.printLabels(admin,{items:[]}),/at least one medicine/);
+ assert.throws(()=>s.printLabels(admin,{items:[{id:m.id,copies:0}]}),/copies/i);
+ assert.throws(()=>s.printLabels(admin,{items:[{id:m.id,copies:201}]}),/200 labels/);
+ assert.throws(()=>s.printLabels(admin,{items:Array.from({length:3},()=>({id:m.id,copies:200}))}),/500 labels/);
+ assert.throws(()=>s.printLabels(admin,{items:[{id:999999,copies:1}]}),/not found/);
+ const cashierId=s.saveUser(admin,{username:'labels',name:'Labels',password:'LabelsPass123',role:'cashier',active:1,permissions:{}}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.throws(()=>s.labelBook(cashier),/permission/i);assert.throws(()=>s.printLabels(cashier,{items:[{id:m.id,copies:1}]}),/permission/i);
+});
 test('price list shows shelf quantity, both prices and profit per medicine',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  s.saveMedicine(admin,{name:'Panadol',unit:'tablet',cost:4,price:7,active:1,opening_stock:{quantity:12,expiry:'2032-01-31',cost:4,price:7}});

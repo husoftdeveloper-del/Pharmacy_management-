@@ -1,0 +1,46 @@
+/* Print labels: title, one card of filters, one card of medicines, and a pinned
+   bar with the label count and the print button. Shared tokens from base.css. */
+.labels-heading{align-items:flex-start;padding-bottom:18px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.labels-heading h1{font-size:26px;letter-spacing:-.6px}
+.labels-heading p{font-size:12.5px;color:var(--muted);margin-top:7px}
+.labels-filter{padding:14px;margin-bottom:16px;border-radius:12px;display:grid;gap:12px}
+.labels-filter-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.labels-search{flex:1 1 320px;min-width:0;display:flex;align-items:center;gap:11px;border:1px solid var(--border);border-radius:9px;padding:0 14px;background:var(--surface);color:var(--muted)}
+.labels-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+.labels-search input{border:0;box-shadow:none;background:none;width:100%;min-width:0;padding:11px 0;font-size:13px;color:var(--text)}
+.labels-search input::placeholder{color:var(--muted)}
+.labels-search input::-webkit-search-cancel-button{display:none}
+.labels-select{position:relative;display:flex;align-items:center;flex:0 0 200px}
+.labels-select select{appearance:none;width:100%;border:1px solid var(--border);border-radius:9px;padding:11px 38px 11px 13px;font-size:12.5px;background:var(--surface);color:var(--text);cursor:pointer}
+[dir=rtl] .labels-select select{padding:11px 13px 11px 38px}
+.labels-select>svg{position:absolute;inset-inline-end:12px;transform:rotate(90deg);pointer-events:none;color:var(--muted)}
+.labels-tools{gap:10px}
+.labels-tools .btn{min-height:34px;font-size:12px;border-radius:8px}
+.labels-shown{margin-inline-start:auto;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.labels-card{border-radius:12px}
+.labels-table thead{background:var(--surface)}
+.labels-table th{text-transform:none;letter-spacing:0;font-size:12px;font-weight:550;color:var(--muted);padding:14px 18px;border-bottom:1px solid var(--border);background:transparent}
+.labels-table td{padding:12px 18px;font-size:12.5px;border-bottom:0}
+.labels-table th.text-end,.labels-table td.text-end{text-align:end}
+.labels-check-col{width:46px;padding-inline-start:20px!important}
+.labels-check{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:transparent;padding:0;cursor:pointer}
+.labels-check.checked{background:var(--primary);border-color:var(--primary);color:#fff}
+.labels-check svg{width:12px;height:12px}
+.labels-medicine{display:inline-flex;align-items:center;gap:10px}
+.labels-medicine>svg{color:var(--primary);background:var(--primary-soft);border-radius:7px;padding:5px;width:28px;height:28px}
+.labels-medicine .table-name{font-size:12.5px;font-weight:600}
+.labels-medicine .table-sub{margin-top:1px}
+.copies-input{width:72px;border:1px solid var(--border);border-radius:7px;padding:7px 8px;font-size:12.5px;text-align:end;background:var(--surface);color:var(--text)}
+.copies-input:focus{border-color:var(--primary)}
+.labels-footer{display:flex;justify-content:center;padding:30px 22px;font-size:12px;color:var(--muted)}
+.labels-empty-cell{padding:0!important;background:transparent}
+.labels-empty{padding:48px 22px;text-align:center}
+.labels-empty-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--surface2);color:var(--muted);display:grid;place-items:center}
+.labels-empty h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:7px}
+.labels-empty p{font-size:12px;color:var(--muted)}
+.labels-printbar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;padding:13px 18px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 -4px 18px #1734480d}
+.labels-printbar #labels-total{font-size:12px;color:var(--muted)}
+.labels-printbar .btn{min-height:40px;padding-inline:22px;border-radius:9px}
+.labels-printbar .btn:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:980px){.labels-select{flex:1 1 45%}}
+@media(max-width:650px){.labels-heading{padding-bottom:14px}.labels-search{flex:1 1 100%}.labels-select{flex:1 1 100%}.labels-table th,.labels-table td{padding-inline:12px}.copies-input{width:60px}}
