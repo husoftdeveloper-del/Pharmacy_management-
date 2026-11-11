@@ -49,9 +49,16 @@ test('price list shows shelf quantity, both prices and profit per medicine',(t)=
  assert.deepEqual(doc.columns,['name','stock','purchasePrice','sellingPrice','profit']);
  assert.equal(doc.rows.find(r=>r.name==='Paracetamol 500mg').stock,'30 tablet');assert.equal(doc.rows.find(r=>r.name==='Panadol').sellingPrice,`${doc.currency} 7.00`);
  assert.equal(doc.kind,'pricelist');
+ const updated=s.updateMedicinePrice(admin,{id:panadol.id,price:9.5});
+ assert.equal(updated.price,9.5);assert.equal(s.get('SELECT price FROM medicines WHERE id=?',panadol.id).price,9.5);
+ assert.equal(s.priceList(admin).rows.find(r=>r.id===panadol.id).profit,5.5);
+ assert.equal(s.get("SELECT details FROM audit_logs WHERE action='price_change' ORDER BY id DESC LIMIT 1").details.includes('9.5'),true);
+ assert.throws(()=>s.updateMedicinePrice(admin,{id:panadol.id,price:0}),/greater than zero/);
+ assert.throws(()=>s.updateMedicinePrice(admin,{id:999999,price:5}),/not found/);
  const cashierId=s.saveUser(admin,{username:'price',name:'Price',password:'PricePass123',role:'cashier',active:1,permissions:{}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
  assert.throws(()=>s.priceList(cashier),/permission/i);
+ assert.throws(()=>s.updateMedicinePrice(cashier,{id:panadol.id,price:11}),/permission/i);
  assert.equal(s.permissions(s.get('SELECT * FROM users WHERE id=?',admin.id)).includes('pricelist'),true);
 });
 test('new medicine form saves the catalogue entry with its opening stock',(t)=>{

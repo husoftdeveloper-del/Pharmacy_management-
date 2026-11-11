@@ -161,6 +161,21 @@ class PharmacyService {
       currency: this.setting('currency')
     };
   }
+  // Changing a selling price from the price list only touches medicines.price,
+  // so it is audited and permission-checked on its own.
+  updateMedicinePrice(user, input) {
+    this.require(user, 'pricelist', true);
+    const medicineId = id(input.id, 'medicine');
+    const price = round(number(input.price, 'selling price', 0));
+    if (price < 0.01) fail('Selling price must be greater than zero.');
+    return transaction(this.db, () => {
+      const medicine = this.get('SELECT id,name,price FROM medicines WHERE id=?', medicineId);
+      if (!medicine) fail('Medicine not found.');
+      this.run('UPDATE medicines SET price=? WHERE id=?', price, medicineId);
+      audit(this.db, user, 'price_change', 'medicines', medicineId, { name: medicine.name, from: medicine.price, to: price });
+      return { id: medicineId, price };
+    });
+  }
   priceListDocument(user) {
     const book = this.priceList(user);
     const currency = book.currency || '';

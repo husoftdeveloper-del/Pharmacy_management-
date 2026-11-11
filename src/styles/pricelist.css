@@ -26,3 +26,20 @@
 .price-list-empty h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:7px}
 .price-list-empty p{font-size:12px;color:var(--muted)}
 @media(max-width:650px){.price-list-heading{align-items:flex-start}.price-list-heading .btn{width:100%}.price-list-table th,.price-list-table td{padding-inline:14px}}
+
+/* Selling price cell: the pencil only appears while the cell is hovered (or
+   focused with the keyboard), so the table stays calm at rest. */
+.price-cell{position:relative}
+.price-cell .price-edit{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-inline-start:8px;padding:0;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--primary);opacity:0;transition:opacity .16s,background .16s;vertical-align:middle}
+.price-cell:hover .price-edit,.price-cell:focus-within .price-edit{opacity:1}
+.price-cell .price-edit:hover{background:var(--primary-soft);border-color:color-mix(in srgb,var(--primary) 20%,transparent)}
+.price-cell .price-edit:focus-visible{opacity:1;outline:2px solid var(--primary);outline-offset:2px}
+.price-editor{display:inline-flex;align-items:center;gap:6px}
+.price-input{width:104px;border:1px solid var(--primary);border-radius:7px;padding:6px 8px;font-size:12.5px;background:var(--surface);color:var(--text)}
+.price-input.invalid{border-color:var(--red);background:var(--red-soft)}
+.price-save,.price-cancel{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--muted);padding:0}
+.price-save{background:var(--primary);border-color:var(--primary);color:#fff}
+.price-save:hover{background:var(--primary-dark)}
+.price-save:disabled{opacity:.6}
+.price-cancel:hover{border-color:var(--red);color:var(--red)}
+@media(hover:none){.price-cell .price-edit{opacity:1}}
