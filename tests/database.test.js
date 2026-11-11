@@ -361,3 +361,25 @@ test('the staff section reads employees, monthly salaries and advances',(t)=>{
  const cashier=s.get('SELECT * FROM users WHERE id=?',s.saveUser(admin,{username:'cashier5',name:'Cashier',password:'CashierPassword1',role:'cashier',active:1}).id);
  assert.throws(()=>s.employeeBook(cashier),/permission/);assert.throws(()=>s.salaryBook(cashier,{}),/permission/);assert.throws(()=>s.advanceBook(cashier,{}),/permission/);
 });
+
+test('a saved permission set can never lock the administrator out of the app',(t)=>{
+ const {s,admin}=fixture(t);
+ // An older build saved a permission set before newer modules existed, and the
+ // administrator is the account that has to be able to sign in and fix anything.
+ s.db.prepare('UPDATE users SET permissions=? WHERE id=?').run(JSON.stringify({dashboard:false,employees:false,reports:false}),admin.id);
+ const reloaded=s.get('SELECT * FROM users WHERE id=?',admin.id);
+ const permissions=s.permissions(reloaded);
+ for(const module of ['dashboard','employees','salaries','advances','reports','users','settings'])assert.ok(permissions.includes(module),module+' stays available to the administrator');
+ assert.ok(s.login({username:'admin',password:'CorrectHorse42!'}).permissions.includes('dashboard'));
+ // Shell calls work for any signed-in account, even one with every module off.
+ const cashierId=s.saveUser(admin,{username:'cashier6',name:'Cashier',password:'CashierPassword1',role:'cashier',active:1,permissions:Object.fromEntries(['dashboard','pos','sales','returns','customers','customerpayments','patients','prescriptions','register','barcodes'].map(key=>[key,false]))}).id;
+ const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
+ assert.deepEqual(s.permissions(cashier),[]);
+ assert.ok(s.preferences(cashier).currency);
+ assert.ok(s.options(cashier).accounts.length>0);
+ assert.throws(()=>s.dashboard(cashier),/permission/);
+ assert.throws(()=>s.employeeBook(cashier),/permission/);
+ // A corrupt permission payload must not break signing in either.
+ s.db.prepare('UPDATE users SET permissions=? WHERE id=?').run('not json',cashierId);
+ assert.deepEqual(s.permissions(s.get('SELECT * FROM users WHERE id=?',cashierId)),['dashboard','pos','sales','returns','customers','customerpayments','barcodes','register','prescriptions','patients'],'a corrupt payload falls back to the role defaults instead of crashing');
+});

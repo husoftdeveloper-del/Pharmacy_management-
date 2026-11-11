@@ -15,8 +15,16 @@ async function authScreen(setup=false){
   app.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const form=ev.currentTarget,button=form.querySelector('button');button.disabled=true;try{const data=Object.fromEntries(new FormData(form));const result=await api(setup?'setup':'login',data);await startSession(result);}catch(error){form.querySelector('.form-error').textContent=error.message;button.disabled=false;}};
 }
 async function startSession(result){
-  state.user=result.user;state.permissions=result.permissions;state.preferences=await api('preferences');setLanguage(state.preferences.language);document.documentElement.dataset.theme=state.preferences.theme;
-  await refreshOptions();renderShell();await navigate(state.permissions.includes('dashboard')?'dashboard':state.permissions[0]||'settings');
+  state.user=result.user;state.permissions=result.permissions||[];
+  // Preferences and reference data are shell-level: open the app even when the
+  // signed-in account has lost a module permission, instead of blocking login.
+  state.preferences=await api('preferences');
+  setLanguage(state.preferences.language);document.documentElement.dataset.theme=state.preferences.theme;
+  try{await refreshOptions();}catch{}
+  renderShell();
+  const landing=state.permissions.includes('dashboard')?'dashboard':state.permissions[0];
+  if(landing)await navigate(landing);
+  else toast(t('noAccess'),'error');
 }
 function renderShell(){
  app.innerHTML=`<div class="app-shell"><aside class="sidebar">${brand()}<nav class="sidebar-scroll" aria-label="Main navigation">${navigation.map(group=>{const items=group.items.filter(([key])=>state.permissions.includes(key));return items.length?`<div class="nav-group" data-i18n="${group.group}"></div>${items.map(([key,symbol])=>`<button class="nav-item" data-page="${key}">${icon(symbol)}<span data-i18n="${key}"></span>${key==='pos'?'<i class="nav-dot"></i>':''}</button>`).join('')}`:'';}).join('')}</nav><div class="sidebar-bottom"><i class="status-dot"></i><div><strong data-i18n="offline"></strong><small data-i18n="localData"></small><small class="app-build" title="${APP_LABEL}">${APP_BUILD}</small></div></div></aside><div class="workspace"><header class="topbar"><button class="icon-btn mobile-menu" id="mobile-menu" aria-label="Menu">${icon('menu')}</button><div class="breadcrumb"><span data-i18n="overview"></span>${icon('chevron',12)}<strong id="breadcrumb-page"></strong></div><label class="topbar-search">${icon('search',16)}<input id="global-search" data-i18n-placeholder="search" aria-label="Search"><kbd>Ctrl K</kbd></label><div class="topbar-tools"><select id="language-select" aria-label="Language" class="language-select"><option value="en">EN</option><option value="ps">پښتو</option><option value="fa-AF">دری</option></select><button class="icon-btn" id="theme-toggle" aria-label="Toggle theme">${icon(state.preferences.theme==='dark'?'sun':'moon',19)}</button><div class="profile"><div class="avatar">${e(state.user.name.split(' ').map(x=>x[0]).slice(0,2).join(''))}</div><div><strong>${e(state.user.name)}</strong><small>${e(t(state.user.role))}</small></div><button class="icon-btn" id="logout" aria-label="${e(t('logout'))}">${icon('logout',17)}</button></div></div></header><main class="content" id="page-content"></main></div></div>`;

@@ -21,8 +21,19 @@ class PharmacyService {
   setting(key) { return this.get('SELECT value FROM settings WHERE key=?', key)?.value || ''; }
   permissions(user) {
     if (!user) return [];
-    const overrides = JSON.parse(user.permissions || '{}');
-    return modules.filter(m => overrides[m] === undefined ? rolePermissions[user.role].includes(m) : overrides[m] === true);
+    // The administrator keeps every module even if an old saved permission set
+    // (from a build with a shorter module list) says otherwise, so the only
+    // administrator can never lock themselves out of the app.
+    if (user.role === 'admin') return [...modules];
+    let overrides = {};
+    try { overrides = JSON.parse(user.permissions || '{}') || {}; } catch { overrides = {}; }
+    const defaults = rolePermissions[user.role] || [];
+    return modules.filter(m => overrides[m] === undefined ? defaults.includes(m) : overrides[m] === true);
+  }
+  // Shell-level calls every signed-in user needs before the first page renders;
+  // they do not depend on any single module permission.
+  requireSession(user) {
+    if (!user?.active) fail('Please sign in.');
   }
   require(user, permission, write = false) {
     if (!user?.active) fail('Please sign in.');
@@ -692,7 +703,7 @@ class PharmacyService {
     return this.all(`SELECT m.*, c.name AS category, COALESCE(SUM(CASE WHEN b.expiry>=date('now') THEN b.quantity ELSE 0 END),0) AS stock FROM medicines m LEFT JOIN categories c ON c.id=m.category_id LEFT JOIN batches b ON b.medicine_id=m.id WHERE m.active=1 AND (m.name LIKE ? ESCAPE '\\' OR m.sku LIKE ? ESCAPE '\\' OR m.barcode LIKE ? ESCAPE '\\' OR m.generic_name LIKE ? ESCAPE '\\') GROUP BY m.id ORDER BY m.name LIMIT 100`,term,term,term,term);
   }
   options(user) {
-    this.require(user, 'dashboard');
+    this.requireSession(user);
     const result = {};
     for (const [key, table, permission] of [['categories','categories','categories'],['manufacturers','manufacturers','manufacturers'],['customers','customers','customers'],['suppliers','suppliers','suppliers'],['patients','patients','patients'],['staff','staff',['staff','employees','salaries','advances']],['locations','locations','inventory'],['medicines','medicines',['medicines','inventory']]]) {
       const can = Array.isArray(permission) ? permission.some(name => this.permissions(user).includes(name)) : this.permissions(user).includes(permission);
@@ -1126,7 +1137,9 @@ class PharmacyService {
     if(old?.role==='admin'&&old.active&&(!active||role!=='admin')&&!this.get("SELECT id FROM users WHERE role='admin' AND active=1 AND id<>?",old.id))fail('Keep at least one active administrator.');
     const password=String(input.password||'');if((!old||password)&&(password.length<10||password.length>128))fail('Password must contain 10–128 characters.');
     const permissions={};for(const m of modules)if(typeof input.permissions?.[m]==='boolean')permissions[m]=input.permissions[m];
-    if(role==='admin')permissions.users=true;
+    // An administrator always keeps every module, so the account that can fix
+    // permissions can never be locked out by its own saved set.
+    if(role==='admin')for(const m of modules)permissions[m]=true;
     return transaction(this.db,()=>{let userIdFinal;if(old){this.run('UPDATE users SET username=?,name=?,role=?,active=?,permissions=? WHERE id=?',username,text(input.name,'name',true,100),role,active,JSON.stringify(permissions),old.id);if(password)this.run('UPDATE users SET password_hash=? WHERE id=?',hashPassword(password),old.id);userIdFinal=old.id;}else{const r=this.run('INSERT INTO users(username,name,password_hash,role,active,permissions) VALUES(?,?,?,?,?,?)',username,text(input.name,'name',true,100),hashPassword(password),role,active,JSON.stringify(permissions));userIdFinal=Number(r.lastInsertRowid);}audit(this.db,user,old?'update_user':'create_user','users',userIdFinal,{role,active,permissions});return {id:userIdFinal};});
   }
   settings(user,input) {
@@ -1134,7 +1147,7 @@ class PharmacyService {
     return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');this.run('UPDATE settings SET value=? WHERE key=?',value,key);}audit(this.db,user,'update','settings');return {ok:true};});
   }
   preference(user,input) { const data={}; if(input.language!==undefined){if(!['en','ps','fa-AF'].includes(input.language))fail('Unsupported language.');data.language=input.language;}if(input.theme!==undefined){if(!['light','dark'].includes(input.theme))fail('Unsupported theme.');data.theme=input.theme;}for(const [key,value] of Object.entries(data))this.run('UPDATE settings SET value=? WHERE key=?',value,key);return data; }
-  preferences(user) {this.require(user,'dashboard');return Object.fromEntries(this.all('SELECT key,value FROM settings').map(r=>[r.key,r.value]));}
+  preferences(user) {this.requireSession(user);return Object.fromEntries(this.all('SELECT key,value FROM settings').map(r=>[r.key,r.value]));}
   dashboard(user) {
     this.require(user,'dashboard');const p=this.permissions(user);const result={pharmacyName:this.setting('pharmacy_name'),currency:this.setting('currency')};
     if(p.includes('reports')||p.includes('finance')){
