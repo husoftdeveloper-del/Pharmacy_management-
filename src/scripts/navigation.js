@@ -1,6 +1,7 @@
 export const navigation = [
  {group:'overview',items:[['dashboard','grid'],['pos','cart'],['sales','file'],['returns','transfer'],['customers','users'],['customerpayments','wallet'],['register','wallet']]},
- {group:'management',items:[['medicines','pill'],['inventory','box'],['pricelist','printer'],['printlabels','barcode'],['purchases','truck'],['suppliers','truck'],['supplierpayments','wallet'],['prescriptions','clipboard'],['stockcount','clipboard'],['locations','bank'],['transfers','transfer'],['adjustments','box'],['barcodes','barcode'],['offers','tag']]},
+ {group:'management',items:[['medicines','pill'],['inventory','box'],['pricelist','printer'],['printlabels','barcode'],['prescriptions','clipboard'],['stockcount','clipboard'],['locations','bank'],['transfers','transfer'],['adjustments','box'],['barcodes','barcode'],['offers','tag']]},
+ {group:'purchasing',items:[['purchases','truck'],['suppliers','truck'],['supplierpayments','wallet']]},
  {group:'operations',items:[['finance','wallet'],['banking','bank'],['staff','users'],['reports','chart']]},
  {group:'administration',items:[['categories','grid'],['patients','heart'],['manufacturers','factory'],['users','shield'],['audit','clock'],['settings','settings'],['backup','download']]}
 ];
