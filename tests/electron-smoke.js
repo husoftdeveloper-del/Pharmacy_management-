@@ -272,13 +272,14 @@ app.whenReady().then(async()=>{
   assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'105','copies from stock fills the quantity');
   assert.ok(await run("return !document.querySelector('#print-labels').disabled"),'print is enabled once copies exist');
   assert.match(await run("return document.querySelector('#labels-total').textContent"),/\d+ labels/,'the bar counts the labels');
+  const visibleCount=await run("return document.querySelectorAll('#labels-rows tr[data-row]').length");
+  await run("document.querySelector('#select-all-visible').click();return true;");
+  await pause(200);
+  assert.equal(await run("return document.querySelectorAll('#labels-rows .labels-check.checked').length"),visibleCount,'select all ticks every visible row');
+  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Empty Shelf'));return row.querySelector('.copies-input').value"),'1','select all gives one copy to a row without stock');
   await run("document.querySelector('#select-all-visible').click();return true;");
   await pause(200);
   assert.equal(await run("return document.querySelectorAll('#labels-rows .labels-check.checked').length"),0,'select all toggles the visible rows off');
-  await run("document.querySelector('#select-all-visible').click();return true;");
-  await pause(200);
-  assert.ok(await run("return document.querySelectorAll('#labels-rows .labels-check.checked').length>=1"),'select all ticks the visible rows');
-  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'1','select all gives one copy each');
   await run("const box=document.querySelector('#labels-search');box.value='nothing-matches';box.dispatchEvent(new Event('input'));return true;");
   await pause(250);
   assert.ok(await run("return document.querySelector('#labels-rows').innerText.toLowerCase().includes('no medicines match')"),'empty state for a search with no match');
