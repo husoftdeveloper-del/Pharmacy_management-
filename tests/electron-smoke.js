@@ -507,7 +507,7 @@ app.whenReady().then(async()=>{
   assert.equal(await run("return document.querySelectorAll('.report-filter [data-filter]').length"),3,'sales tab has cashier, customer and status filters');
   assert.equal(await run("return [...document.querySelectorAll('.report-filter [data-filter]')].map(s=>s.dataset.filter).join(',')"),'cashier,customer,status');
   assert.equal(await run("return document.querySelectorAll('.report-kpis .kpi-card, .kpi-card.plain').length"),4,'sales tab shows four KPI boxes');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Revenue') && document.querySelector('#page-content').innerText.includes('Discount')"),'sales KPI labels');
+  assert.ok(await run("const t=document.querySelector('#page-content').innerText.toLowerCase();return t.includes('revenue') && t.includes('discount') && t.includes('sale returns')"),'sales KPI labels');
   assert.ok(await run("return [...document.querySelectorAll('.kpi-card.plain .kpi-label')].map(x=>x.textContent.trim()).join('|')==='Revenue|Discount|Sale Returns|Orders'"),'sales KPI order matches the reference');
   assert.ok(await run("return !!document.querySelector('.report-table tbody tr')"),'sales table lists the smoke invoices');
   const salesRows=await run("return document.querySelectorAll('.report-table tbody tr').length");
