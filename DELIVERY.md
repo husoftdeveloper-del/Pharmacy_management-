@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.46**
+Verified release: **v1.0.0-build.47**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.46
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.46/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.46/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.47
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.47/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.47/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-2f32350cc4013fffcf7b0a8ca33b716f229ea6f11c497c0d45784c5cc07adc8a  Pharmacy-1.0.0-x64.exe
-af83dd65bc912e72cb0f4fab1fa6d1d69b31b00a7b0e7125fdc0146e1a9f9d5d  Pharmacy-1.0.0-Portable.exe
+6fb4b15ab1c78947ea3f14ca7cb6157702d17491569312b48e7b4add02b2093e  Pharmacy-1.0.0-x64.exe
+9284cc21bab35a164414ee67aeedc2775ea67ba0f4b23a0f9ab27afa69939252  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -28,10 +28,10 @@ Get-FileHash .\src\pages\Pharmacy-Setup.exe -Algorithm SHA256
 
 ## Source
 
-Complete source is on branch `arena/59bbe374-pharmacy-management`. Application source commit: `00cf370`. The branch also contains the refreshed installer commit `3fb32d0`.
+Complete source is on branch `arena/23f10019-pharmacy-management`. Application source commit: `72d1eaa`. The branch also contains the refreshed installer commit `08bcf79`.
 
 ```powershell
-git clone --branch arena/59bbe374-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
+git clone --branch arena/23f10019-pharmacy-management https://github.com/husoftdeveloper-del/Pharmacy_management-.git Pharmacy_management-
 cd .\Pharmacy_management-
 npm ci
 npm start
@@ -74,6 +74,20 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
 
+## Staff section (build 47)
+
+A new **STAFF** group sits between **STOCK** and **OPERATIONS** with three pages:
+
+1. **Employees** (`employees`) — the Employees title with **New Employee**, two totals (**Active Employees**, **Monthly Payroll**), a search box with an **Active only / All employees** picker, and the table **Name · Position · Phone · Monthly Salary · Join Date · Status · Actions** (Advance, Edit). Empty state: “No employees yet” / “Add your team members to track salaries and advances.”
+2. **Monthly Salaries** (`salaries`) — the Monthly Salaries title with **Export PDF** and **Issue Salary**, two totals (**Monthly Payroll**, **Pending Salaries**), a filter row (**All Years**, month, All / Paid / Pending) and the payroll table **Month · Employee · Base · Additions · Deductions · Advance Deduction · Net Pay · Status · Paid Date · Actions**. Staff without a salary record for the selected month are listed as **Pending** with a **Pay** action, so the pending card and the list always agree. Empty state: “No salary records for this filter” / “Use “Issue Salary” to create a payroll entry.”
+3. **Salary Advances** (`advances`) — the Salary Advances title with **New Advance**, two totals (**Outstanding Advances**, **Active Employees**), an **Active / Settled / All** filter and the table **Date · Employee · Amount · Remaining · Reason · Status · Actions**. Empty state: “No advances yet” / “Advances are deducted from the next monthly salary.”
+
+Supporting changes:
+
+- New permission-checked calls `employeeBook`, `salaryBook` and `advanceBook`; the new `employees`, `salaries` and `advances` permissions are granted to administrators, pharmacists and accountants by default and can be toggled per user. Writes (`save` staff, `salary`, `advance`) still use the `staff` permission.
+- `salaries` gained **additions** and **deductions** columns (existing databases get them through the automatic migration). Net pay is now `base + additions − deductions − advance recovery`, and the monthly journal stays balanced. Issuing a salary still recovers every outstanding advance first and refuses to pay the same person twice in one month.
+- The first save on a new employee is reachable from the three new pages; the old tabbed Staff page is no longer in the sidebar.
+
 ## Report tabs (build 46)
 
 Every Reports tab now behaves like its own page: the tab owns its filter row, its KPI boxes and its table, all served by one permission-checked `reportBook` call, and a tab with no matching rows says **“No data for the selected filters.”**
@@ -110,7 +124,8 @@ MANAGEMENT   Medicines · Inventory · Price list · Print Labels
 PURCHASING   Purchases · Suppliers · Supplier Payments
 FINANCE      Expenses · Ledger & P&L · Reports
 STOCK        Prescriptions · Stock count · Locations · Transfers · Adjustments · Barcodes · Offers
-OPERATIONS   Finance · Banking · Staff
+STAFF        Employees · Monthly Salaries · Salary Advances
+OPERATIONS   Finance · Banking
 ADMINISTRATION  Categories · Patients · Manufacturers · Users · Audit · Settings · Backup
 ```
 
@@ -260,7 +275,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.46` = `build.46` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.47` = `build.47` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
@@ -278,11 +293,11 @@ Barcode Management now has an icon button inside the barcode input. Clicking it 
 
 ## Verification completed
 
-- 26 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks, the finance queries and every report tab.
+- 27 database/business-rule and form-payload tests passed, including the purchase-form regression, barcode uniqueness, permission checks, the finance queries, every report tab and the three staff pages.
 - JavaScript syntax and strict technology checks passed.
-- Real Electron smoke test on Windows passed: 34 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
+- Real Electron smoke test on Windows passed: 37 module screens, renderer Node isolation, one-click barcode generation/preview, visible build label, purchase form submissions for credit/cash/bank, POS cart and sale, PDF generation, persistent login data, Pashto RTL and dark preferences.
 - Electron Builder produced both Windows Setup and Portable EXEs.
-- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42979944592
+- Successful Windows workflow: https://github.com/husoftdeveloper-del/Pharmacy_management-/actions/runs/42982085933
 
 The EXEs were built and verified by the Windows CI job. Interactive installation, physical scanner/printer testing, native file-picker workflows and a real-pharmacy acceptance run remain required; they are not claimed as completed here.
 
