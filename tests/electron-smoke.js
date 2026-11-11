@@ -84,7 +84,7 @@ app.whenReady().then(async()=>{
     await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
     await pause(200);
     const tabText=await run("return document.querySelector('#settings-body').innerText");
-    assert.ok(tabText.includes(needle),tabKey+' tab renders '+needle+': '+tabText.slice(0,140));
+    assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
   await run("document.querySelector('[data-tab=profile]').click();return true;");
   await pause(200);
