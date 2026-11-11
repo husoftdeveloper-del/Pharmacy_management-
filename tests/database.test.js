@@ -271,3 +271,55 @@ test('finance pages read expenses, the profit statement and the report overview'
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierId);
  assert.throws(()=>s.expenseBook(cashier),/permission/);assert.throws(()=>s.ledgerBook(cashier,{}),/permission/);assert.throws(()=>s.reportOverview(cashier,{}),/permission/);
 });
+
+test('every report tab has its own filters, KPI boxes and rows',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin);
+ const customer=s.saveEntity(admin,'customers',{name:'Report Customer',opening_balance:0,credit_limit:0,active:1}).id;
+ const sale=s.sale(admin,{items:[{medicineId:m.id,quantity:4}],paymentMethod:'cash',accountId:1});
+ s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:2}],paymentMethod:'credit'});
+ s.returnDocument(admin,'sale',{documentId:sale.id,items:[{itemId:s.get('SELECT id FROM sale_items WHERE sale_id=?',sale.id).id,quantity:1,restock:1}],reason:'Smoke',method:'cash'});
+ s.expense(admin,{category:'Rent',description:'Shop rent',amount:40,method:'cash',accountId:1});
+ const book=(kind,extra={})=>s.reportBook(admin,{from:'2000-01-01',to:'2999-12-31',kind,...extra});
+
+ const sales=book('sales');
+ assert.equal(sales.kpis.map(k=>k.key).join(','),'revenue,discount,saleReturns,orders');
+ assert.equal(sales.kpis.find(k=>k.key==='revenue').value,60);assert.equal(sales.kpis.find(k=>k.key==='orders').value,2);
+ assert.equal(sales.kpis.find(k=>k.key==='saleReturns').value,10);
+ assert.equal(sales.filters.map(f=>f.key).join(','),'cashier,customer,status');
+ assert.equal(sales.columns.join(','),'invoice_no,date,customer,cashier,total,discount,returned,status');
+ assert.equal(book('sales',{search:'nothing'}).rows.length,0);assert.equal(book('sales',{search:'nothing'}).kpis[0].value,0);
+ assert.equal(book('sales',{customer:String(customer)}).rows.length,1);assert.equal(book('sales',{status:'nope'}).rows.length,0);
+
+ const profit=book('profit');
+ assert.equal(profit.kpis.map(k=>k.key).join(','),'revenue,costOfGoods,grossProfit,margin,returnedValue');
+ assert.equal(profit.kpis.find(k=>k.key==='revenue').value,50);assert.equal(profit.kpis.find(k=>k.key==='costOfGoods').value,30);
+ assert.equal(profit.kpis.find(k=>k.key==='grossProfit').value,20);assert.equal(profit.kpis.find(k=>k.key==='margin').value,40);
+ assert.equal(profit.kpis.find(k=>k.key==='returnedValue').value,10);assert.equal(profit.rows[0].name,'Paracetamol 500mg');
+ assert.equal(book('profit',{search:'nothing'}).rows.length,0);
+
+ const inventory=book('inventory');
+ assert.equal(inventory.kpis.map(k=>k.key).join(','),'batches,units,stockValueLabel,lowStockItems');
+ assert.equal(inventory.kpis.find(k=>k.key==='units').value,25);assert.equal(inventory.rows.length,1);
+
+ const expiry=book('expiry');
+ assert.equal(expiry.kpis.map(k=>k.key).join(','),'expired,expiring30,expiring90,valueAtRisk');
+ assert.ok(expiry.filters.some(f=>f.key==='expiry'));
+
+ const purchases=book('purchases');
+ assert.equal(purchases.kpis.map(k=>k.key).join(','),'invoices,totalPurchases,paid,balanceDue');
+ assert.equal(purchases.kpis.find(k=>k.key==='invoices').value,1);
+
+ const expenses=book('expenses');
+ assert.equal(expenses.kpis.find(k=>k.key==='total').value,40);assert.equal(expenses.kpis.find(k=>k.key==='entries').value,1);
+ assert.equal(expenses.filters[0].key,'category');assert.ok(expenses.filters[0].options.some(option=>option.value==='Rent'));
+ assert.equal(book('expenses',{category:'Rent'}).rows.length,1);assert.equal(book('expenses',{category:'Other'}).rows.length,0);
+
+ const customers=book('customers');
+ assert.equal(customers.kpis.find(k=>k.key==='customers').value,1);assert.equal(customers.kpis.find(k=>k.key==='creditSales').value,20);
+ const suppliers=book('suppliers');
+ assert.equal(suppliers.kpis.map(k=>k.key).join(','),'suppliers,totalPurchases,paid,balanceDue');
+ assert.equal(suppliers.kpis.find(k=>k.key==='totalPurchases').value,180);
+
+ const cashier=s.get('SELECT * FROM users WHERE id=?',s.saveUser(admin,{username:'cashier4',name:'Cashier',password:'CashierPassword1',role:'cashier',active:1,permissions:{reports:false}}).id);
+ assert.throws(()=>s.reportBook(cashier,{kind:'sales'}),/permission/);
+});

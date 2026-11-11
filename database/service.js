@@ -182,11 +182,9 @@ class PharmacyService {
   }
   // Ledger & P&L: the profit and loss statement, the cash movement and the
   // journal transactions for one date range.
-  ledgerBook(user, query = {}) {
-    this.require(user,'ledger');
-    const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
-    const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
-    if (from > to) fail('Start date must be before end date.');
+  // Profit and loss figures for one date range, shared by the Ledger page and
+  // the profit tab of Reports so both always show the same numbers.
+  profitFigures(from, to) {
     const accountTotal = code => {
       const account = this.get('SELECT id,type FROM accounts WHERE code=?',code);
       if (!account) return 0;
@@ -197,13 +195,23 @@ class PharmacyService {
     const saleReturns = accountTotal('4100');
     const discounts = accountTotal('4200');
     const cogs = accountTotal('5000');
-    const cogsReturned = this.get(`SELECT COALESCE(SUM(si.cost*sri.quantity),0) AS n FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
-      JOIN sale_returns r ON r.id=sri.return_id WHERE date(r.date) BETWEEN ? AND ?`,from,to).n;
+    const cogsReturned = round(this.get(`SELECT COALESCE(SUM(si.cost*sri.quantity),0) AS n FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+      JOIN sale_returns r ON r.id=sri.return_id WHERE date(r.date) BETWEEN ? AND ?`,from,to).n);
     const expenses = accountTotal('6000');
     const netRevenue = round(salesRevenue - saleReturns);
-    const netCogs = round(cogs - round(cogsReturned));
+    const netCogs = round(cogs - cogsReturned);
     const grossProfit = round(netRevenue - netCogs);
     const netProfit = round(grossProfit - expenses);
+    return { salesRevenue, saleReturns, discounts, netRevenue, cogs, cogsReturned, netCogs, grossProfit, expenses, netProfit };
+  }
+  // Ledger & P&L: the profit and loss statement, the cash movement and the
+  // journal transactions for one date range.
+  ledgerBook(user, query = {}) {
+    this.require(user,'ledger');
+    const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
+    if (from > to) fail('Start date must be before end date.');
+    const statement = this.profitFigures(from,to);
     const cash = this.all("SELECT id FROM accounts WHERE code IN ('1000','1010')").map(row=>row.id);
     const cashMoved = [];
     for (const accountId of cash) {
@@ -216,11 +224,7 @@ class PharmacyService {
     return {
       from,to,
       currency: this.setting('currency'),
-      statement: {
-        salesRevenue, saleReturns, discounts, netRevenue,
-        cogs: round(cogs), cogsReturned: round(cogsReturned), netCogs,
-        grossProfit, expenses, netProfit
-      },
+      statement,
       cash: { cashIn, cashOut, netCashFlow: round(cashIn-cashOut), totalPurchases: round(purchases.n), purchaseCount: Number(purchases.c) },
       transactions: this.all(`SELECT j.id,j.date,j.description,j.reference,u.name AS user,
           COALESCE(SUM(l.debit),0) AS amount
@@ -271,6 +275,208 @@ class PharmacyService {
       },
       trend
     };
+  }
+  // Reports tabs: each tab has its own filter row, KPI cards and table, all
+  // computed here so the numbers always match the ledger and the lists.
+  reportBook(user, query = {}) {
+    this.require(user,'reports');
+    const kinds = ['sales','profit','inventory','expiry','purchases','expenses','customers','suppliers'];
+    const kind = kinds.includes(query.kind) ? query.kind : 'sales';
+    const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+    const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
+    if (from > to) fail('Start date must be before end date.');
+    const search = String(query.search || '').trim().toLowerCase();
+    const choice = value => { try { return value ? id(value) : 0; } catch { return 0; } };
+    const cashier = choice(query.cashier);
+    const customer = choice(query.customer);
+    const supplier = choice(query.supplier);
+    const category = String(query.category || '').trim();
+    const status = String(query.status || '').trim();
+    const window = ['expired','30','90'].includes(String(query.expiry || '')) ? String(query.expiry) : '';
+    const matches = (...values) => !search || values.some(value => String(value ?? '').toLowerCase().includes(search));
+    const today = new Date().toISOString().slice(0,10);
+    const daysLeft = expiry => Math.ceil((Date.parse(`${String(expiry).slice(0,10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+    const kpi = (key, value, format = 'money') => ({ key, value: format === 'number' ? Number(value) : round(value), format });
+    const people = table => this.all(`SELECT id,name FROM ${table} WHERE active=1 ORDER BY name`).map(row => ({ value: row.id, label: row.name }));
+    const head = (searchLabel, filters, kpis, columns, rows) => ({
+      kind, from, to, currency: this.setting('currency'), searchLabel, filters, kpis, columns, rows
+    });
+
+    if (kind === 'sales') {
+      const rows = this.all(`SELECT s.id,s.invoice_no,s.date,s.subtotal,s.discount,s.total,s.paid,s.status,s.customer_id,s.user_id,
+          COALESCE(c.name,'') AS customer, COALESCE(u.name,'') AS cashier,
+          (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE r.sale_id=s.id) AS returned
+        FROM sales s LEFT JOIN customers c ON c.id=s.customer_id LEFT JOIN users u ON u.id=s.user_id
+        WHERE date(s.date) BETWEEN ? AND ? ORDER BY s.date DESC,s.id DESC`,from,to)
+        .filter(row => (!cashier || Number(row.user_id) === cashier) && (!customer || Number(row.customer_id) === customer)
+          && (!status || row.status === status) && matches(row.invoice_no,row.customer,row.cashier))
+        .map(row => ({ ...row, discount: round(row.discount), total: round(row.total), returned: round(row.returned) }));
+      return head('searchInvoice', [
+        { key: 'cashier', all: 'allCashiers', options: people('users') },
+        { key: 'customer', all: 'allCustomers', options: people('customers') },
+        { key: 'status', all: 'allStatuses', options: this.all('SELECT DISTINCT status FROM sales WHERE date(date) BETWEEN ? AND ? ORDER BY status',from,to).map(row => ({ value: row.status, label: row.status })) }
+      ], [
+        kpi('revenue', rows.reduce((sum,row)=>sum+row.total,0)),
+        kpi('discount', rows.reduce((sum,row)=>sum+row.discount,0)),
+        kpi('saleReturns', rows.reduce((sum,row)=>sum+row.returned,0)),
+        kpi('orders', rows.length, 'number')
+      ], ['invoice_no','date','customer','cashier','total','discount','returned','status'], rows);
+    }
+
+    if (kind === 'profit') {
+      const rows = this.all(`SELECT m.id,m.name,m.sku,
+          SUM(i.price*(i.quantity-i.returned_qty)) AS revenue,
+          SUM(i.cost*(i.quantity-i.returned_qty)) AS cogs,
+          SUM(i.quantity-i.returned_qty) AS quantity,
+          SUM(i.price*i.returned_qty) AS returned_value
+        FROM sale_items i JOIN sales s ON s.id=i.sale_id JOIN medicines m ON m.id=i.medicine_id
+        WHERE date(s.date) BETWEEN ? AND ? AND s.status<>'cancelled'
+        GROUP BY m.id HAVING quantity<>0 OR returned_value<>0 ORDER BY revenue DESC`,from,to)
+        .filter(row => matches(row.name,row.sku))
+        .map(row => {
+          const revenue = round(row.revenue);
+          const cogs = round(row.cogs);
+          const profit = round(revenue - cogs);
+          return { ...row, revenue, cogs, profit, margin: revenue > 0 ? round(profit / revenue * 100) : 0, returned_value: round(row.returned_value) };
+        });
+      const revenue = round(rows.reduce((sum,row)=>sum+row.revenue,0));
+      const cogs = round(rows.reduce((sum,row)=>sum+row.cogs,0));
+      const profit = round(revenue - cogs);
+      return head('searchMedicine', [], [
+        kpi('revenue', revenue),
+        kpi('costOfGoods', cogs),
+        kpi('grossProfit', profit),
+        kpi('margin', revenue > 0 ? round(profit / revenue * 100) : 0, 'percent'),
+        kpi('returnedValue', rows.reduce((sum,row)=>sum+row.returned_value,0))
+      ], ['name','quantity','revenue','cogs','profit','margin','returned_value'], rows);
+    }
+
+    if (kind === 'inventory') {
+      const rows = this.all(`SELECT b.id,m.name,m.sku,m.barcode,b.batch_no,b.expiry,b.quantity,b.cost,l.name AS location
+        FROM batches b JOIN medicines m ON m.id=b.medicine_id JOIN locations l ON l.id=b.location_id
+        WHERE b.quantity>0 ORDER BY m.name,b.expiry`)
+        .filter(row => matches(row.name,row.sku,row.barcode,row.batch_no,row.location))
+        .map(row => ({ ...row, cost: round(row.cost), value: round(Number(row.quantity)*Number(row.cost)) }));
+      const low = this.get(`SELECT COUNT(*) AS n FROM (SELECT m.id,COALESCE(SUM(b.quantity),0) AS quantity,m.reorder_level
+        FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id WHERE m.active=1 GROUP BY m.id HAVING quantity<=m.reorder_level)`).n;
+      return head('searchBatch', [], [
+        kpi('batches', rows.length, 'number'),
+        kpi('units', rows.reduce((sum,row)=>sum+Number(row.quantity),0), 'number'),
+        kpi('stockValueLabel', rows.reduce((sum,row)=>sum+row.value,0)),
+        kpi('lowStockItems', low, 'number')
+      ], ['name','batch_no','expiry','location','quantity','cost','value'], rows);
+    }
+
+    if (kind === 'expiry') {
+      const warning = Number(this.setting('low_stock_days')) || 90;
+      const all = this.all('SELECT b.expiry,b.quantity,b.cost FROM batches b WHERE b.quantity>0')
+        .map(row => ({ ...row, days: daysLeft(row.expiry) }));
+      let rows = this.all(`SELECT b.id,m.name,m.barcode,b.batch_no,b.expiry,b.quantity,b.cost
+        FROM batches b JOIN medicines m ON m.id=b.medicine_id WHERE b.quantity>0 ORDER BY b.expiry`)
+        .filter(row => matches(row.name,row.barcode,row.batch_no))
+        .map(row => ({ ...row, days: daysLeft(row.expiry), value: round(Number(row.quantity)*Number(row.cost)) }))
+        .filter(row => row.days <= warning)
+        .map(({ days, ...row }) => ({ ...row, days_left: days }));
+      if (window === 'expired') rows = rows.filter(row => row.days_left < 0);
+      else if (window === '30') rows = rows.filter(row => row.days_left >= 0 && row.days_left <= 30);
+      else if (window === '90') rows = rows.filter(row => row.days_left >= 0 && row.days_left <= 90);
+      return head('searchBatch', [
+        { key: 'expiry', all: 'anyExpiry', options: [{ value: 'expired', label: 'expired' }, { value: '30', label: '≤ 30' }, { value: '90', label: '≤ 90' }] }
+      ], [
+        kpi('expired', all.filter(row => row.days < 0).length, 'number'),
+        kpi('expiring30', all.filter(row => row.days >= 0 && row.days <= 30).length, 'number'),
+        kpi('expiring90', all.filter(row => row.days >= 0 && row.days <= 90).length, 'number'),
+        kpi('valueAtRisk', all.filter(row => row.days <= warning).reduce((sum,row)=>sum+Number(row.quantity)*Number(row.cost),0))
+      ], ['name','batch_no','expiry','days_left','quantity','value'], rows);
+    }
+
+    if (kind === 'purchases') {
+      const rows = this.all(`SELECT p.id,p.invoice_no,p.date,p.total,p.paid,p.status,p.supplier_id,p.user_id,
+          s.name AS supplier, COALESCE(u.name,'') AS recorded_by,
+          (SELECT COALESCE(SUM(r.total),0) FROM purchase_returns r WHERE r.purchase_id=p.id) AS returned,
+          (SELECT COALESCE(SUM(a.amount),0) FROM payment_allocations a WHERE a.invoice_type='purchase' AND a.invoice_id=p.id) AS allocated
+        FROM purchases p LEFT JOIN suppliers s ON s.id=p.supplier_id LEFT JOIN users u ON u.id=p.user_id
+        WHERE date(p.date) BETWEEN ? AND ? ORDER BY p.date DESC,p.id DESC`,from,to)
+        .filter(row => (!supplier || Number(row.supplier_id) === supplier) && (!status || row.status === status)
+          && matches(row.invoice_no,row.supplier,row.recorded_by))
+        .map(row => ({
+          ...row,
+          total: round(row.total),
+          paid: round(row.paid),
+          due: round(Math.max(0,Number(row.total)-Number(row.paid)-Number(row.returned)-Number(row.allocated)))
+        }));
+      return head('searchInvoice', [
+        { key: 'supplier', all: 'allSuppliers', options: people('suppliers') },
+        { key: 'status', all: 'allStatuses', options: this.all('SELECT DISTINCT status FROM purchases WHERE date(date) BETWEEN ? AND ? ORDER BY status',from,to).map(row => ({ value: row.status, label: row.status })) }
+      ], [
+        kpi('invoices', rows.length, 'number'),
+        kpi('totalPurchases', rows.reduce((sum,row)=>sum+row.total,0)),
+        kpi('paid', rows.reduce((sum,row)=>sum+row.paid,0)),
+        kpi('balanceDue', rows.reduce((sum,row)=>sum+row.due,0))
+      ], ['invoice_no','date','supplier','recorded_by','total','paid','due','status'], rows);
+    }
+
+    if (kind === 'expenses') {
+      const rows = this.all(`SELECT e.id,e.date,e.category,e.description,e.amount,e.user_id,
+          a.name AS account, COALESCE(u.name,'') AS recorded_by
+        FROM expenses e LEFT JOIN accounts a ON a.id=e.account_id LEFT JOIN users u ON u.id=e.user_id
+        WHERE date(e.date) BETWEEN ? AND ? ORDER BY e.date DESC,e.id DESC`,from,to)
+        .filter(row => (!category || row.category === category) && matches(row.category,row.description,row.recorded_by,row.account))
+        .map(row => ({ ...row, amount: round(row.amount) }));
+      const categories = [...new Set(this.all('SELECT DISTINCT category FROM expenses ORDER BY category').map(row=>row.category))];
+      return head('searchExpense', [
+        { key: 'category', all: 'allCategories', options: categories.map(name => ({ value: name, label: name })) }
+      ], [
+        kpi('total', rows.reduce((sum,row)=>sum+row.amount,0)),
+        kpi('entries', rows.length, 'number'),
+        kpi('largestExpense', rows.reduce((max,row)=>Math.max(max,row.amount),0)),
+        kpi('categoriesCount', new Set(rows.map(row=>row.category)).size, 'number')
+      ], ['date','category','description','amount','account','recorded_by'], rows);
+    }
+
+    if (kind === 'customers') {
+      const rows = this.all('SELECT id,name,phone FROM customers WHERE active=1 ORDER BY name')
+        .filter(row => matches(row.name,row.phone))
+        .map(entry => {
+          const totals = this.get(`SELECT COALESCE(SUM(total),0) AS credit,COUNT(*) AS orders FROM sales
+            WHERE customer_id=? AND date(date) BETWEEN ? AND ?`,entry.id,from,to);
+          const paid = this.get(`SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE party_type='customer' AND party_id=? AND date(date) BETWEEN ? AND ?`,entry.id,from,to).n;
+          const returned = this.get(`SELECT COALESCE(SUM(r.total),0) AS n FROM sale_returns r JOIN sales s ON s.id=r.sale_id
+            WHERE s.customer_id=? AND date(r.date) BETWEEN ? AND ?`,entry.id,from,to).n;
+          return {
+            id: entry.id, name: entry.name, phone: entry.phone,
+            orders: Number(totals.orders), credit: round(totals.credit), paid: round(paid), returned: round(returned),
+            balance: this.party('customer',entry.id).balance
+          };
+        });
+      return head('searchCustomer', [], [
+        kpi('customers', rows.length, 'number'),
+        kpi('creditSales', rows.reduce((sum,row)=>sum+row.credit,0)),
+        kpi('paid', rows.reduce((sum,row)=>sum+row.paid,0)),
+        kpi('outstanding', rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+      ], ['name','phone','orders','credit','paid','returned','balance'], rows);
+    }
+
+    const rows = this.all('SELECT id,name,phone,contact_person FROM suppliers WHERE active=1 ORDER BY name')
+      .filter(row => matches(row.name,row.phone,row.contact_person))
+      .map(entry => {
+        const totals = this.get(`SELECT COALESCE(SUM(total),0) AS purchased,COUNT(*) AS orders FROM purchases
+          WHERE supplier_id=? AND date(date) BETWEEN ? AND ?`,entry.id,from,to);
+        const paid = this.get(`SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE party_type='supplier' AND party_id=? AND date(date) BETWEEN ? AND ?`,entry.id,from,to).n;
+        const returned = this.get(`SELECT COALESCE(SUM(r.total),0) AS n FROM purchase_returns r JOIN purchases p ON p.id=r.purchase_id
+          WHERE p.supplier_id=? AND date(r.date) BETWEEN ? AND ?`,entry.id,from,to).n;
+        return {
+          id: entry.id, name: entry.name, phone: entry.phone, contact: entry.contact_person,
+          orders: Number(totals.orders), purchased: round(totals.purchased), paid: round(paid), returned: round(returned),
+          balance: this.party('supplier',entry.id).balance
+        };
+      });
+    return head('searchSupplier', [], [
+      kpi('suppliers', rows.length, 'number'),
+      kpi('totalPurchases', rows.reduce((sum,row)=>sum+row.purchased,0)),
+      kpi('paid', rows.reduce((sum,row)=>sum+row.paid,0)),
+      kpi('balanceDue', rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+    ], ['name','phone','orders','purchased','paid','returned','balance'], rows);
   }
   // Purchases page: every received purchase with what is still owed on it.
   purchaseBook(user) {
@@ -942,6 +1148,7 @@ class PharmacyService {
     let rows=[],columns=[];
     if(kind==='sales'){columns=['invoice_no','date','total','paid','payment_method','status'];rows=this.all('SELECT invoice_no,date,total,paid,payment_method,status FROM sales WHERE date(date) BETWEEN ? AND ? ORDER BY date',from,to);}
     else if(kind==='purchases'){columns=['invoice_no','date','total','paid','status'];rows=this.all('SELECT invoice_no,date,total,paid,status FROM purchases WHERE date(date) BETWEEN ? AND ? ORDER BY date',from,to);}
+    else if(kind==='expenses'){columns=['date','category','description','amount','account','user'];rows=this.all("SELECT e.date,e.category,e.description,e.amount,a.name AS account,COALESCE(u.name,'') AS user FROM expenses e LEFT JOIN accounts a ON a.id=e.account_id LEFT JOIN users u ON u.id=e.user_id WHERE date(e.date) BETWEEN ? AND ? ORDER BY e.date DESC",from,to);}
     else if(kind==='inventory'){columns=['sku','name','batch_no','expiry','location','quantity','cost','value'];rows=this.all('SELECT m.sku,m.name,b.batch_no,b.expiry,l.name AS location,b.quantity,b.cost,round(b.quantity*b.cost,2) AS value FROM batches b JOIN medicines m ON m.id=b.medicine_id JOIN locations l ON l.id=b.location_id ORDER BY m.name,b.expiry');}
     else if(kind==='expiry'){columns=['name','batch_no','expiry','quantity'];rows=this.all("SELECT m.name,b.batch_no,b.expiry,b.quantity FROM batches b JOIN medicines m ON m.id=b.medicine_id WHERE b.quantity>0 AND b.expiry<=date('now','+'||?||' days') ORDER BY b.expiry",this.setting('low_stock_days'));}
     else if(kind==='stock'){columns=['date','name','batch_no','quantity','reason','reference'];rows=this.all('SELECT s.created_at AS date,m.name,b.batch_no,s.quantity,s.reason,s.reference FROM stock_movements s JOIN batches b ON b.id=s.batch_id JOIN medicines m ON m.id=b.medicine_id WHERE date(s.created_at) BETWEEN ? AND ? ORDER BY s.id DESC',from,to);}

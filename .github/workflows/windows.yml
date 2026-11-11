@@ -2,7 +2,7 @@ name: Test and build Windows desktop
 on:
   workflow_dispatch:
   push:
-    branches: ['arena/0746dde2-pharmacy-management']
+    branches: ['arena/**']
     paths:
       - 'main.js'
       - 'preload.js'
