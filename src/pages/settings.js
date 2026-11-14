@@ -4,6 +4,7 @@ import {icon,button,form,field,bindForm,toast,run,confirmAction} from '../compon
 import {renderUsers} from '../components/user-admin.js';
 import {APP_LABEL,APP_BUILD,APP_VERSION} from '../scripts/version.js';
 import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound} from '../scripts/alerts.js';
+import {amountInWords} from '../scripts/words.js';
 
 /* Settings: eight tabs in one page — Profile, Pharmacy, Receipt, Notifications,
    Appearance, Users, Data and License. Each tab owns its card and its own save
@@ -108,29 +109,46 @@ export async function render(root,params={}){
       copies:Math.min(5,Math.max(1,Number(p.receipt_copies)||1))
     };
   };
+  // The preview mirrors database/pdf.js field for field: header, the #/Name/
+  // Date/Time/Dr block, the item table, the totals and the words line.
   const receiptPreview=(config)=>{
-    const p=state.preferences;
+    const p=state.preferences,currency=p.currency||'';
     const money=value=>Number(value).toFixed(2);
+    const withCurrency=value=>`${money(value)}${currency?` ${currency}`:''}`;
+    const now=new Date();
+    const date=now.toISOString().slice(0,10);
+    const time=now.toTimeString().slice(0,5);
     const items=[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}];
     const subtotal=items.reduce((sum,item)=>sum+item.quantity*item.price,0);
     const discount=1,total=subtotal-discount;
-    const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
     return `<div class="receipt-sheet t-${config.template} p-${config.paper}">
-        <header class="receipt-head"><strong>${e(p.pharmacy_name||'Pharmacy Management')}</strong>
+        <header class="rhead">
+          <strong>${e(p.pharmacy_name||'Pharmacy Management')}</strong>
           ${p.address?`<small>${e(p.address)}</small>`:''}
-          ${p.phone?`<small>${e(p.phone)}</small>`:''}
+          ${p.phone?`<small class="rphone">Phone: ${e(p.phone)}</small>`:''}
         </header>
-        <div class="receipt-meta"><span>${e(t('invoiceNoShort'))}</span><b>INV-1001</b><span>${e(t('date'))}</span><b>${e(stamp)}</b><span>${e(t('cashier'))}</span><b>${e(state.user.name)}</b></div>
-        <div class="receipt-items">
-          <div class="receipt-line receipt-line-head"><span>${e(t('item'))}</span><span>${e(t('total'))}</span></div>
-          ${items.map(item=>`<div class="receipt-line"><span class="receipt-name">${e(item.name)}<small>${item.quantity} × ${money(item.price)}</small></span><span>${money(item.quantity*item.price)}</span></div>`).join('')}
+        <div class="rmeta">
+          <div><span>#:</span><b>INV-1001</b></div>
+          <div><span>Name:</span><b>Walk-in</b></div>
+          <div><span>Date:</span><b>${e(date)}</b></div>
+          <div><span>Time:</span><b>${e(time)}</b></div>
+          <div><span>Dr:</span><b>General</b></div>
+          <div><span>Item:</span><b>${items.length}</b></div>
         </div>
-        <div class="receipt-totals">
-          <div><span>${e(t('subtotal'))}</span><b>${money(subtotal)}</b></div>
-          <div><span>${e(t('discount'))}</span><b>- ${money(discount)}</b></div>
-          <div class="receipt-grand"><span>${e(t('total').toUpperCase())}</span><b>${money(total)}</b></div>
+        <table class="rtable">
+          <colgroup><col class="c-desc"><col class="c-qty"><col class="c-price"><col class="c-total"></colgroup>
+          <thead><tr><th>${e(t('description'))}</th><th class="num">${e(t('qtyShort'))}</th><th class="num">${e(t('price'))}</th><th class="num">${e(t('total'))}</th></tr></thead>
+          <tbody>${items.map(item=>`<tr><td>${e(item.name)}</td><td class="num">${item.quantity}</td><td class="num">${money(item.price)}</td><td class="num">${money(item.quantity*item.price)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div class="rtotals">
+          <div><span>${e(t('totalAmount'))}:</span><b>${withCurrency(subtotal)}</b></div>
+          <div><span>${e(t('totalDiscount'))}:</span><b>${withCurrency(discount)}</b></div>
+          <div class="rgrand"><span>${e(t('grandTotal'))}:</span><b>${withCurrency(total)}</b></div>
         </div>
-        <footer class="receipt-foot">${e(p.receipt_footer||'')}</footer>
+        <div class="rwords">${e(amountInWords(total))} Only</div>
+        <div class="rrule"></div>
+        <div class="rprinted">${e(t('printedBy'))}: <b>${e(state.user.name)}</b></div>
+        <div class="rfoot">${e(p.receipt_footer||'')}</div>
       </div>`;
   };
 

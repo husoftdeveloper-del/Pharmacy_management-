@@ -807,7 +807,10 @@ class PharmacyService {
     const items = type==='stockcount' ? this.all('SELECT i.*,m.name,b.batch_no FROM stock_count_items i JOIN batches b ON b.id=i.batch_id JOIN medicines m ON m.id=b.medicine_id WHERE count_id=?',row.id) : this.all(`SELECT i.*,m.name,b.batch_no,b.expiry FROM ${type}_items i JOIN medicines m ON m.id=i.medicine_id JOIN batches b ON b.id=i.batch_id WHERE ${type}_id=?`,row.id);
     const party = type==='sale' ? (row.customer_id?this.party('customer',row.customer_id):null) : type==='purchase'?this.party('supplier',row.supplier_id):null;
     const cashier=row.user_id?this.get('SELECT name FROM users WHERE id=?',row.user_id)?.name||'':'';
-    return {...row,cashier,items,party,returns:type==='stockcount'?[]:this.all(`SELECT * FROM ${type}_returns WHERE ${type}_id=?`,row.id)};
+    // The printed bill carries the patient and the prescribing doctor.
+    const patientName=type==='sale'&&row.patient_id?this.get('SELECT name FROM patients WHERE id=?',row.patient_id)?.name||'':' ';
+    const doctor=type==='sale'&&row.prescription_id?this.get('SELECT doctor FROM prescriptions WHERE id=?',row.prescription_id)?.doctor||'':' ';
+    return {...row,cashier,patientName:patientName.trim(),doctor:doctor.trim(),items,party,returns:type==='stockcount'?[]:this.all(`SELECT * FROM ${type}_returns WHERE ${type}_id=?`,row.id)};
   }
   receivePurchase(user,input) {
     this.require(user,'purchases',true);

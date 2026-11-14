@@ -2,64 +2,109 @@
 const { escapeXml } = require('./barcode');
 const e=escapeXml;
 
-// Receipts: one printed layout chosen in Settings → Receipt. The template class
-// and the paper width travel into the print stylesheet, so the preview in the
-// app and the PDF that leaves the printer share the same structure.
+// Receipts: the printed bill. The layout follows the pharmacy's own paper
+// bill — pharmacy name and phone at the top, #/Name/Date/Time/Dr meta block,
+// a four-column item table, Total Amount/Discount/Grand Total, the total in
+// words, and who printed it. Three dresses share that structure: classic (the
+// boxed bill), compact (no borders, for narrow paper) and boxed (framed).
+const {amountInWords}=require('./words');
 const money=value=>Number(value||0).toFixed(2);
+const stamp=value=>String(value||'').slice(0,16).replace('T',' ');
+const dayOf=value=>stamp(value).slice(0,10);
+const timeOf=value=>stamp(value).slice(11,16);
 const RECEIPT_CSS=`
   @page{margin:0}
-  body{margin:0;padding:0;background:#fff;color:#152536;font-family:'Segoe UI',Arial,sans-serif}
+  body{margin:0;padding:0;background:#fff;color:#111;font-family:'Segoe UI',Tahoma,Arial,sans-serif}
   .receipt{box-sizing:border-box;margin:0 auto;padding:4mm 3mm;font-size:10px;line-height:1.45}
-  .p-58mm{width:58mm}.p-80mm{width:80mm}.p-A4{width:210mm;padding:12mm}
+  .p-58mm{width:58mm}.p-80mm{width:80mm}.p-A4{width:210mm;padding:12mm;font-size:11px}
   .receipt+.receipt{break-before:page;page-break-before:always}
-  .rhead{text-align:center;margin-bottom:3mm}
-  .rhead strong{display:block;font-size:14px;letter-spacing:.2px}
-  .rhead small{display:block;font-size:9px;color:#627080}
-  .rmeta{display:flex;justify-content:space-between;gap:6px;font-size:9px;margin-bottom:2mm}
-  .rmeta b{font-weight:600;text-align:right}
-  .rline{display:flex;justify-content:space-between;gap:6px;padding:1.6mm 0}
-  .rname small{display:block;font-size:8px;color:#627080}
-  .rsum{white-space:nowrap;text-align:right}
-  .rtotals{margin-top:2mm}
-  .rtotals div{display:flex;justify-content:space-between;gap:6px;padding:.8mm 0}
-  .rgrand{font-weight:700;font-size:11px}
-  .rfoot{text-align:center;color:#627080;font-size:9px;margin-top:3mm}
-  .t-classic .rmeta,.t-classic .ritems,.t-classic .rtotals{border-top:1px dashed #7d8a96}
-  .t-classic .rtotals{border-bottom:1px dashed #7d8a96;padding-bottom:1mm;margin-bottom:1mm}
-  .t-classic .rline{border-bottom:1px dashed #cfd8e0}
-  .t-classic .rhead-row{border-bottom:1px dashed #7d8a96;font-weight:600}
-  .t-compact{font-size:9.5px;line-height:1.25}
-  .t-compact .rline{padding:.7mm 0}
+  .rhead{text-align:center;margin-bottom:2.5mm}
+  .rhead strong{display:block;font-size:15px;letter-spacing:.2px;line-height:1.25}
+  .rhead small{display:block;font-size:9px;color:#333}
+  .rphone{margin-top:.6mm}
+  .rmeta{display:grid;grid-template-columns:1fr 1fr;gap:.6mm 4mm;font-size:9.5px;margin:2mm 0}
+  .rmeta div{display:flex;gap:2mm;min-width:0}
+  .rmeta span{color:#333;white-space:nowrap}
+  .rmeta b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rtable{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed}
+  .rtable th{font-weight:600;text-align:left;padding:1.2mm 1.4mm;border:1px solid #111}
+  .rtable td{padding:1.2mm 1.4mm;border:1px solid #111;vertical-align:top;word-break:break-word}
+  .rtable .num{text-align:right;white-space:nowrap}
+  .rtable col.c-desc{width:50%}.rtable col.c-qty{width:11%}.rtable col.c-price{width:19.5%}.rtable col.c-total{width:19.5%}
+  .rtotals{margin-top:2.5mm;font-size:9.5px}
+  .rtotals div{display:flex;justify-content:space-between;gap:4mm;padding:.7mm 0}
+  .rtotals span{color:#111}
+  .rtotals b{font-weight:600;white-space:nowrap}
+  .rgrand{font-weight:700;font-size:10.5px}
+  .rwords{margin-top:1.5mm;font-size:9px;font-style:italic;color:#222;border-top:1px solid #111;padding-top:1.4mm}
+  .rrule{border-top:1px solid #111;margin:2.5mm 0 1.6mm}
+  .rprinted{font-size:9px;color:#111}
+  .rfoot{margin-top:1.6mm;font-size:9px;color:#444;text-align:center}
+  /* classic: the paper bill, with a boxed item table and the words line rule */
+  .t-classic .rhead strong{text-transform:none}
+  /* compact: same data, no boxes, tighter rows — fits more on 58mm paper */
+  .t-compact{font-size:9.5px;line-height:1.3;padding:3mm 2mm}
+  .t-compact .rtable th,.t-compact .rtable td{border:0;border-bottom:1px dotted #999;padding:.8mm 1mm}
+  .t-compact .rtable th{border-bottom:1px solid #111}
   .t-compact .rhead{margin-bottom:1.5mm}
-  .t-compact .rtotals div{padding:.4mm 0}
-  .t-boxed .rmeta,.t-boxed .ritems,.t-boxed .rtotals{border:1px solid #98a6b3;border-radius:2mm;padding:1.6mm 2mm;margin-bottom:2mm}
-  .t-boxed .rhead{border:1px solid #98a6b3;border-radius:2mm;padding:2mm}
-  .t-boxed .rgrand{border-top:1px solid #98a6b3;margin-top:1mm;padding-top:1mm}
+  .t-compact .rhead strong{font-size:13px}
+  .t-compact .rmeta{margin:1mm 0}
+  .t-compact .rtotals div{padding:.3mm 0}
+  .t-compact .rwords{border-top:1px dotted #999;font-style:normal}
+  .t-compact .rrule{display:none}
+  /* boxed: framed sections for a formal invoice look */
+  .t-boxed .rhead{border:1px solid #111;padding:2mm}
+  .t-boxed .rmeta{border:1px solid #111;padding:1.6mm 2mm}
+  .t-boxed .rtotals{border:1px solid #111;padding:1.4mm 2mm}
+  .t-boxed .rwords{border-top:0;font-style:normal}
+  .t-boxed .rgrand{border-top:1px solid #111;margin-top:.8mm;padding-top:.8mm}
 `;
 function receiptHTML(data,preferences){
-    const template=['classic','compact','boxed'].includes(preferences.receipt_template)?preferences.receipt_template:'classic';
+  const template=['classic','compact','boxed'].includes(preferences.receipt_template)?preferences.receipt_template:'classic';
   const paper=['80mm','58mm','A4'].includes(preferences.receipt_paper)?preferences.receipt_paper:'80mm';
   const copies=Math.min(5,Math.max(1,Number(preferences.receipt_copies)||1));
+  const currency=preferences.currency||'';
   const items=Array.isArray(data.items)?data.items:[];
+  const filled=(value,fallback)=>String(value===undefined||value===null||value===''?fallback:value);
+  const withCurrency=value=>`${money(value)}${currency?` ${currency}`:''}`;
+  const date=dayOf(data.date||data.created_at);
+  const time=timeOf(data.date||data.created_at);
+  const buyer=filled(data.patientName||data.party?.name||data.customer,'Walk-in');
+  const doctor=filled(data.doctor,'General');
   const rows=items.map(item=>{
     const qty=Number(item.quantity||0),price=Number(item.price||0),line=Number(item.total??qty*price)||0;
-    return `<div class="rline"><div class="rname">${e(item.name||'')}${item.batch_no?` <span class="rbatch">${e(item.batch_no)}</span>`:''}<small>${qty} × ${money(price)}</small></div><div class="rsum">${money(line)}</div></div>`;
+    return `<tr><td>${e(item.name||'')}</td><td class="num">${qty}</td><td class="num">${money(price)}</td><td class="num">${money(line)}</td></tr>`;
   }).join('');
   const block=`
   <section class="receipt t-${template} p-${paper}">
-    <header class="rhead"><strong>${e(preferences.pharmacy_name||data.pharmacyName||'Pharmacy Management')}</strong>
+    <header class="rhead">
+      <strong>${e(filled(preferences.pharmacy_name||data.pharmacyName,'Pharmacy Management'))}</strong>
       ${preferences.address?`<small>${e(preferences.address)}</small>`:''}
-      ${preferences.phone?`<small>${e(preferences.phone)}</small>`:''}
+      ${preferences.phone?`<small class="rphone">Phone: ${e(preferences.phone)}</small>`:''}
     </header>
-    <div class="rmeta"><span>Invoice</span><b>${e(data.invoice_no||'')}</b><span>Date</span><b>${e((data.created_at||data.date||'').slice(0,16).replace('T',' '))}</b><span>Cashier</span><b>${e(data.cashier||'')}</b></div>
-    <div class="ritems"><div class="rline rhead-row"><div class="rname">Item</div><div class="rsum">Total</div></div>${rows}</div>
-    <div class="rtotals">
-      <div><span>Subtotal</span><b>${money(data.subtotal)}</b></div>
-      ${Number(data.discount)?`<div><span>Discount</span><b>- ${money(data.discount)}</b></div>`:''}
-      ${Number(data.tax)?`<div><span>Tax</span><b>${money(data.tax)}</b></div>`:''}
-      <div class="rgrand"><span>TOTAL</span><b>${money(data.total)}</b></div>
+    <div class="rmeta">
+      <div><span>#:</span><b>${e(filled(data.invoice_no,''))}</b></div>
+      <div><span>Name:</span><b>${e(buyer)}</b></div>
+      <div><span>Date:</span><b>${e(date)}</b></div>
+      <div><span>Time:</span><b>${e(time)}</b></div>
+      <div><span>Dr:</span><b>${e(doctor)}</b></div>
+      <div><span>Item:</span><b>${items.length}</b></div>
     </div>
-    <footer class="rfoot">${e(preferences.receipt_footer||'Thank you. Get well soon.')}</footer>
+    <table class="rtable">
+      <colgroup><col class="c-desc"><col class="c-qty"><col class="c-price"><col class="c-total"></colgroup>
+      <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="4">&nbsp;</td></tr>'}</tbody>
+    </table>
+    <div class="rtotals">
+      <div><span>Total Amount:</span><b>${withCurrency(data.subtotal)}</b></div>
+      ${Number(data.tax)?`<div><span>Tax:</span><b>${withCurrency(data.tax)}</b></div>`:''}
+      <div><span>Total Discount:</span><b>${withCurrency(data.discount)}</b></div>
+      <div class="rgrand"><span>Grand Total:</span><b>${withCurrency(data.total)}</b></div>
+    </div>
+    <div class="rwords">${e(amountInWords(data.total))} Only</div>
+    <div class="rrule"></div>
+    <div class="rprinted">Printed By: <b>${e(filled(data.cashier,''))}</b></div>
+    <div class="rfoot">${e(preferences.receipt_footer||'Thank you. Get well soon.')}</div>
   </section>`;
   return Array.from({length:copies},()=>block).join('');
 }
