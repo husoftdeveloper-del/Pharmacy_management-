@@ -287,20 +287,67 @@ export async function render(root,params={}){
     </div>`;
   };
 
+  // Data tab: the automatic local backup card from the design, plus a second
+  // card for restoring a file. The folder and last-backup details come from the
+  // main process, which owns the schedule and the copies on disk.
+  let backupInfo=null;
+  const loadBackupInfo=async()=>{
+    try{backupInfo=await api('backupStatus');}catch{backupInfo=null;}
+    return backupInfo;
+  };
+  const kindLabel=kind=>t(kind==='close'?'backupCloseKind':kind==='manual'?'backupManualKind':'backupDailyKind');
+  const backupTime=value=>{
+    if(!value)return '';
+    try{return new Intl.DateTimeFormat(state.preferences.language==='en'?'en-GB':state.preferences.language,{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(value));}
+    catch{return value;}
+  };
   const paintData=()=>{
     const admin=state.user.role==='admin';
-    return `<section class="card settings-card settings-data">
-      <header class="settings-card-head">${icon('download',18)}<div><h2>${e(t('data'))}</h2><p>${e(t('backupHint'))}</p></div></header>
-      <div class="settings-action-row">
-        <div><strong>${e(t('backupNow'))}</strong><p>${e(t('backupDataHint'))}</p></div>
-        ${button(t('backupNow'),'download','primary','id="backup-now"')}
+    const status=backupInfo||{auto:true,onClose:true,folder:'',copies:14,count:0,last:null,lastKind:''};
+    const lastLine=status.last?`${t('lastBackup')}: ${backupTime(status.last.at)} (${kindLabel(status.lastKind)})`:t('noBackupYet');
+    return `<div class="settings-stack"><section class="card settings-card data-card">
+      <header class="settings-card-head">${icon('box',18)}<div><h2>${e(t('autoBackups'))}</h2><p>${e(t('autoBackupsHint'))}</p></div></header>
+      <div class="data-rows">
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('enableAutoBackups'))}</strong><small>${e(t('enableAutoBackupsHint'))}</small></div>
+          ${alertSwitch('auto_backup',status.auto,t('enableAutoBackups'))}
+        </div>
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('backupOnClose'))}</strong><small>${e(t('backupOnCloseHint'))}</small></div>
+          ${alertSwitch('backup_on_close',status.onClose,t('backupOnClose'))}
+        </div>
+        <div class="data-block">
+          <label class="data-label" for="backup-folder">${e(t('backupFolder'))}</label>
+          <div class="backup-folder-row">
+            <input id="backup-folder" class="backup-path" type="text" value="${e(status.folder)}" readonly aria-label="${e(t('backupFolder'))}">
+            <button type="button" class="btn btn-secondary" id="backup-folder-change"><span>${e(t('changeFolder'))}</span></button>
+            <button type="button" class="btn btn-secondary" id="backup-folder-open">${icon('folder',16)}<span>${e(t('openFolder'))}</span></button>
+          </div>
+        </div>
+        <div class="data-block">
+          <label class="data-label" for="backup-copies">${e(t('copiesToKeep'))}</label>
+          <div class="backup-copies-row">
+            <input id="backup-copies" type="number" min="1" max="365" step="1" value="${Number(status.copies)||14}" aria-label="${e(t('copiesToKeep'))}">
+            <small>${e(t('copiesToKeepHint'))}</small>
+          </div>
+        </div>
       </div>
-      <div class="settings-action-row">
-        <div><strong>${e(t('restore'))}</strong><p>${e(t('restoreDataHint'))}</p></div>
-        ${admin?button(t('restore'),'shield','secondary','id="restore-now"'):`<span class="badge muted">${e(t('adminOnly'))}</span>`}
+      <div class="data-divider"></div>
+      <div class="data-actions">
+        ${button(t('backupNowRun'),'download','primary','id="backup-now"')}
+        ${button(t('refresh'),'refresh','secondary','id="backup-refresh"')}
       </div>
-      <p class="settings-note">${icon('lock',15)}<span>${e(t('backupWarning'))}</span></p>
-    </section>`;
+      <p class="backup-last"><em>${e(lastLine)}</em></p>
+    </section>
+    <section class="card settings-card restore-card">
+      <header class="settings-card-head">${icon('shield',18)}<div><h2>${e(t('restoreTitle'))}</h2><p>${e(t('restoreHint'))}</p></div></header>
+      <div class="data-rows">
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('restoreDataHint'))}</strong><small>${e(t('backupWarning'))}</small></div>
+          ${admin?button(t('restore'),'shield','secondary','id="restore-now"'):`<span class="badge muted">${e(t('adminOnly'))}</span>`}
+        </div>
+      </div>
+    </section></div>`;
   };
 
   const paintLicense=()=>`<section class="card settings-card settings-license">
@@ -474,9 +521,35 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='data'){
+      const saveBackupPref=async patch=>{await api('settings',patch);await refreshPreferences();return loadBackupInfo();};
+      body.querySelectorAll('[data-alert]').forEach(node=>node.onchange=()=>run(async()=>{
+        await saveBackupPref({[node.dataset.alert]:node.checked});
+        await paint();
+      }));
+      body.querySelector('#backup-copies').onchange=event=>run(async()=>{
+        const keep=Math.max(1,Math.min(365,Number(event.target.value)||14));
+        event.target.value=keep;
+        await saveBackupPref({backup_copies:keep});
+        toast(t('success'));
+      });
+      body.querySelector('#backup-folder-change').onclick=()=>run(async()=>{
+        const picked=await api('backupChooseFolder');
+        if(picked.cancelled)return;
+        await loadBackupInfo();
+        toast(t('backupSavedTo')+': '+picked.folder);
+        await paint();
+      });
+      body.querySelector('#backup-folder-open').onclick=()=>run(async()=>{await api('backupOpenFolder');});
       body.querySelector('#backup-now').onclick=()=>run(async()=>{
-        const result=await api('backup');
-        if(!result.cancelled)toast(result.path);
+        const result=await api('backupNow');
+        await loadBackupInfo();
+        if(result.path)toast(t('backupSavedTo')+': '+result.path);
+        await paint();
+      });
+      body.querySelector('#backup-refresh').onclick=()=>run(async()=>{
+        await loadBackupInfo();
+        await paint();
+        toast(t('success'));
       });
       body.querySelector('#restore-now')?.addEventListener('click',()=>run(async()=>{
         if(await confirmAction(t('restore'),t('restoreConfirm'))){const result=await api('restore');if(!result.cancelled)toast(t('success'));}
@@ -499,6 +572,7 @@ export async function render(root,params={}){
 
   const paint=async()=>{
     if(tab==='receipt')await refreshPreferences();
+    if(tab==='data')await loadBackupInfo();
     root.querySelectorAll('[data-tab]').forEach(node=>{const active=node.dataset.tab===tab;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     const body=root.querySelector('#settings-body');
     if(tab==='users'){
