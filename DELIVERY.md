@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.58**
+Verified release: **v1.0.0-build.59**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.58
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.59
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.59/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.59/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-7db312b478947d62c2b6de8eec1319153e1378a22fdd5d1d1ea9b23c76581b4a  Pharmacy-1.0.0-x64.exe
-32866a713268cf0069d9056c1371656b5ce2c115e1af8cd4b4038c4c9beafbc1  Pharmacy-1.0.0-Portable.exe
+b4b40bec7028b4f45ec2d1ea423d103efd5090d98f26a7eb0b0615c0930ca504  Pharmacy-1.0.0-x64.exe
+8ef274d26a02d73a6950035a34d7cf48ca230d7a6798ad75725958f0e01bd7c4  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,18 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Desktop notifications switch works (build 59)
+
+The switch in **Settings → Notifications → Desktop notifications** refused to turn on. The cause was in the app itself, not in Windows: the window session answers every browser permission request with “no” (`setPermissionRequestHandler(() => false)`), so the page's `Notification` API could never reach `granted`, and the row reverted the switch.
+
+The fix moves notifications to where they belong — the Electron main process:
+
+- New `notify` IPC call raises the notification with Electron's `Notification` class, focuses the window when the toast is clicked and records a `notify_desktop` audit row. A companion `notificationSupport` call reports whether the OS supports it.
+- The page still owns the preference: nothing is sent when the switch is off.
+- `src/scripts/alerts.js` now reports `granted` whenever the secure bridge is present, so flipping the switch saves immediately; the browser permission path remains only for a plain-browser preview.
+- Turning the switch on sends one confirmation notification, and the row has a **bell** button to send a test notification at any time.
+- If Windows itself blocks notifications (Focus assist or a disabled app entry), the app now says so instead of failing silently.
 
 ## The printed bill follows the pharmacy's own paper (build 58)
 
@@ -504,7 +516,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.58` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.59` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
