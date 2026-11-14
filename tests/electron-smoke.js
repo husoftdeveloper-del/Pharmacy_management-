@@ -86,7 +86,7 @@ app.whenReady().then(async()=>{
   await run("const f=document.querySelector('#password-form');f.querySelector('[name=currentPassword]').value='SmokeTestPassword123!';f.querySelector('[name=newPassword]').value='AnotherPassword123';f.querySelector('[name=confirmPassword]').value='MismatchPassword123';f.requestSubmit();return true;");
   await until(()=>run("return document.querySelector('#password-form .form-error').textContent.length>0"),'password mismatch message');
   assert.ok(await run("return /do not match/i.test(document.querySelector('#password-form .form-error').textContent)"),'mismatched passwords are rejected');
-  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Theme'],['users','Users'],['data','Back up database'],['license','Registered to']]){
+  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Theme'],['users','Users'],['data','Automatic local backups'],['license','Registered to']]){
     await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
     await pause(200);
     const tabText=await run("return document.querySelector('#settings-body').innerText");
