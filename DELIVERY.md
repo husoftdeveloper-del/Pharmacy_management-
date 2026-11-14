@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.56**
+Verified release: **v1.0.0-build.57**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.56
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.56/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.56/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.57
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.57/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.57/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-0eca8e513eee64e6aaf14f499f0c38305abe4d7f906802cd5286a26b7361bc8c  Pharmacy-1.0.0-x64.exe
-e09a35c8c854f51c4cbf0175b78c938f170c392299a08f27ff805f50700b3114  Pharmacy-1.0.0-Portable.exe
+d6432d8fdf3fb98aae6af607278d831fdd64598d7447ce1782691a0fb9586ee7  Pharmacy-1.0.0-x64.exe
+16e0a0380f1545b6b47bb6032f34ed10fa12c396989a59170e418476b7b1ca52  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,26 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Backup & restore removed from the sidebar (build 57)
+
+**ADMINISTRATION** now holds only **Audit** and **Settings**:
+
+```
+MANAGEMENT      Medicines · Inventory · Price list · Print Labels
+PURCHASING      Purchases · Suppliers · Supplier Payments
+FINANCE         Expenses · Ledger & P&L · Reports
+STAFF           Employees · Monthly Salaries · Salary Advances
+ADMINISTRATION  Audit · Settings
+```
+
+Nothing was lost — backups are still one click away:
+
+- The **Settings → Data** tab still has **Back up database** and **Restore database** with the same confirmation and safety copy, so the daily workflow does not need a separate page.
+- The backup **module, permission, page and every record** stay in place; the page is still reachable through the router (`window.dispatchEvent(new CustomEvent('navigate',{detail:'backup'}))`), which the smoke test now checks on every build.
+- Restoring still requires an administrator, and any account whose permission set includes `backup` keeps it.
+
+Restoring the sidebar entry is one line in `src/scripts/navigation.js`.
 
 ## Alerts & Notifications rebuilt (build 56)
 
@@ -446,7 +466,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.56` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.57` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
