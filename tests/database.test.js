@@ -410,6 +410,9 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.equal(prefs.receipt_template,'classic');assert.equal(prefs.receipt_paper,'80mm');assert.equal(prefs.receipt_copies,'1');
  s.settings(admin,{receipt_template:'boxed',receipt_paper:'58mm',receipt_copies:3});
  assert.equal(s.preferences(admin).receipt_template,'boxed');assert.equal(s.preferences(admin).receipt_paper,'58mm');assert.equal(s.preferences(admin).receipt_copies,'3');
+ s.settings(admin,{theme:'system'});assert.equal(s.preferences(admin).theme,'system');s.settings(admin,{theme:'dark'});assert.equal(s.preferences(admin).theme,'dark');
+ assert.throws(()=>s.settings(admin,{theme:'neon'}),/theme/);
+ assert.throws(()=>s.preference(admin,{theme:'neon'}),/theme/);
  assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
  assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
  assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);

@@ -4,6 +4,12 @@ import {icon,toast,run,refreshOptions} from '../components/ui.js';
 import {navigation,pageDescriptions} from './navigation.js';
 import {APP_BUILD,APP_LABEL} from './version.js';
 import {dailySummary} from './alerts.js';
+// A "system" theme follows the Windows setting, so the windows light/dark
+// preference wins until the user picks a fixed theme.
+const systemDark=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+function resolveTheme(value){return value==='system'?(systemDark?.matches?'dark':'light'):(value==='dark'?'dark':'light');}
+function applyTheme(value){document.documentElement.dataset.theme=resolveTheme(value);}
+if(systemDark&&systemDark.addEventListener)systemDark.addEventListener('change',()=>{if(state.preferences?.theme==='system')applyTheme('system');});
 const app=document.querySelector('#app');
 let currentPageCleanup=null,navigateTimer=null;
 function brand(){return `<div class="brand"><div class="brand-mark">${icon('plus',28)}</div><div class="brand-name">Pharmaca<small>MANAGEMENT SYSTEM</small></div></div>`;}
@@ -20,7 +26,7 @@ async function startSession(result){
   // Preferences and reference data are shell-level: open the app even when the
   // signed-in account has lost a module permission, instead of blocking login.
   state.preferences=await api('preferences');
-  setLanguage(state.preferences.language);document.documentElement.dataset.theme=state.preferences.theme;
+  setLanguage(state.preferences.language);applyTheme(state.preferences.theme);
   try{await refreshOptions();}catch{}
   renderShell();
   const landing=state.permissions.includes('dashboard')?'dashboard':state.permissions[0];
@@ -34,7 +40,7 @@ function renderShell(){
  translatePage(app);app.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>navigate(b.dataset.page));
  app.querySelector('#language-select').value=getLanguage();
  app.querySelector('#language-select').onchange=async ev=>{await run(async()=>{await api('preference',{language:ev.target.value});state.preferences.language=ev.target.value;setLanguage(ev.target.value);renderShell();await navigate(state.page);});};
- app.querySelector('#theme-toggle').onclick=()=>run(async()=>{const theme=state.preferences.theme==='dark'?'light':'dark';await api('preference',{theme});state.preferences.theme=theme;document.documentElement.dataset.theme=theme;app.querySelector('#theme-toggle').innerHTML=icon(theme==='dark'?'sun':'moon',19);});
+ app.querySelector('#theme-toggle').onclick=()=>run(async()=>{const theme=resolveTheme(state.preferences.theme)==='dark'?'light':'dark';await api('preference',{theme});state.preferences.theme=theme;applyTheme(theme);app.querySelector('#theme-toggle').innerHTML=icon(theme==='dark'?'sun':'moon',19);});
  app.querySelector('#logout').onclick=()=>run(async()=>{await api('logout');await authScreen(!((await api('bootstrap')).initialized));});
  app.querySelector('#mobile-menu').onclick=()=>app.querySelector('.sidebar').classList.toggle('open');
  app.querySelector('#global-search').onkeydown=ev=>{if(ev.key==='Enter'){const query=ev.target.value;navigate(state.permissions.includes('inventory')?'inventory':'pos',{search:query});}};

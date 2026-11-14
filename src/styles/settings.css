@@ -142,3 +142,26 @@
 .switch input:focus-visible+.switch-track{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:2px}
 .notifications-thresholds .form-grid{grid-template-columns:minmax(0,240px)}
 @media(max-width:640px){.alert-row{align-items:flex-start}}
+
+/* Appearance: three theme cards and three language rows, matching the design.
+   The selected language row is a solid teal bar with the English name on the
+   right; the selected theme card gets a teal border and a pale teal fill. */
+.appearance-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.theme-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.theme-card{display:grid;justify-items:center;gap:9px;padding:18px 10px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);cursor:pointer;transition:border-color .15s,background .15s}
+.theme-card .theme-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--surface2);color:var(--muted)}
+.theme-card strong{font-size:12px;font-weight:550}
+.theme-card:hover{border-color:var(--primary)}
+.theme-card.active{border-color:var(--primary);background:var(--primary-soft)}
+.theme-card.active .theme-icon{background:var(--surface);color:var(--primary)}
+.theme-card.active strong{color:var(--primary);font-weight:600}
+.theme-card:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:2px}
+.language-list{display:grid;gap:8px}
+.language-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px}
+.language-row:hover{border-color:var(--primary)}
+.language-row .language-english{font-size:11px;color:var(--muted)}
+.language-row.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.language-row.active .language-native{font-weight:600}
+.language-row.active .language-english{color:#ffffffc9}
+.language-row:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:2px}
+@media(max-width:900px){.appearance-grid{grid-template-columns:1fr}}
