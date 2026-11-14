@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -229,6 +229,20 @@ async function dispatch(event, request) {
     transaction(db,()=>audit(db,user,'export_pdf',c,p.id||p.kind||''));
     return {path:filename};
   }
+  // Desktop notifications are raised by the main process: the renderer session
+  // denies every browser permission, so the page cannot use the Notification
+  // API itself. The preference is checked by the page before calling this.
+  if(c==='notify'){
+    if(!Notification.isSupported())return {supported:false,shown:false};
+    const title=String(p.title||'Pharmacy Management').slice(0,120);
+    const body=String(p.body||'').slice(0,400);
+    const notification=new Notification({title,body,silent:Boolean(p.silent)});
+    notification.on('click',()=>{if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
+    notification.show();
+    transaction(db,()=>audit(db,user,'notify_desktop','settings','',title));
+    return {supported:true,shown:true};
+  }
+  if(c==='notificationSupport')return {supported:Notification.isSupported()};
   if(c==='backup'){
     service.require(user,'backup',true);const win=senderWindow(event);
     const result=await dialog.showSaveDialog(win,{title:'Save encrypted-at-rest storage is your responsibility',defaultPath:`pharmacy-backup-${new Date().toISOString().slice(0,10)}.sqlite`,filters:[{name:'SQLite backup',extensions:['sqlite']}]});

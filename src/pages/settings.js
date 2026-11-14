@@ -3,7 +3,7 @@ import {t,setLanguage,translatePage} from '../scripts/i18n.js';
 import {icon,button,form,field,bindForm,toast,run,confirmAction} from '../components/ui.js';
 import {renderUsers} from '../components/user-admin.js';
 import {APP_LABEL,APP_BUILD,APP_VERSION} from '../scripts/version.js';
-import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound} from '../scripts/alerts.js';
+import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound,notifyDesktop} from '../scripts/alerts.js';
 import {amountInWords} from '../scripts/words.js';
 
 /* Settings: eight tabs in one page — Profile, Pharmacy, Receipt, Notifications,
@@ -226,6 +226,7 @@ export async function render(root,params={}){
           </div>`).join('')}
           <div class="alert-row" data-row="notify_desktop">
             <div class="alert-copy"><strong>${e(t('notifyDesktop'))}<span class="badge good permission-badge" data-permission="${permission}">${e(t(permissionLabel(permission)))}</span></strong><small>${e(t('notifyDesktopHint'))}</small></div>
+            <button type="button" class="icon-btn sound-preview" id="notify-test" title="${e(t('testNotification'))}" aria-label="${e(t('testNotification'))}">${icon('bell',17)}</button>
             ${alertSwitch('notify_desktop',desktopOn,t('notifyDesktop'))}
           </div>
         </div>
@@ -399,8 +400,19 @@ export async function render(root,params={}){
             toast(t(permission==='denied'?'permissionDeniedHint':'permissionAskHint'),'error');
             return;
           }
+          await save({notify_desktop:1});
+          const shown=await notifyDesktop(t('notifyDesktop'),t('notifyDesktopTestBody'));
+          if(!shown)toast(t('notificationBlockedByWindows'),'error');
+          return;
         }
         await save({[key]:node.checked?1:0});
+      });
+      body.querySelector('#notify-test').onclick=()=>run(async()=>{
+        const previous=state.preferences.notify_desktop;
+        state.preferences.notify_desktop='1';
+        const shown=await notifyDesktop(t('notifyDesktop'),t('notifyDesktopTestBody'));
+        state.preferences.notify_desktop=previous;
+        toast(shown?t('notificationSent'):t('notificationBlockedByWindows'),shown?'success':'error');
       });
       body.querySelector('#sound-preview').onclick=()=>{
         const previous=state.preferences.notify_sound;
