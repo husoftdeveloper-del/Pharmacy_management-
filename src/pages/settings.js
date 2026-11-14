@@ -3,7 +3,7 @@ import {t,setLanguage,translatePage} from '../scripts/i18n.js';
 import {icon,button,form,field,bindForm,toast,run,confirmAction} from '../components/ui.js';
 import {renderUsers} from '../components/user-admin.js';
 import {APP_LABEL,APP_BUILD,APP_VERSION} from '../scripts/version.js';
-import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound} from '../scripts/alerts.js';
+import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound,notifyDesktop} from '../scripts/alerts.js';
 import {amountInWords} from '../scripts/words.js';
 
 /* Settings: eight tabs in one page — Profile, Pharmacy, Receipt, Notifications,
@@ -32,10 +32,17 @@ export async function render(root,params={}){
 
   let tab=TABS.some(item=>item.key===params.tab)?params.tab:'profile';
 
+  // Re-apply the stored theme to the window without reloading the shell.
+  const renderTheme=()=>{
+    const prefersDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme=state.preferences.theme==='system'?(prefersDark?'dark':'light'):(state.preferences.theme==='dark'?'dark':'light');
+    document.documentElement.dataset.theme=theme;
+    const toggle=document.querySelector('#theme-toggle');
+    if(toggle)toggle.innerHTML=icon(theme==='dark'?'sun':'moon',19);
+  };
   const refreshPreferences=async()=>{
     state.preferences=await api('preferences');
     setLanguage(state.preferences.language);translatePage(document);const crumb=document.querySelector('#breadcrumb-page');if(crumb)crumb.textContent=t(state.page);
-    document.documentElement.dataset.theme=state.preferences.theme;
     const select=document.querySelector('#language-select');if(select)select.value=state.preferences.language;
   };
 
@@ -226,6 +233,7 @@ export async function render(root,params={}){
           </div>`).join('')}
           <div class="alert-row" data-row="notify_desktop">
             <div class="alert-copy"><strong>${e(t('notifyDesktop'))}<span class="badge good permission-badge" data-permission="${permission}">${e(t(permissionLabel(permission)))}</span></strong><small>${e(t('notifyDesktopHint'))}</small></div>
+            <button type="button" class="icon-btn sound-preview" id="notify-test" title="${e(t('testNotification'))}" aria-label="${e(t('testNotification'))}">${icon('bell',17)}</button>
             ${alertSwitch('notify_desktop',desktopOn,t('notifyDesktop'))}
           </div>
         </div>
@@ -241,38 +249,105 @@ export async function render(root,params={}){
     </div>`;
   };
 
+  // Appearance: the theme cards and the language rows from the design. Both
+  // save the moment they are picked and apply to the whole window at once.
+  const THEMES=[
+    {key:'light',label:'light',symbol:'sun'},
+    {key:'dark',label:'dark',symbol:'moon'},
+    {key:'system',label:'systemTheme',symbol:'monitor'}
+  ];
+  const LANGUAGES=[
+    {key:'en',native:'English',english:'English'},
+    {key:'ps',native:'پښتو',english:'Pashto'},
+    {key:'fa-AF',native:'دری',english:'Dari'}
+  ];
+  const currentTheme=()=>THEMES.some(item=>item.key===state.preferences.theme)?state.preferences.theme:'light';
   const paintAppearance=()=>{
-    const p=state.preferences;
-    return `<section class="card settings-card">
-      <header class="settings-card-head">${icon('sun',18)}<div><h2>${e(t('appearance'))}</h2><p>${e(t('appearanceHint'))}</p></div></header>
-      <form class="record-form" id="appearance-form">
-        <div class="settings-choice-row">
-          <button type="button" class="theme-choice ${p.theme!=='dark'?'active':''}" data-theme-choice="light">${icon('sun',18)}<span>${e(t('light'))}</span></button>
-          <button type="button" class="theme-choice ${p.theme==='dark'?'active':''}" data-theme-choice="dark">${icon('moon',18)}<span>${e(t('dark'))}</span></button>
+    const theme=currentTheme();
+    const language=state.preferences.language||'en';
+    return `<div class="settings-grid appearance-grid">
+      <section class="card settings-card">
+        <header class="settings-card-head">${icon('sun',18)}<div><h2>${e(t('theme'))}</h2><p>${e(t('themeHint'))}</p></div></header>
+        <div class="theme-row" role="radiogroup" aria-label="${e(t('theme'))}">
+          ${THEMES.map(item=>`<button type="button" class="theme-card ${item.key===theme?'active':''}" role="radio" aria-checked="${item.key===theme}" data-theme-choice="${item.key}">
+            <span class="theme-icon">${icon(item.symbol,18)}</span>
+            <strong>${e(t(item.label))}</strong>
+          </button>`).join('')}
         </div>
-        <div class="form-grid">
-          ${field('language',p.language,{label:'language',blank:false,options:[{value:'en',label:'English'},{value:'ps',label:'پښتو'},{value:'fa-AF',label:'دری'}]})}
+      </section>
+      <section class="card settings-card">
+        <header class="settings-card-head">${icon('language',18)}<div><h2>${e(t('language'))}</h2><p>${e(t('languageHint'))}</p></div></header>
+        <div class="language-list" role="radiogroup" aria-label="${e(t('language'))}">
+          ${LANGUAGES.map(item=>`<button type="button" class="language-row ${item.key===language?'active':''}" role="radio" aria-checked="${item.key===language}" data-language-choice="${item.key}">
+            <span class="language-native">${e(item.native)}</span>
+            <span class="language-english">${e(item.english)}</span>
+          </button>`).join('')}
         </div>
-        <div class="form-error" role="alert"></div>
-        <footer class="form-footer"><button class="btn btn-primary" type="submit"><span>${e(t('save'))}</span></button></footer>
-      </form>
-    </section>`;
+      </section>
+    </div>`;
   };
 
+  // Data tab: the automatic local backup card from the design, plus a second
+  // card for restoring a file. The folder and last-backup details come from the
+  // main process, which owns the schedule and the copies on disk.
+  let backupInfo=null;
+  const loadBackupInfo=async()=>{
+    try{backupInfo=await api('backupStatus');}catch{backupInfo=null;}
+    return backupInfo;
+  };
+  const kindLabel=kind=>t(kind==='close'?'backupCloseKind':kind==='manual'?'backupManualKind':'backupDailyKind');
+  const backupTime=value=>{
+    if(!value)return '';
+    try{return new Intl.DateTimeFormat(state.preferences.language==='en'?'en-GB':state.preferences.language,{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(value));}
+    catch{return value;}
+  };
   const paintData=()=>{
     const admin=state.user.role==='admin';
-    return `<section class="card settings-card settings-data">
-      <header class="settings-card-head">${icon('download',18)}<div><h2>${e(t('data'))}</h2><p>${e(t('backupHint'))}</p></div></header>
-      <div class="settings-action-row">
-        <div><strong>${e(t('backupNow'))}</strong><p>${e(t('backupDataHint'))}</p></div>
-        ${button(t('backupNow'),'download','primary','id="backup-now"')}
+    const status=backupInfo||{auto:true,onClose:true,folder:'',copies:14,count:0,last:null,lastKind:''};
+    const lastLine=status.last?`${t('lastBackup')}: ${backupTime(status.last.at)} (${kindLabel(status.lastKind)})`:t('noBackupYet');
+    return `<div class="settings-stack"><section class="card settings-card data-card">
+      <header class="settings-card-head">${icon('box',18)}<div><h2>${e(t('autoBackups'))}</h2><p>${e(t('autoBackupsHint'))}</p></div></header>
+      <div class="data-rows">
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('enableAutoBackups'))}</strong><small>${e(t('enableAutoBackupsHint'))}</small></div>
+          ${alertSwitch('auto_backup',status.auto,t('enableAutoBackups'))}
+        </div>
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('backupOnClose'))}</strong><small>${e(t('backupOnCloseHint'))}</small></div>
+          ${alertSwitch('backup_on_close',status.onClose,t('backupOnClose'))}
+        </div>
+        <div class="data-block">
+          <label class="data-label" for="backup-folder">${e(t('backupFolder'))}</label>
+          <div class="backup-folder-row">
+            <input id="backup-folder" class="backup-path" type="text" value="${e(status.folder)}" readonly aria-label="${e(t('backupFolder'))}">
+            <button type="button" class="btn btn-secondary" id="backup-folder-change"><span>${e(t('changeFolder'))}</span></button>
+            <button type="button" class="btn btn-secondary" id="backup-folder-open">${icon('folder',16)}<span>${e(t('openFolder'))}</span></button>
+          </div>
+        </div>
+        <div class="data-block">
+          <label class="data-label" for="backup-copies">${e(t('copiesToKeep'))}</label>
+          <div class="backup-copies-row">
+            <input id="backup-copies" type="number" min="1" max="365" step="1" value="${Number(status.copies)||14}" aria-label="${e(t('copiesToKeep'))}">
+            <small>${e(t('copiesToKeepHint'))}</small>
+          </div>
+        </div>
       </div>
-      <div class="settings-action-row">
-        <div><strong>${e(t('restore'))}</strong><p>${e(t('restoreDataHint'))}</p></div>
-        ${admin?button(t('restore'),'shield','secondary','id="restore-now"'):`<span class="badge muted">${e(t('adminOnly'))}</span>`}
+      <div class="data-divider"></div>
+      <div class="data-actions">
+        ${button(t('backupNowRun'),'download','primary','id="backup-now"')}
+        ${button(t('refresh'),'refresh','secondary','id="backup-refresh"')}
       </div>
-      <p class="settings-note">${icon('lock',15)}<span>${e(t('backupWarning'))}</span></p>
-    </section>`;
+      <p class="backup-last"><em>${e(lastLine)}</em></p>
+    </section>
+    <section class="card settings-card restore-card">
+      <header class="settings-card-head">${icon('shield',18)}<div><h2>${e(t('restoreTitle'))}</h2><p>${e(t('restoreHint'))}</p></div></header>
+      <div class="data-rows">
+        <div class="data-row">
+          <div class="data-copy"><strong>${e(t('restoreDataHint'))}</strong><small>${e(t('backupWarning'))}</small></div>
+          ${admin?button(t('restore'),'shield','secondary','id="restore-now"'):`<span class="badge muted">${e(t('adminOnly'))}</span>`}
+        </div>
+      </div>
+    </section></div>`;
   };
 
   const paintLicense=()=>`<section class="card settings-card settings-license">
@@ -356,23 +431,37 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='appearance'){
-      let theme=state.preferences.theme;
-      body.querySelectorAll('[data-theme-choice]').forEach(node=>node.onclick=()=>{
-        theme=node.dataset.themeChoice;
-        body.querySelectorAll('[data-theme-choice]').forEach(other=>other.classList.toggle('active',other===node));
-        document.documentElement.dataset.theme=theme;
-      });
-      body.querySelector('#appearance-form').onsubmit=async event=>{
-        event.preventDefault();
-        const data=Object.fromEntries(new FormData(event.currentTarget));
-        await run(async()=>{
-          await api('preference',{theme});
-          await api('preference',{language:data.language});
-          await refreshPreferences();
-          await paint();
-          toast(t('recordSaved'));
+      const body=root.querySelector('#settings-body');
+      const paintSelection=()=>{
+        body.querySelectorAll('[data-theme-choice]').forEach(node=>{
+          const active=node.dataset.themeChoice===currentTheme();
+          node.classList.toggle('active',active);
+          node.setAttribute('aria-checked',String(active));
+        });
+        body.querySelectorAll('[data-language-choice]').forEach(node=>{
+          const active=node.dataset.languageChoice===(state.preferences.language||'en');
+          node.classList.toggle('active',active);
+          node.setAttribute('aria-checked',String(active));
         });
       };
+      // The theme applies to the window immediately, then saves; the language
+      // re-translates the shell through the same path the top bar uses.
+      body.querySelectorAll('[data-theme-choice]').forEach(node=>node.onclick=()=>run(async()=>{
+        await api('preference',{theme:node.dataset.themeChoice});
+        await refreshPreferences();
+        paintSelection();
+        renderTheme();
+        toast(t('recordSaved'));
+      }));
+      body.querySelectorAll('[data-language-choice]').forEach(node=>node.onclick=()=>run(async()=>{
+        await api('preference',{language:node.dataset.languageChoice});
+        await refreshPreferences();
+        setLanguage(state.preferences.language);
+        translatePage(document);
+        paintSelection();
+        await paint();
+        toast(t('recordSaved'));
+      }));
       return;
     }
     if(tab==='notifications'){
@@ -399,8 +488,19 @@ export async function render(root,params={}){
             toast(t(permission==='denied'?'permissionDeniedHint':'permissionAskHint'),'error');
             return;
           }
+          await save({notify_desktop:1});
+          const shown=await notifyDesktop(t('notifyDesktop'),t('notifyDesktopTestBody'));
+          if(!shown)toast(t('notificationBlockedByWindows'),'error');
+          return;
         }
         await save({[key]:node.checked?1:0});
+      });
+      body.querySelector('#notify-test').onclick=()=>run(async()=>{
+        const previous=state.preferences.notify_desktop;
+        state.preferences.notify_desktop='1';
+        const shown=await notifyDesktop(t('notifyDesktop'),t('notifyDesktopTestBody'));
+        state.preferences.notify_desktop=previous;
+        toast(shown?t('notificationSent'):t('notificationBlockedByWindows'),shown?'success':'error');
       });
       body.querySelector('#sound-preview').onclick=()=>{
         const previous=state.preferences.notify_sound;
@@ -421,9 +521,35 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='data'){
+      const saveBackupPref=async patch=>{await api('settings',patch);await refreshPreferences();return loadBackupInfo();};
+      body.querySelectorAll('[data-alert]').forEach(node=>node.onchange=()=>run(async()=>{
+        await saveBackupPref({[node.dataset.alert]:node.checked});
+        await paint();
+      }));
+      body.querySelector('#backup-copies').onchange=event=>run(async()=>{
+        const keep=Math.max(1,Math.min(365,Number(event.target.value)||14));
+        event.target.value=keep;
+        await saveBackupPref({backup_copies:keep});
+        toast(t('success'));
+      });
+      body.querySelector('#backup-folder-change').onclick=()=>run(async()=>{
+        const picked=await api('backupChooseFolder');
+        if(picked.cancelled)return;
+        await loadBackupInfo();
+        toast(t('backupSavedTo')+': '+picked.folder);
+        await paint();
+      });
+      body.querySelector('#backup-folder-open').onclick=()=>run(async()=>{await api('backupOpenFolder');});
       body.querySelector('#backup-now').onclick=()=>run(async()=>{
-        const result=await api('backup');
-        if(!result.cancelled)toast(result.path);
+        const result=await api('backupNow');
+        await loadBackupInfo();
+        if(result.path)toast(t('backupSavedTo')+': '+result.path);
+        await paint();
+      });
+      body.querySelector('#backup-refresh').onclick=()=>run(async()=>{
+        await loadBackupInfo();
+        await paint();
+        toast(t('success'));
       });
       body.querySelector('#restore-now')?.addEventListener('click',()=>run(async()=>{
         if(await confirmAction(t('restore'),t('restoreConfirm'))){const result=await api('restore');if(!result.cancelled)toast(t('success'));}
@@ -446,6 +572,7 @@ export async function render(root,params={}){
 
   const paint=async()=>{
     if(tab==='receipt')await refreshPreferences();
+    if(tab==='data')await loadBackupInfo();
     root.querySelectorAll('[data-tab]').forEach(node=>{const active=node.dataset.tab===tab;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     const body=root.querySelector('#settings-body');
     if(tab==='users'){

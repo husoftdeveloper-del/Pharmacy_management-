@@ -1,10 +1,11 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { openDatabase, transaction, audit, backupDatabase, validateBackup } = require('./database/database');
 const { PharmacyService } = require('./database/service');
+const autoBackup = require('./database/autobackup');
 const { escapeXml } = require('./database/barcode');
 const { renderPDF } = require('./database/pdf');
 const rendererTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.ico':'image/x-icon'};
@@ -21,6 +22,77 @@ let devRestarting = false;
 const devSignatures = new Map();
 const devWatchExt = /\.(html|css|js|mjs|json|svg|png|ico|woff2?)$/i;
 const devRestartExt = /\.(js|mjs|json|sql)$/i;
+
+/* ---- Silent automatic backups -------------------------------------------
+   The reader only needs the settings table, so these helpers read it directly
+   instead of going through a signed-in session: backups also run before anyone
+   has signed in, and while the app is closing. */
+const backupDefaults = { auto_backup: '1', backup_on_close: '1', backup_copies: String(autoBackup.DEFAULT_COPIES) };
+function backupSetting(key) {
+  if (!db) return '';
+  try { const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key); return row ? String(row.value) : ''; } catch { return ''; }
+}
+function backupFolder() {
+  const stored = backupSetting('backup_folder');
+  if (stored) return stored;
+  const documents = (() => { try { return app.getPath('documents'); } catch { return app.getPath('userData'); } })();
+  return autoBackup.defaultFolder(documents);
+}
+function backupConfig() {
+  const read = key => { const value = backupSetting(key); return value === '' ? backupDefaults[key] ?? '' : value; };
+  return {
+    auto: read('auto_backup') === '1',
+    onClose: read('backup_on_close') === '1',
+    folder: backupFolder(),
+    copies: Math.max(1, Math.min(365, Number(read('backup_copies')) || autoBackup.DEFAULT_COPIES))
+  };
+}
+function rememberBackup(kind, file) {
+  const now = new Date().toISOString();
+  try {
+    const save = (key, value) => db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, value);
+    save('last_backup_at', now);
+    save('last_backup_kind', kind);
+    save('last_backup_path', file);
+  } catch {}
+}
+function backupStatus() {
+  const config = backupConfig();
+  const all = autoBackup.copies(config.folder);
+  const last = all[0];
+  return {
+    auto: config.auto,
+    onClose: config.onClose,
+    folder: config.folder,
+    copies: config.copies,
+    count: all.length,
+    last: last ? { path: last.path, name: last.name, bytes: last.bytes, at: new Date(last.at).toISOString() } : null,
+    lastKind: backupSetting('last_backup_kind') || (last && last.name.includes('-close-') ? 'close' : last ? 'daily' : '')
+  };
+}
+// Runs a copy and records the result. Never throws: a failed silent backup must
+// not interrupt the user's work, so the error is logged and reported instead.
+async function runAutoBackup(kind, time = new Date()) {
+  if (!db) return { skipped: true, reason: 'no-database' };
+  const config = backupConfig();
+  try {
+    const result = await autoBackup.run(db, config.folder, kind, config.copies, time);
+    if (!result.skipped) rememberBackup(kind, result.path);
+    return result;
+  } catch (error) {
+    console.error('[backup]', kind, error.message);
+    return { skipped: true, failed: true, error: error.message };
+  }
+}
+let dailyBackupTimer = null;
+function scheduleDailyBackup() {
+  if (dailyBackupTimer) return;
+  const ready = () => { try { return db && db.prepare('SELECT COUNT(*) AS count FROM users').get().count > 0; } catch { return false; } };
+  const tick = () => { const config = backupConfig(); if (config.auto && ready()) runAutoBackup('daily'); };
+  setTimeout(tick, 4000);
+  dailyBackupTimer = setInterval(tick, 60 * 60 * 1000);
+  dailyBackupTimer.unref?.();
+}
 protocol.registerSchemesAsPrivileged([{ scheme: 'pharmacy', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 app.setName('Pharmacy Management');
 if (isDev) {
@@ -229,6 +301,45 @@ async function dispatch(event, request) {
     transaction(db,()=>audit(db,user,'export_pdf',c,p.id||p.kind||''));
     return {path:filename};
   }
+  // Desktop notifications are raised by the main process: the renderer session
+  // denies every browser permission, so the page cannot use the Notification
+  // API itself. The preference is checked by the page before calling this.
+  if(c==='notify'){
+    if(!Notification.isSupported())return {supported:false,shown:false};
+    const title=String(p.title||'Pharmacy Management').slice(0,120);
+    const body=String(p.body||'').slice(0,400);
+    const notification=new Notification({title,body,silent:Boolean(p.silent)});
+    notification.on('click',()=>{if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
+    notification.show();
+    transaction(db,()=>audit(db,user,'notify_desktop','settings','',title));
+    return {supported:true,shown:true};
+  }
+  if(c==='notificationSupport')return {supported:Notification.isSupported()};
+  if(c==='backupStatus'){service.require(user,'backup');return backupStatus();}
+  if(c==='backupNow'){
+    service.require(user,'backup');
+    const config=backupConfig();
+    const result=await autoBackup.run(db,config.folder,'manual',config.copies);
+    rememberBackup('manual',result.path);transaction(db,()=>audit(db,user,'backup','database',result.path));
+    return {path:result.path};
+  }
+  if(c==='backupChooseFolder'){
+    service.require(user,'settings');
+    const win=senderWindow(event);
+    const picked=await dialog.showOpenDialog(win,{title:'Choose the folder for automatic backups',defaultPath:backupFolder(),properties:['openDirectory','createDirectory']});
+    if(picked.canceled||!picked.filePaths[0])return {cancelled:true};
+    const folder=picked.filePaths[0];
+    service.settings(user,{backup_folder:folder});
+    return {folder};
+  }
+  if(c==='backupOpenFolder'){
+    service.require(user,'backup');
+    const folder=backupFolder();
+    fs.mkdirSync(folder,{recursive:true});
+    const failure=await shell.openPath(folder);
+    if(failure)throw new Error('The backup folder could not be opened.');
+    return {folder};
+  }
   if(c==='backup'){
     service.require(user,'backup',true);const win=senderWindow(event);
     const result=await dialog.showSaveDialog(win,{title:'Save encrypted-at-rest storage is your responsibility',defaultPath:`pharmacy-backup-${new Date().toISOString().slice(0,10)}.sqlite`,filters:[{name:'SQLite backup',extensions:['sqlite']}]});
@@ -306,10 +417,28 @@ app.whenReady().then(()=>{
       return {ok:true,data:{token:session.token}};
     }catch{return {ok:false};}
   });
+  scheduleDailyBackup();
   createWindow();
   startDevLiveReload();
 }).catch(error=>{dialog.showErrorBox('Pharmacy cannot start',error.message);app.quit();});
 app.on('second-instance',()=>{if(mainWindow){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.focus();}});
 app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>{closeDevWatchers();if(db){db.exec('PRAGMA wal_checkpoint(TRUNCATE)');db.close();db=null;}});
+let closingBackup = null;
+let closingBackupDone = false;
+let shutdownDone = false;
+function shutdown() {
+  if (shutdownDone) return;
+  shutdownDone = true;
+  closeDevWatchers();
+  if (db) { try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); db.close(); } catch {} db = null; }
+}
+app.on('before-quit',event=>{
+  // One last copy as the app exits, then really quit. The database stays open
+  // until the copy is finished, so the backup is never a half-written file.
+  if (closingBackupDone || !db) { shutdown(); return; }
+  const config = backupConfig();
+  if (!config.auto || !config.onClose || closingBackup) { closingBackupDone = true; if (!closingBackup) shutdown(); return; }
+  event.preventDefault();
+  closingBackup = runAutoBackup('close').finally(() => { closingBackup = null; closingBackupDone = true; shutdown(); app.quit(); });
+});
 process.on('uncaughtException',error=>{console.error(error);if(app.isReady())dialog.showErrorBox('Application error',error.message);});

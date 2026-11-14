@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.58')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.61')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -86,12 +86,61 @@ app.whenReady().then(async()=>{
   await run("const f=document.querySelector('#password-form');f.querySelector('[name=currentPassword]').value='SmokeTestPassword123!';f.querySelector('[name=newPassword]').value='AnotherPassword123';f.querySelector('[name=confirmPassword]').value='MismatchPassword123';f.requestSubmit();return true;");
   await until(()=>run("return document.querySelector('#password-form .form-error').textContent.length>0"),'password mismatch message');
   assert.ok(await run("return /do not match/i.test(document.querySelector('#password-form .form-error').textContent)"),'mismatched passwords are rejected');
-  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Appearance'],['users','Users'],['data','Back up database'],['license','Registered to']]){
+  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Theme'],['users','Users'],['data','Automatic local backups'],['license','Registered to']]){
     await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
     await pause(200);
     const tabText=await run("return document.querySelector('#settings-body').innerText");
     assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
+  // Appearance tab: three theme cards and three language rows.
+  await run("document.querySelector('[data-tab=appearance]').click();return true;");
+  await pause(220);
+  assert.equal(await run("return document.querySelectorAll('.theme-card').length"),3,'three theme cards');
+  assert.equal(await run("return [...document.querySelectorAll('.theme-card strong')].map(x=>x.textContent.trim()).join('|')"),'Light|Dark|System','theme names');
+  assert.ok(await run("return document.querySelector('[data-theme-choice=light]').classList.contains('active')"),'light is selected');
+  assert.equal(await run("return document.querySelectorAll('.language-row').length"),3,'three language rows');
+  assert.equal(await run("return [...document.querySelectorAll('.language-row .language-native')].map(x=>x.textContent.trim()).join('|')"),'English|پښتو|دری','language rows show native names');
+  assert.equal(await run("return [...document.querySelectorAll('.language-row .language-english')].map(x=>x.textContent.trim()).join('|')"),'English|Pashto|Dari','language rows show English names');
+  assert.ok(await run("return document.querySelector('[data-language-choice=en]').classList.contains('active')"),'English is selected');
+  await run("document.querySelector('[data-theme-choice=dark]').click();return true;");
+  await until(()=>run("return document.documentElement.dataset.theme==='dark'"),'dark theme applies');
+  await until(()=>run("return document.querySelector('[data-theme-choice=dark]').classList.contains('active')"),'dark card selected');
+  await run("document.querySelector('[data-theme-choice=system]').click();return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.theme==='system')"),'system theme stored');
+  await run("document.querySelector('[data-language-choice=ps]').click();return true;");
+  await until(()=>run("return document.documentElement.lang==='ps'&&document.documentElement.dir==='rtl'"),'Pashto applies right to left');
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.language==='ps')"),'language stored');
+  await run("document.querySelector('[data-language-choice=en]').click();return true;");
+  await until(()=>run("return document.documentElement.lang==='en'"),'English restores');
+  await run("const api=window.pharmacy.invoke;await api('preference',{theme:'light'});return true;");
+  await until(()=>run("return document.documentElement.dataset.theme==='light'"),'light restores');
+  // Data tab: the automatic backup card, with real copies written to disk.
+  await run("document.querySelector('[data-tab=data]').click();return true;");
+  await pause(320);
+  assert.ok(await run("return !!document.querySelector('.data-card')"),'automatic backup card renders');
+  assert.equal(await run("return document.querySelectorAll('.data-card .data-row .switch').length"),2,'two backup switches');
+  assert.equal(await run("return [...document.querySelectorAll('.data-card .data-copy strong')].map(x=>x.textContent.trim()).join('|')"),'Enable automatic backups|Backup on app close','backup switch labels');
+  assert.ok(await run("return document.querySelector('#backup-folder').value.includes('PharmaCare-Backups')"),'default backup folder is shown');
+  assert.equal(await run("return document.querySelector('#backup-copies').value"),'14','default copies to keep');
+  assert.equal(await run("return document.querySelector('[data-alert=auto_backup]').checked"),true,'automatic backups start on');
+  assert.equal(await run("return document.querySelector('[data-alert=backup_on_close]').checked"),true,'backup on close starts on');
+  const smokeFolder = path.join(directory, 'smoke-backups');
+  await run(`const api=window.pharmacy.invoke;await api('settings',{backup_folder:${JSON.stringify(smokeFolder)}});return true;`);
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run(`return document.querySelector('#backup-folder').value===${JSON.stringify(smokeFolder)}`),'chosen backup folder shows');
+  const beforeCount = await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");
+  await run("document.querySelector('#backup-now').click();return true;");
+  await until(async()=>{const count=await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");return count===beforeCount+1;},'backup now writes one copy');
+  await until(()=>run("return document.querySelector('.backup-last').innerText.includes('Last backup')"),'last backup line shows the new copy');
+  await run("const api=window.pharmacy.invoke;await api('settings',{backup_copies:7});return true;");
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run("return document.querySelector('#backup-copies').value==='7'"),'copies to keep reloads from the database');
+  assert.equal(fs.readdirSync(smokeFolder).filter(name=>name.endsWith('.sqlite')).length,1,'exactly one copy on disk');
+  await run("const api=window.pharmacy.invoke;await api('settings',{auto_backup:0,backup_copies:14});return true;");
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run("return document.querySelector('[data-alert=auto_backup]').checked===false"),'switching automatic backups off is stored');
+  await run("const api=window.pharmacy.invoke;await api('settings',{auto_backup:1});return true;");
+  assert.ok(await run("return !!document.querySelector('#restore-now')"),'restore stays available for an administrator');
   // Notifications tab: one switch row per alert, saving on the spot.
   await run("document.querySelector('[data-tab=notifications]').click();return true;");
   await pause(220);
@@ -107,6 +156,15 @@ app.whenReady().then(async()=>{
   await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_sound==='1')"),'sound saved');
   assert.ok(await run("return !!document.querySelector('#sound-preview')"),'sound row has a test button');
   assert.ok(await run("return document.querySelector('.permission-badge').textContent.length>0"),'desktop permission badge');
+  assert.equal(await run("return document.querySelector('.permission-badge').dataset.permission"),'granted','desktop notifications report granted through the main process');
+  await run("const box=document.querySelector('[data-alert=notify_desktop]');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_desktop==='1')"),'desktop notifications switch on');
+  assert.ok(await run("return document.querySelector('[data-alert=notify_desktop]').checked"),'desktop switch stays on');
+  const support=await run("const api=window.pharmacy.invoke;return api('notificationSupport')");
+  assert.equal(typeof support.supported,'boolean','desktop notification support is reported');
+  const sent=await run("const api=window.pharmacy.invoke;return api('notify',{title:'Smoke test',body:'Desktop notifications work'})");
+  assert.equal(typeof sent.shown,'boolean','desktop notification call is answered');
+  assert.ok(await run("return !!document.querySelector('#notify-test')"),'desktop row has a test button');
   const threshold=await run("const f=document.querySelector('.notifications-thresholds');f.querySelector('[name=low_stock_days]').value='30';document.querySelector('#threshold-save').click();return true;");
   await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.low_stock_days==='30')"),'threshold saved');
   assert.ok(await run("return document.querySelector('[data-alert=notify_low_stock]').checked"),'switches survive repaint');
@@ -699,8 +757,8 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.58'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.61',autoBackup:true},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
-setTimeout(()=>{console.error('Electron smoke timeout');app.exit(1);},90000).unref();
+setTimeout(()=>{console.error('Electron smoke timeout');app.exit(1);},130000).unref();

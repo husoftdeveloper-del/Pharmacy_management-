@@ -410,6 +410,15 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.equal(prefs.receipt_template,'classic');assert.equal(prefs.receipt_paper,'80mm');assert.equal(prefs.receipt_copies,'1');
  s.settings(admin,{receipt_template:'boxed',receipt_paper:'58mm',receipt_copies:3});
  assert.equal(s.preferences(admin).receipt_template,'boxed');assert.equal(s.preferences(admin).receipt_paper,'58mm');assert.equal(s.preferences(admin).receipt_copies,'3');
+ s.settings(admin,{theme:'system'});assert.equal(s.preferences(admin).theme,'system');s.settings(admin,{theme:'dark'});assert.equal(s.preferences(admin).theme,'dark');
+ s.settings(admin,{auto_backup:0,backup_on_close:0,backup_copies:7});
+ assert.equal(s.preferences(admin).auto_backup,'0');assert.equal(s.preferences(admin).backup_on_close,'0');assert.equal(s.preferences(admin).backup_copies,'7');
+ s.settings(admin,{backup_folder:'C:\\Users\\A\\Documents\\PharmaCare-Backups'});assert.equal(s.preferences(admin).backup_folder,'C:\\Users\\A\\Documents\\PharmaCare-Backups');
+ assert.throws(()=>s.settings(admin,{backup_folder:'relative\\folder'}),/backup folder/);
+ assert.throws(()=>s.settings(admin,{backup_copies:0}),/[Cc]opies/);
+ assert.throws(()=>s.settings(admin,{backup_copies:999}),/[Cc]opies/);
+ assert.throws(()=>s.settings(admin,{theme:'neon'}),/theme/);
+ assert.throws(()=>s.preference(admin,{theme:'neon'}),/theme/);
  assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
  assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
  assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);
