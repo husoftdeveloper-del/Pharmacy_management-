@@ -131,7 +131,7 @@ app.whenReady().then(async()=>{
   const beforeCount = await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");
   await run("document.querySelector('#backup-now').click();return true;");
   await until(async()=>{const count=await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");return count===beforeCount+1;},'backup now writes one copy');
-  assert.ok(await run("return document.querySelector('.backup-last').innerText.includes('Last backup')"),'last backup line shows');
+  await until(()=>run("return document.querySelector('.backup-last').innerText.includes('Last backup')"),'last backup line shows the new copy');
   await run("const api=window.pharmacy.invoke;await api('settings',{backup_copies:7});return true;");
   await run("document.querySelector('#backup-refresh').click();return true;");
   await until(()=>run("return document.querySelector('#backup-copies').value==='7'"),'copies to keep reloads from the database');
