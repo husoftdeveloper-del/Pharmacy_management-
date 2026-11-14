@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.55**
+Verified release: **v1.0.0-build.58**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.55
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.58
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-717afe384a7c0a2d6babc2cfe61cbad75da36a2b65200978f93b16dd227bc12d  Pharmacy-1.0.0-x64.exe
-59797183b556ba314d61dab6c951104de40b75bf77e60902916fd8708a8055f6  Pharmacy-1.0.0-Portable.exe
+7db312b478947d62c2b6de8eec1319153e1378a22fdd5d1d1ea9b23c76581b4a  Pharmacy-1.0.0-x64.exe
+32866a713268cf0069d9056c1371656b5ce2c115e1af8cd4b4038c4c9beafbc1  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,88 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## The printed bill follows the pharmacy's own paper (build 58)
+
+Every receipt the app generates now looks like the bill the pharmacy already hands out:
+
+```
+                Ibne Sina Pharmacy
+            Arzan Qemat · Phone: 493 711900100
+
+#:     INV-1001        Name:  Bilal
+Date:  2026-10-28      Time:  13:11
+Dr:    Dr. Karimi      Item:  4
+
+Description              Qty   Price    Total     <- boxed table
+ZEDSON 0.4mg(10)           1   70.00    70.00
+CRANBERRY                  1   70.00    70.00
+SNOBUFEN 400MG             1   20.00    20.00
+CLARITEC 500MG             1  110.00   110.00
+
+Total Amount:                             270.00 AFN
+Total Discount:                             0.00 AFN
+Grand Total:                              270.00 AFN
+-------------------------------------------------
+Two Hundred Seventy Only
+-------------------------------------------------
+Printed By: Ahmad Nadeem
+```
+
+- **Header** — the pharmacy name in bold, then address and `Phone:` from Settings → Pharmacy.
+- **Meta block** — invoice `#`, buyer `Name` (patient or customer, `Walk-in` when none), `Date`, `Time`, prescribing `Dr` (`General` when the sale has no prescription) and the `Item` count.
+- **Item table** — four ruled columns, Description / Qty / Price / Total, one row per medicine.
+- **Totals** — Total Amount, an extra Tax row only when tax was charged, Total Discount and a bolder Grand Total, with the currency *after* the amount as on the paper.
+- **Amount in words** — the grand total spelled out (`Two Hundred Seventy Only`).
+- **Printed By** — the signed-in cashier, then the receipt footer.
+
+Templates keep their meaning: **Classic** is the bill above, **Compact** drops the rules and tightens the rows for 58 mm paper, and **Boxed** frames the header, meta and totals. The Settings → Receipt preview renders the same structure with sample data, so what is on screen is what comes out of the printer.
+
+Amount words are converted by `database/words.js` for the PDF and `src/scripts/words.js` for the preview, and both the bill and the converter are unit-tested (0, 18, 270, 1005, 1234, 100000, millions).
+
+## Backup & restore removed from the sidebar (build 57)
+
+**ADMINISTRATION** now holds only **Audit** and **Settings**:
+
+```
+MANAGEMENT      Medicines · Inventory · Price list · Print Labels
+PURCHASING      Purchases · Suppliers · Supplier Payments
+FINANCE         Expenses · Ledger & P&L · Reports
+STAFF           Employees · Monthly Salaries · Salary Advances
+ADMINISTRATION  Audit · Settings
+```
+
+Nothing was lost — backups are still one click away:
+
+- The **Settings → Data** tab still has **Back up database** and **Restore database** with the same confirmation and safety copy, so the daily workflow does not need a separate page.
+- The backup **module, permission, page and every record** stay in place; the page is still reachable through the router (`window.dispatchEvent(new CustomEvent('navigate',{detail:'backup'}))`), which the smoke test now checks on every build.
+- Restoring still requires an administrator, and any account whose permission set includes `backup` keeps it.
+
+Restoring the sidebar entry is one line in `src/scripts/navigation.js`.
+
+## Alerts & Notifications rebuilt (build 56)
+
+**Settings → Notifications** is now a list of switches, one row per alert, exactly as designed. Each switch saves the moment it is flipped — there is no Save button on the list:
+
+| Row | Switch saves |
+| --- | --- |
+| **Low stock alerts** — Warn when a medicine falls below the threshold. | `notify_low_stock` (on) |
+| **Out-of-stock alerts** — Highlight medicines with zero stock on hand. | `notify_out_of_stock` (on) |
+| **Expiry alerts** — Warn about batches nearing their expiry date. | `notify_expiry` (on) |
+| **Daily sales summary** — Show a toast summarizing yesterday’s sales. | `notify_daily_summary` (off) |
+| **Play sound on completed sale** — Audible confirmation when a sale is saved. | `notify_sound` (off) |
+| **Desktop notifications** — Send a system notification when the window is in the background. | `notify_desktop` (off) |
+
+The switches do real work:
+
+- **Dashboard** — the Low stock box counts only what its switch still covers (an empty shelf belongs to *Out-of-stock*, everything else below the reorder level to *Low stock*), and the Expiring soon box disappears when expiry alerts are off.
+- **Sound** — a short two-note chime is generated in the page (no audio file to ship) and plays after every completed sale in the POS. The row has a speaker button to audition it.
+- **Daily summary** — after sign-in the app reads the same seven-day trend the dashboard chart uses and toasts “Yesterday’s sales: N invoices · total”.
+- **Desktop notifications** — the row shows the real permission state as a badge (`granted`, `blocked`, `not set`, `not supported`), asks Windows for permission before switching on, and refuses with an explanation when permission is blocked.
+
+Below the list, an **Alert thresholds** card keeps the expiry-warning window (1–3650 days) editable.
+
+New preference keys land through `INSERT … ON CONFLICT DO UPDATE`, so databases created by earlier builds gain the switches with the defaults above and keep every stored value.
 
 ## Receipt tab matches the design pixel-for-pixel (build 55)
 
@@ -422,7 +504,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.55` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.58` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 

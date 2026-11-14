@@ -413,6 +413,13 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
  assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
  assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);
+ // Notification switches from the Settings panel, including the newer ones.
+ s.settings(admin,{notify_out_of_stock:0,notify_daily_summary:1,notify_sound:1,notify_desktop:1});
+ const alerts=s.preferences(admin);
+ assert.equal(alerts.notify_out_of_stock,'0');assert.equal(alerts.notify_daily_summary,'1');
+ assert.equal(alerts.notify_sound,'1');assert.equal(alerts.notify_desktop,'1');
+ s.settings(admin,{notify_sound:'true',notify_desktop:0});
+ assert.equal(s.preferences(admin).notify_sound,'1');assert.equal(s.preferences(admin).notify_desktop,'0');
  // Everyone may change their own profile, even without the users module.
  const cashierUser=s.saveUser(admin,{username:'cashier7',name:'Cashier Seven',password:'CashierPassword1',role:'cashier',active:1,permissions:{users:false}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierUser);
@@ -420,22 +427,51 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.throws(()=>s.saveUser(cashier,{username:'cashier7',name:'x',role:'cashier',active:1}),/permission/);
 });
 
-test('receipt renderer: template, paper size and copies',()=>{
+test('receipt renderer: the printed bill, templates, paper and copies',()=>{
  const {receiptHTML}=require('../database/pdf');
- const data={invoice_no:'INV-1001',created_at:'2026-10-28 13:11:00',cashier:'Admin',items:[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}],subtotal:40,discount:1,total:39};
- const classic=receiptHTML(data,{pharmacy_name:'PharmaCare',currency:'AFN',receipt_template:'classic',receipt_paper:'80mm',receipt_copies:1,receipt_footer:'Get well'});
- assert.ok(classic.includes('class="receipt t-classic p-80mm"'));
- assert.ok(classic.includes('PharmaCare'));assert.ok(classic.includes('INV-1001'));assert.ok(classic.includes('Cashier'));assert.ok(classic.includes('39.00'));assert.ok(!classic.includes('AFN 39.00'),'receipt totals print without a currency prefix');assert.ok(classic.includes('Get well'));
- assert.ok(classic.includes('2 × 10.00'));
- const compact=receiptHTML(data,{receipt_template:'compact',receipt_paper:'58mm',receipt_copies:2});
- assert.equal(compact.match(/t-compact/g).length,2,'two printed copies');
- assert.ok(compact.includes('p-58mm'));
- const boxed=receiptHTML(data,{receipt_template:'boxed',receipt_paper:'A4',receipt_copies:3});
- assert.equal(boxed.match(/t-boxed/g).length,3);
- assert.ok(boxed.includes('p-A4'));
+ const {amountInWords}=require('../database/words');
+ const data={invoice_no:'INV-1001',date:'2026-10-28 13:11:00',cashier:'Ahmad Nadeem',doctor:'Dr. Karimi',patientName:'Bilal',items:[{name:'ZEDSON 0.4mg(10)',quantity:1,price:70},{name:'CRANBERRY',quantity:1,price:70},{name:'SNOBUFEN 400MG',quantity:1,price:20},{name:'CLARITEC 500MG',quantity:1,price:110}],subtotal:270,discount:0,total:270};
+ const preferences={pharmacy_name:'Ibne Sina Pharmacy',phone:'493 711900100',address:'Arzan Qemat',currency:'AFN',receipt_template:'classic',receipt_paper:'80mm',receipt_copies:1,receipt_footer:'Get well soon'};
+ const bill=receiptHTML(data,preferences);
+ // Header: pharmacy name and phone, like the paper bill.
+ assert.ok(bill.includes('Ibse Sina Pharmacy'.replace('Ibse','Ibne')),'pharmacy name in the header');
+ assert.ok(bill.includes('Phone: 493 711900100'));
+ assert.ok(bill.includes('Arzan Qemat'));
+ // Meta block: #, Name, Date, Time, Dr, Item.
+ for(const label of ['#:','Name:','Date:','Time:','Dr:','Item:'])assert.ok(bill.includes(label),label+' label');
+ assert.ok(bill.includes('INV-1001'));assert.ok(bill.includes('2026-10-28'));assert.ok(bill.includes('13:11'));
+ assert.ok(bill.includes('Dr. Karimi'));assert.ok(bill.includes('Bilal'));
+ // Four-column item table with the quantities and line totals.
+ for(const head of ['Description','Qty','Price','Total'])assert.ok(bill.includes('>'+head+'<'),head+' column');
+ assert.ok(bill.includes('ZEDSON 0.4mg(10)'));
+ assert.ok(bill.includes('<td class="num">110.00</td>'));
+ // Totals with the currency after the amount, then the amount in words.
+ assert.ok(bill.includes('Total Amount:'));
+ assert.ok(bill.includes('Total Discount:'));
+ assert.ok(bill.includes('Grand Total:'));
+ assert.ok(bill.includes('270.00 AFN'));
+ assert.ok(bill.includes('Two Hundred Seventy Only'));
+ assert.ok(bill.includes('Printed By:'));assert.ok(bill.includes('Ahmad Nadeem'));
+ assert.ok(bill.includes('Get well soon'));
+ // Copies repeat the whole bill, one page each.
+ const copies=receiptHTML({...data,total:40,subtotal:40},{...preferences,receipt_copies:3});
+ assert.equal(copies.match(/<section class="receipt/g).length,3);
+ // Templates: classic is the boxed bill, compact drops the borders, boxed frames.
+ assert.ok(receiptHTML(data,{...preferences,receipt_template:'compact'}).includes('t-compact p-80mm'));
+ assert.ok(receiptHTML(data,{...preferences,receipt_template:'boxed',receipt_paper:'58mm'}).includes('t-boxed p-58mm'));
  const fallback=receiptHTML(data,{receipt_template:'fancy',receipt_paper:'A5',receipt_copies:0});
  assert.ok(fallback.includes('t-classic'));assert.ok(fallback.includes('p-80mm'));
- assert.equal(fallback.match(/class="receipt/g).length,1,'unknown copies fall back to one');
- const escaped=receiptHTML({...data,items:[{name:'<script>x</script>',quantity:1,price:1}]},{receipt_template:'classic'});
+ assert.equal(fallback.match(/<section class="receipt/g).length,1,'unknown copies fall back to one');
+ // A database-created receipt without a doctor or patient still prints its labels.
+ const plain=receiptHTML({invoice_no:'INV-2',date:'2026-01-01 09:00:00',items:[],subtotal:0,discount:0,total:0},{receipt_template:'classic'});
+ assert.ok(plain.includes('Dr:</span><b>General</b>'));
+ assert.ok(plain.includes('Name:</span><b>Walk-in</b>'));
+ assert.ok(plain.includes('Zero Only'));
+ // Amount in words.
+ assert.equal(amountInWords(0),'Zero');assert.equal(amountInWords(7),'Seven');assert.equal(amountInWords(18),'Eighteen');
+ assert.equal(amountInWords(270),'Two Hundred Seventy');assert.equal(amountInWords(1005),'One Thousand Five');
+ assert.equal(amountInWords(1234),'One Thousand Two Hundred Thirty-Four');assert.equal(amountInWords(100000),'One Hundred Thousand');
+ // Escaping.
+ const escaped=receiptHTML({...data,items:[{name:'<script>x</script>',quantity:1,price:1}]},preferences);
  assert.ok(!escaped.includes('<script>'),'item names are escaped');
 });

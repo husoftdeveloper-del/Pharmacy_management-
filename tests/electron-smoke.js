@@ -17,7 +17,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.55')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.58')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -43,7 +43,13 @@ app.whenReady().then(async()=>{
   const staffPages=await run("const groups=[...document.querySelectorAll('.nav-group')];const heading=groups.find(g=>g.textContent.trim()==='STAFF');const items=[];let node=heading.nextElementSibling;while(node&&!node.classList.contains('nav-group')){if(node.dataset.page)items.push(node.dataset.page);node=node.nextElementSibling;}return items.join(',');");
   assert.equal(staffPages,'employees,salaries,advances','staff group holds employees, salaries and advances');
   assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(17,20).join(',')"),'employees,salaries,advances','staff holds employees, salaries and advances right after the finance group');
-  assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(20).join(',')"),'audit,settings,backup','administration now holds audit, settings and backup');
+  assert.equal(await run("const items=[...document.querySelectorAll('[data-page]')].map(x=>x.dataset.page);return items.slice(20).join(',')"),'audit,settings','administration holds only audit and settings');
+  assert.equal(await run("return document.querySelectorAll('[data-page=backup]').length"),0,'backup keeps no sidebar item');
+  await run("window.dispatchEvent(new CustomEvent('navigate',{detail:'backup'}));return true;");
+  await until(()=>run("return !document.querySelector('.loading-state')&&document.querySelector('#page-content').innerText.length>20"),'backup page');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Backup')"),'the backup page stays routable');
+  await run("window.dispatchEvent(new CustomEvent('navigate',{detail:'dashboard'}));return true;");
+  await until(()=>run("return !!document.querySelector('.stat-grid,.insight-grid')"),'dashboard back');
   assert.equal(await run("return document.querySelectorAll('[data-page=categories],[data-page=patients],[data-page=manufacturers],[data-page=users]').length"),0,'categories, patients, manufacturers and users keep no sidebar item');
   assert.equal(await run("const groups=[...document.querySelectorAll('.nav-group')].map(g=>g.textContent.trim());return groups.slice(4,8).join('|')"),'STAFF|ADMINISTRATION','finance is directly above the staff group and operations is gone');
   for(const key of ['employees','salaries','advances','staffgroup']){
@@ -80,20 +86,43 @@ app.whenReady().then(async()=>{
   await run("const f=document.querySelector('#password-form');f.querySelector('[name=currentPassword]').value='SmokeTestPassword123!';f.querySelector('[name=newPassword]').value='AnotherPassword123';f.querySelector('[name=confirmPassword]').value='MismatchPassword123';f.requestSubmit();return true;");
   await until(()=>run("return document.querySelector('#password-form .form-error').textContent.length>0"),'password mismatch message');
   assert.ok(await run("return /do not match/i.test(document.querySelector('#password-form .form-error').textContent)"),'mismatched passwords are rejected');
-  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Low stock alerts'],['appearance','Appearance'],['users','Users'],['data','Back up database'],['license','Registered to']]){
+  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Appearance'],['users','Users'],['data','Back up database'],['license','Registered to']]){
     await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
     await pause(200);
     const tabText=await run("return document.querySelector('#settings-body').innerText");
     assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
+  // Notifications tab: one switch row per alert, saving on the spot.
+  await run("document.querySelector('[data-tab=notifications]').click();return true;");
+  await pause(220);
+  assert.equal(await run("return document.querySelectorAll('.alert-row').length"),6,'six alert rows');
+  assert.equal(await run("return [...document.querySelectorAll('.alert-row strong')].map(x=>x.textContent.trim().split(' ')[0]).join('|')"),'Low|Out-of-stock|Expiry|Daily|Play|Desktop','alert row order');
+  assert.equal(await run("return document.querySelectorAll('.alert-row .switch input').length"),6,'every row has a switch');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Control which alerts appear inside the app.')"),'notifications hint');
+  assert.ok(await run("return document.querySelector('[data-alert=notify_low_stock]').checked"),'low stock alerts start on');
+  assert.ok(await run("return !document.querySelector('[data-alert=notify_daily_summary]').checked"),'daily summary starts off');
+  await run("const box=document.querySelector('[data-alert=notify_daily_summary]');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_daily_summary==='1')"),'daily summary saved');
+  await run("const box=document.querySelector('[data-alert=notify_sound]');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_sound==='1')"),'sound saved');
+  assert.ok(await run("return !!document.querySelector('#sound-preview')"),'sound row has a test button');
+  assert.ok(await run("return document.querySelector('.permission-badge').textContent.length>0"),'desktop permission badge');
+  const threshold=await run("const f=document.querySelector('.notifications-thresholds');f.querySelector('[name=low_stock_days]').value='30';document.querySelector('#threshold-save').click();return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.low_stock_days==='30')"),'threshold saved');
+  assert.ok(await run("return document.querySelector('[data-alert=notify_low_stock]').checked"),'switches survive repaint');
+  await run("const api=window.pharmacy.invoke;await api('settings',{notify_daily_summary:0,notify_sound:0,low_stock_days:90});return true;");
   // Receipt tab: template picker, paper/copies and the live preview.
   await run("document.querySelector('[data-tab=receipt]').click();return true;");
   await pause(200);
   assert.equal(await run("return document.querySelectorAll('.template-card').length"),3,'three receipt templates');
   assert.equal(await run("return [...document.querySelectorAll('.template-card strong')].map(x=>x.textContent.trim()).join('|')"),'Classic|Compact|Boxed','receipt template names');
   assert.equal(await run("return document.querySelector('.template-card.active').dataset.template"),'classic','classic is the default template');
-  assert.ok(await run("return document.querySelector('#receipt-preview').innerText.includes('TOTAL')"),'preview shows totals');
-  assert.ok(await run("const text=document.querySelector('.receipt-sheet').innerText;return text.includes('39.00')&&!text.includes('AFN 39.00')"),'preview amounts print without a currency prefix');
+  assert.ok(await run("return document.querySelector('#receipt-preview').innerText.includes('Grand Total')"),'preview shows the grand total');
+  assert.ok(await run("return document.querySelector('.receipt-sheet .rwords').textContent.includes('Only')"),'preview prints the amount in words');
+  assert.ok(await run("return document.querySelector('.receipt-sheet .rprinted').textContent.includes('Printed By')"),'preview prints who printed the bill');
+  for(const label of ['#:','Name:','Date:','Time:','Dr:','Item:'])assert.ok(await run(`return document.querySelector('.receipt-sheet').innerText.includes(${JSON.stringify(label)})`),'preview meta '+label);
+  assert.equal(await run("return [...document.querySelectorAll('.receipt-sheet .rtable th')].map(x=>x.textContent.trim()).join('|')"),'Description|Qty|Price|Total','bill columns');
+  assert.ok(await run("const text=document.querySelector('.receipt-sheet').innerText;return text.includes('39.00 AFN')&&!text.includes('AFN 39.00')"),'preview totals put the currency after the amount, like the paper bill');
   assert.ok(await run("return document.querySelector('.receipt-sheet').classList.contains('t-classic')"),'preview follows the chosen template');
   assert.equal(await run("return document.querySelector('#receipt-paper').value"),'80mm','default paper size');
   assert.equal(await run("return document.querySelector('#receipt-copies').value"),'1','default copy count');
@@ -670,7 +699,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.52'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.58'},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});

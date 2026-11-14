@@ -3,6 +3,8 @@ import {t,setLanguage,translatePage} from '../scripts/i18n.js';
 import {icon,button,form,field,bindForm,toast,run,confirmAction} from '../components/ui.js';
 import {renderUsers} from '../components/user-admin.js';
 import {APP_LABEL,APP_BUILD,APP_VERSION} from '../scripts/version.js';
+import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound} from '../scripts/alerts.js';
+import {amountInWords} from '../scripts/words.js';
 
 /* Settings: eight tabs in one page — Profile, Pharmacy, Receipt, Notifications,
    Appearance, Users, Data and License. Each tab owns its card and its own save
@@ -107,29 +109,46 @@ export async function render(root,params={}){
       copies:Math.min(5,Math.max(1,Number(p.receipt_copies)||1))
     };
   };
+  // The preview mirrors database/pdf.js field for field: header, the #/Name/
+  // Date/Time/Dr block, the item table, the totals and the words line.
   const receiptPreview=(config)=>{
-    const p=state.preferences;
+    const p=state.preferences,currency=p.currency||'';
     const money=value=>Number(value).toFixed(2);
+    const withCurrency=value=>`${money(value)}${currency?` ${currency}`:''}`;
+    const now=new Date();
+    const date=now.toISOString().slice(0,10);
+    const time=now.toTimeString().slice(0,5);
     const items=[{name:'Paracetamol 500mg',quantity:2,price:10},{name:'Amoxicillin 500mg',quantity:1,price:20}];
     const subtotal=items.reduce((sum,item)=>sum+item.quantity*item.price,0);
     const discount=1,total=subtotal-discount;
-    const stamp=new Date().toISOString().slice(0,16).replace('T',' ');
     return `<div class="receipt-sheet t-${config.template} p-${config.paper}">
-        <header class="receipt-head"><strong>${e(p.pharmacy_name||'Pharmacy Management')}</strong>
+        <header class="rhead">
+          <strong>${e(p.pharmacy_name||'Pharmacy Management')}</strong>
           ${p.address?`<small>${e(p.address)}</small>`:''}
-          ${p.phone?`<small>${e(p.phone)}</small>`:''}
+          ${p.phone?`<small class="rphone">Phone: ${e(p.phone)}</small>`:''}
         </header>
-        <div class="receipt-meta"><span>${e(t('invoiceNoShort'))}</span><b>INV-1001</b><span>${e(t('date'))}</span><b>${e(stamp)}</b><span>${e(t('cashier'))}</span><b>${e(state.user.name)}</b></div>
-        <div class="receipt-items">
-          <div class="receipt-line receipt-line-head"><span>${e(t('item'))}</span><span>${e(t('total'))}</span></div>
-          ${items.map(item=>`<div class="receipt-line"><span class="receipt-name">${e(item.name)}<small>${item.quantity} × ${money(item.price)}</small></span><span>${money(item.quantity*item.price)}</span></div>`).join('')}
+        <div class="rmeta">
+          <div><span>#:</span><b>INV-1001</b></div>
+          <div><span>Name:</span><b>Walk-in</b></div>
+          <div><span>Date:</span><b>${e(date)}</b></div>
+          <div><span>Time:</span><b>${e(time)}</b></div>
+          <div><span>Dr:</span><b>General</b></div>
+          <div><span>Item:</span><b>${items.length}</b></div>
         </div>
-        <div class="receipt-totals">
-          <div><span>${e(t('subtotal'))}</span><b>${money(subtotal)}</b></div>
-          <div><span>${e(t('discount'))}</span><b>- ${money(discount)}</b></div>
-          <div class="receipt-grand"><span>${e(t('total').toUpperCase())}</span><b>${money(total)}</b></div>
+        <table class="rtable">
+          <colgroup><col class="c-desc"><col class="c-qty"><col class="c-price"><col class="c-total"></colgroup>
+          <thead><tr><th>${e(t('description'))}</th><th class="num">${e(t('qtyShort'))}</th><th class="num">${e(t('price'))}</th><th class="num">${e(t('total'))}</th></tr></thead>
+          <tbody>${items.map(item=>`<tr><td>${e(item.name)}</td><td class="num">${item.quantity}</td><td class="num">${money(item.price)}</td><td class="num">${money(item.quantity*item.price)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div class="rtotals">
+          <div><span>${e(t('totalAmount'))}:</span><b>${withCurrency(subtotal)}</b></div>
+          <div><span>${e(t('totalDiscount'))}:</span><b>${withCurrency(discount)}</b></div>
+          <div class="rgrand"><span>${e(t('grandTotal'))}:</span><b>${withCurrency(total)}</b></div>
         </div>
-        <footer class="receipt-foot">${e(p.receipt_footer||'')}</footer>
+        <div class="rwords">${e(amountInWords(total))} Only</div>
+        <div class="rrule"></div>
+        <div class="rprinted">${e(t('printedBy'))}: <b>${e(state.user.name)}</b></div>
+        <div class="rfoot">${e(p.receipt_footer||'')}</div>
       </div>`;
   };
 
@@ -172,24 +191,54 @@ export async function render(root,params={}){
     </div>`;
   };
 
+  // Notifications: one row per alert with a real switch on the right. Every
+  // switch saves on the spot, so the list behaves like a settings panel rather
+  // than a form to submit.
+  const NOTIFICATION_ROWS=[
+    {key:'notify_low_stock',label:'notifyLowStock',hint:'notifyLowStockHint'},
+    {key:'notify_out_of_stock',label:'notifyOutOfStock',hint:'notifyOutOfStockHint'},
+    {key:'notify_expiry',label:'notifyExpiry',hint:'notifyExpiryHint'},
+    {key:'notify_daily_summary',label:'notifyDailySummary',hint:'notifyDailySummaryHint'},
+    {key:'notify_sound',label:'notifySound',hint:'notifySoundHint'}
+  ];
+  const permissionLabel=permission=>({
+    granted:'permissionGranted',
+    denied:'permissionDenied',
+    default:'permissionAsk',
+    unsupported:'permissionUnsupported'
+  }[permission]||'permissionAsk');
+
+  const alertSwitch=(key,checked,label)=>`<span class="switch"><input type="checkbox" role="switch" aria-label="${e(label)}" data-alert="${key}" ${checked?'checked':''}><span class="switch-track"></span></span>`;
+
   const paintNotifications=()=>{
     const p=state.preferences;
-    const enabled=key=>p[key]==='1'||p[key]===1;
-    return `<section class="card settings-card">
-      <header class="settings-card-head">${icon('bell',18)}<div><h2>${e(t('notifications'))}</h2><p>${e(t('notificationsHint'))}</p></div></header>
-      <form class="record-form" id="notifications-form">
-        <div class="form-grid">
-          ${field('low_stock_days',p.low_stock_days,{type:'number',label:'expiryDays',hint:t('expiryDaysHint')})}
-          <div class="full settings-switches">
-            <label class="switch-row"><input type="checkbox" name="notify_low_stock" ${enabled('notify_low_stock')?'checked':''}><span><strong>${e(t('notifyLowStock'))}</strong><small>${e(t('notifyLowStockHint'))}</small></span></label>
-            <label class="switch-row"><input type="checkbox" name="notify_expiry" ${enabled('notify_expiry')?'checked':''}><span><strong>${e(t('notifyExpiry'))}</strong><small>${e(t('notifyExpiryHint'))}</small></span></label>
-            <label class="switch-row"><input type="checkbox" name="notify_register" ${enabled('notify_register')?'checked':''}><span><strong>${e(t('notifyRegister'))}</strong><small>${e(t('notifyRegisterHint'))}</small></span></label>
+    const enabled=key=>alertEnabled(key);
+    const permission=desktopPermission();
+    const desktopOn=enabled('notify_desktop');
+    return `<div class="settings-stack">
+      <section class="card settings-card notifications-card">
+        <header class="settings-card-head">${icon('bell',18)}<div><h2>${e(t('alertsNotifications'))}</h2><p>${e(t('alertsNotificationsHint'))}</p></div></header>
+        <div class="alert-rows">
+          ${NOTIFICATION_ROWS.map(row=>`<div class="alert-row" data-row="${row.key}">
+            <div class="alert-copy"><strong>${e(t(row.label))}</strong><small>${e(t(row.hint))}</small></div>
+            ${row.key==='notify_sound'?`<button type="button" class="icon-btn sound-preview" id="sound-preview" title="${e(t('testSound'))}" aria-label="${e(t('testSound'))}">${icon('volume',17)}</button>`:''}
+            ${alertSwitch(row.key,enabled(row.key),t(row.label))}
+          </div>`).join('')}
+          <div class="alert-row" data-row="notify_desktop">
+            <div class="alert-copy"><strong>${e(t('notifyDesktop'))}<span class="badge good permission-badge" data-permission="${permission}">${e(t(permissionLabel(permission)))}</span></strong><small>${e(t('notifyDesktopHint'))}</small></div>
+            ${alertSwitch('notify_desktop',desktopOn,t('notifyDesktop'))}
           </div>
         </div>
+      </section>
+      <section class="card settings-card notifications-thresholds">
+        <header class="settings-card-head">${icon('clock',18)}<div><h2>${e(t('alertThresholds'))}</h2><p>${e(t('alertThresholdsHint'))}</p></div></header>
+        <div class="form-grid">
+          ${field('low_stock_days',p.low_stock_days,{type:'number',label:'expiryDays',hint:t('expiryDaysHint')})}
+        </div>
         <div class="form-error" role="alert"></div>
-        <footer class="form-footer"><button class="btn btn-primary" type="submit"><span>${e(t('save'))}</span></button></footer>
-      </form>
-    </section>`;
+        <footer class="form-footer"><button class="btn btn-primary" type="submit" id="threshold-save"><span>${e(t('save'))}</span></button></footer>
+      </section>
+    </div>`;
   };
 
   const paintAppearance=()=>{
@@ -327,21 +376,43 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='notifications'){
-      body.querySelector('#notifications-form').onsubmit=async event=>{
+      const body=root.querySelector('#settings-body');
+      const save=async(patch,formEl)=>{
+        try{
+          await api('settings',patch);
+          await refreshPreferences();
+          if(formEl)formEl.querySelector('.form-error').textContent='';
+          toast(t('recordSaved'));
+        }catch(error){
+          if(formEl)formEl.querySelector('.form-error').textContent=error.message;
+          else toast(error.message,'error');
+        }
+      };
+      body.querySelectorAll('[data-alert]').forEach(node=>node.onchange=async()=>{
+        const key=node.dataset.alert;
+        if(key==='notify_desktop'&&node.checked){
+          const permission=await requestDesktopPermission();
+          const badge=body.querySelector('.permission-badge');
+          if(badge){badge.dataset.permission=permission;badge.textContent=t({granted:'permissionGranted',denied:'permissionDenied',default:'permissionAsk',unsupported:'permissionUnsupported'}[permission]||'permissionAsk');}
+          if(permission!=='granted'){
+            node.checked=false;
+            toast(t(permission==='denied'?'permissionDeniedHint':'permissionAskHint'),'error');
+            return;
+          }
+        }
+        await save({[key]:node.checked?1:0});
+      });
+      body.querySelector('#sound-preview').onclick=()=>{
+        const previous=state.preferences.notify_sound;
+        state.preferences.notify_sound='1';
+        const played=playSaleSound();
+        state.preferences.notify_sound=previous;
+        if(!played)toast(t('soundUnavailable'),'error');
+      };
+      const thresholdForm=body.querySelector('.notifications-thresholds');
+      thresholdForm.querySelector('#threshold-save').onclick=event=>{
         event.preventDefault();
-        const formEl=event.currentTarget;
-        const data=new FormData(formEl);
-        await run(async()=>{
-          try{
-            await saveSettings({
-              low_stock_days:data.get('low_stock_days'),
-              notify_low_stock:data.get('notify_low_stock')?1:0,
-              notify_expiry:data.get('notify_expiry')?1:0,
-              notify_register:data.get('notify_register')?1:0
-            });
-            formEl.querySelector('.form-error').textContent='';
-          }catch(error){formEl.querySelector('.form-error').textContent=error.message;}
-        });
+        save({low_stock_days:thresholdForm.querySelector('[name=low_stock_days]').value},thresholdForm);
       };
       return;
     }
