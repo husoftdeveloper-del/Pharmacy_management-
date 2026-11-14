@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.55**
+Verified release: **v1.0.0-build.56**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.55
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.55/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.56
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.56/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.56/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-717afe384a7c0a2d6babc2cfe61cbad75da36a2b65200978f93b16dd227bc12d  Pharmacy-1.0.0-x64.exe
-59797183b556ba314d61dab6c951104de40b75bf77e60902916fd8708a8055f6  Pharmacy-1.0.0-Portable.exe
+0eca8e513eee64e6aaf14f499f0c38305abe4d7f906802cd5286a26b7361bc8c  Pharmacy-1.0.0-x64.exe
+e09a35c8c854f51c4cbf0175b78c938f170c392299a08f27ff805f50700b3114  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,30 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Alerts & Notifications rebuilt (build 56)
+
+**Settings → Notifications** is now a list of switches, one row per alert, exactly as designed. Each switch saves the moment it is flipped — there is no Save button on the list:
+
+| Row | Switch saves |
+| --- | --- |
+| **Low stock alerts** — Warn when a medicine falls below the threshold. | `notify_low_stock` (on) |
+| **Out-of-stock alerts** — Highlight medicines with zero stock on hand. | `notify_out_of_stock` (on) |
+| **Expiry alerts** — Warn about batches nearing their expiry date. | `notify_expiry` (on) |
+| **Daily sales summary** — Show a toast summarizing yesterday’s sales. | `notify_daily_summary` (off) |
+| **Play sound on completed sale** — Audible confirmation when a sale is saved. | `notify_sound` (off) |
+| **Desktop notifications** — Send a system notification when the window is in the background. | `notify_desktop` (off) |
+
+The switches do real work:
+
+- **Dashboard** — the Low stock box counts only what its switch still covers (an empty shelf belongs to *Out-of-stock*, everything else below the reorder level to *Low stock*), and the Expiring soon box disappears when expiry alerts are off.
+- **Sound** — a short two-note chime is generated in the page (no audio file to ship) and plays after every completed sale in the POS. The row has a speaker button to audition it.
+- **Daily summary** — after sign-in the app reads the same seven-day trend the dashboard chart uses and toasts “Yesterday’s sales: N invoices · total”.
+- **Desktop notifications** — the row shows the real permission state as a badge (`granted`, `blocked`, `not set`, `not supported`), asks Windows for permission before switching on, and refuses with an explanation when permission is blocked.
+
+Below the list, an **Alert thresholds** card keeps the expiry-warning window (1–3650 days) editable.
+
+New preference keys land through `INSERT … ON CONFLICT DO UPDATE`, so databases created by earlier builds gain the switches with the defaults above and keep every stored value.
 
 ## Receipt tab matches the design pixel-for-pixel (build 55)
 
@@ -422,7 +446,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.55` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.56` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 

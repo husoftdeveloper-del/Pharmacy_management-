@@ -107,7 +107,7 @@ The GitHub workflow `.github/workflows/windows.yml` runs the checks, database te
 | Reports | Nine tabs (Overview, Sales, Profit, Inventory, Expiry, Purchases, Expenses, Customers, Suppliers). Overview has a period picker, eight KPI cards and a revenue/profit trend chart. Every other tab has its own filter row (invoice/customer/cashier/status, medicine, category, expiry window), its own KPI boxes and its own table, with a live search and an Empty “No data for the selected filters.” state; the whole tab exports PDF and CSV |
 | Users/permissions | Administrator, pharmacist, cashier, accountant defaults; per-module overrides; password changes; last-admin/self-demotion protection; an administrator always keeps every module, and sign-in never depends on a single module permission |
 | Audit | Append-only application audit records, including logins, changes, transactions, exports and backups |
-| Settings | Eight tabs — Profile (name, username, password), Pharmacy details, Receipt (Classic/Compact/Boxed template, paper size, copies, live preview), Notifications, Appearance (English/Pashto/Dari, light/dark), Users, Data backup/restore and License |
+| Settings | Eight tabs — Profile (name, username, password), Pharmacy details, Receipt (Classic/Compact/Boxed template, paper size, copies, live preview), Notifications (low stock, out-of-stock, expiry, daily summary, sale sound, desktop alerts), Appearance (English/Pashto/Dari, light/dark), Users, Data backup/restore and License |
 | Backup/restore | Consistent online SQLite backup, integrity/relationship/journal validation before restore, administrator-only restore, safety copy and restart |
 
 ## Daily workflow
