@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.59**
+Verified release: **v1.0.0-build.60**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.59
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.59/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.59/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.60
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.60/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.60/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-b4b40bec7028b4f45ec2d1ea423d103efd5090d98f26a7eb0b0615c0930ca504  Pharmacy-1.0.0-x64.exe
-8ef274d26a02d73a6950035a34d7cf48ca230d7a6798ad75725958f0e01bd7c4  Pharmacy-1.0.0-Portable.exe
+31345cad1d8860e22b1b7660aeb6002be61570166669c04410d7261272037ccc  Pharmacy-1.0.0-x64.exe
+956cc57e4f72dffbe753be1cf302521ec77c793e520af53ee0cffe693d508573  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,24 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Appearance rebuilt as theme cards and language rows (build 60)
+
+**Settings → Appearance** is now two cards side by side, exactly as designed:
+
+```
+Theme                              Language
+Choose how the app looks.          Interface language and text direction.
+
+[☀ Light]  [☾ Dark]  [🖥 System]    [ English            English ]  <- solid teal
+                                    [ پښتو                Pashto ]
+                                    [ دری                 Dari   ]
+```
+
+- **Theme** — three tiles: **Light**, **Dark** and **System**. The active tile gets a teal border, a pale teal fill and a teal icon. **System** follows the Windows light/dark preference through `prefers-color-scheme` and re-applies live when Windows changes, so the app can follow the desktop without a restart.
+- **Language** — three full-width rows showing the native name on the left and the English name on the right. The active row is a solid teal bar with white text, like the design.
+- **No Save button** — choosing a theme or language saves it, applies it to the whole window at once and re-translates the shell (including RTL for Pashto and Dari).
+- The top-bar moon/sun button now respects the resolved system theme, and the service accepts `light`, `dark` and `system` (older databases simply keep their stored value).
 
 ## Desktop notifications switch works (build 59)
 
@@ -516,7 +534,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.59` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.60` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
