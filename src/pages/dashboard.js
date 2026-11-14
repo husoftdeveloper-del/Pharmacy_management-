@@ -1,5 +1,6 @@
 import {api,state,money,escapeHTML as e,today} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
+import {alertEnabled,stockAlertSplits} from '../scripts/alerts.js';
 import {icon,pageHeader,button} from '../components/ui.js';
 
 function chart(days){const values=[];for(let i=6;i>=0;i--){const date=new Date();date.setUTCDate(date.getUTCDate()-i);const key=date.toISOString().slice(0,10);values.push({day:key,total:days.find(d=>d.day===key)?.total||0});}const max=Math.max(...values.map(v=>v.total),100);const width=620,height=205,left=52,right=18,top=20,bottom=35;const points=values.map((v,i)=>[left+i*(width-left-right)/6,top+(1-v.total/max)*(height-top-bottom)]);const path=points.map((p,i)=>(i?'L':'M')+p.join(',')).join(' ');const area=`${path} L${points.at(-1)[0]},${height-bottom} L${left},${height-bottom} Z`;return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Sales over the last seven days"><defs><linearGradient id="chart-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#16a08e" stop-opacity=".19"/><stop offset="100%" stop-color="#16a08e" stop-opacity="0"/></linearGradient></defs>${[0,1,2,3].map(i=>{const y=top+i*(height-top-bottom)/3;return `<line x1="${left}" x2="${width-right}" y1="${y}" y2="${y}" stroke="var(--border)" stroke-dasharray="4 5"/><text x="${left-10}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="9">${e(new Intl.NumberFormat('en',{notation:'compact'}).format(max*(1-i/3)))}</text>`;}).join('')}<path d="${area}" fill="url(#chart-fill)"/><path d="${path}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round"/>${points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--surface)" stroke="var(--primary)" stroke-width="2"><title>${e(values[i].day)}: ${money(values[i].total)}</title></circle><text x="${p[0]}" y="${height-10}" text-anchor="middle" fill="var(--muted)" font-size="9">${new Date(values[i].day+'T12:00:00').toLocaleDateString(document.documentElement.lang,{weekday:'short'})}</text>`).join('')}</svg>`;}
@@ -25,8 +26,8 @@ function expensesCard(d){
   return insightCard({go:'finance',color:'amber',symbol:'wallet',label:'expenses',hint:t('thisMonth'),chip:ex.month?.count||0,value:money(ex.month?.total||0),unit:true,meta:`${icon('clock',11)}<span>${e(t('today'))} · ${money(ex.today||0)} ${e(state.preferences.currency)}</span>`});
 }
 
-function lowStockCard(d){
-  const count=number(d.lowCount??(d.low||[]).length);
+function lowStockCard(d,count){
+  count=number(count??d.lowCount??(d.low||[]).length);
   return insightCard({go:'inventory',color:'red',symbol:'box',label:'lowStock',hint:t('inventory'),chip:count,value:count,meta:`${icon('warning',11)}<span>${e(t('reorderLevel'))}</span>`});
 }
 
@@ -46,10 +47,13 @@ export async function render(root){
   const canFinance=d.today!==undefined;
   const canInventory=d.low!==undefined;
   const canSales=d.recent!==undefined;
+  // Settings → Notifications decides which warnings the dashboard shows.
+  const stock=stockAlertSplits(d.low||[]);
+  const stockCount=stock.low&&stock.out?number(d.lowCount??(d.low||[]).length):stock.visible.length;
   const cards=[
     d.expenses!==undefined?expensesCard(d):'',
-    canInventory?lowStockCard(d):'',
-    canInventory?expiringCard(d):'',
+    canInventory&&(stock.low||stock.out)?lowStockCard(d,stockCount):'',
+    canInventory&&alertEnabled('notify_expiry')?expiringCard(d):'',
     canSales?recentSaleCard(d):''
   ].filter(Boolean);
 

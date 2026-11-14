@@ -3,6 +3,7 @@ import {t,setLanguage,translatePage} from '../scripts/i18n.js';
 import {icon,button,form,field,bindForm,toast,run,confirmAction} from '../components/ui.js';
 import {renderUsers} from '../components/user-admin.js';
 import {APP_LABEL,APP_BUILD,APP_VERSION} from '../scripts/version.js';
+import {alertEnabled,desktopPermission,requestDesktopPermission,playSaleSound} from '../scripts/alerts.js';
 
 /* Settings: eight tabs in one page — Profile, Pharmacy, Receipt, Notifications,
    Appearance, Users, Data and License. Each tab owns its card and its own save
@@ -172,24 +173,54 @@ export async function render(root,params={}){
     </div>`;
   };
 
+  // Notifications: one row per alert with a real switch on the right. Every
+  // switch saves on the spot, so the list behaves like a settings panel rather
+  // than a form to submit.
+  const NOTIFICATION_ROWS=[
+    {key:'notify_low_stock',label:'notifyLowStock',hint:'notifyLowStockHint'},
+    {key:'notify_out_of_stock',label:'notifyOutOfStock',hint:'notifyOutOfStockHint'},
+    {key:'notify_expiry',label:'notifyExpiry',hint:'notifyExpiryHint'},
+    {key:'notify_daily_summary',label:'notifyDailySummary',hint:'notifyDailySummaryHint'},
+    {key:'notify_sound',label:'notifySound',hint:'notifySoundHint'}
+  ];
+  const permissionLabel=permission=>({
+    granted:'permissionGranted',
+    denied:'permissionDenied',
+    default:'permissionAsk',
+    unsupported:'permissionUnsupported'
+  }[permission]||'permissionAsk');
+
+  const alertSwitch=(key,checked,label)=>`<span class="switch"><input type="checkbox" role="switch" aria-label="${e(label)}" data-alert="${key}" ${checked?'checked':''}><span class="switch-track"></span></span>`;
+
   const paintNotifications=()=>{
     const p=state.preferences;
-    const enabled=key=>p[key]==='1'||p[key]===1;
-    return `<section class="card settings-card">
-      <header class="settings-card-head">${icon('bell',18)}<div><h2>${e(t('notifications'))}</h2><p>${e(t('notificationsHint'))}</p></div></header>
-      <form class="record-form" id="notifications-form">
-        <div class="form-grid">
-          ${field('low_stock_days',p.low_stock_days,{type:'number',label:'expiryDays',hint:t('expiryDaysHint')})}
-          <div class="full settings-switches">
-            <label class="switch-row"><input type="checkbox" name="notify_low_stock" ${enabled('notify_low_stock')?'checked':''}><span><strong>${e(t('notifyLowStock'))}</strong><small>${e(t('notifyLowStockHint'))}</small></span></label>
-            <label class="switch-row"><input type="checkbox" name="notify_expiry" ${enabled('notify_expiry')?'checked':''}><span><strong>${e(t('notifyExpiry'))}</strong><small>${e(t('notifyExpiryHint'))}</small></span></label>
-            <label class="switch-row"><input type="checkbox" name="notify_register" ${enabled('notify_register')?'checked':''}><span><strong>${e(t('notifyRegister'))}</strong><small>${e(t('notifyRegisterHint'))}</small></span></label>
+    const enabled=key=>alertEnabled(key);
+    const permission=desktopPermission();
+    const desktopOn=enabled('notify_desktop');
+    return `<div class="settings-stack">
+      <section class="card settings-card notifications-card">
+        <header class="settings-card-head">${icon('bell',18)}<div><h2>${e(t('alertsNotifications'))}</h2><p>${e(t('alertsNotificationsHint'))}</p></div></header>
+        <div class="alert-rows">
+          ${NOTIFICATION_ROWS.map(row=>`<div class="alert-row" data-row="${row.key}">
+            <div class="alert-copy"><strong>${e(t(row.label))}</strong><small>${e(t(row.hint))}</small></div>
+            ${row.key==='notify_sound'?`<button type="button" class="icon-btn sound-preview" id="sound-preview" title="${e(t('testSound'))}" aria-label="${e(t('testSound'))}">${icon('volume',17)}</button>`:''}
+            ${alertSwitch(row.key,enabled(row.key),t(row.label))}
+          </div>`).join('')}
+          <div class="alert-row" data-row="notify_desktop">
+            <div class="alert-copy"><strong>${e(t('notifyDesktop'))}<span class="badge good permission-badge" data-permission="${permission}">${e(t(permissionLabel(permission)))}</span></strong><small>${e(t('notifyDesktopHint'))}</small></div>
+            ${alertSwitch('notify_desktop',desktopOn,t('notifyDesktop'))}
           </div>
         </div>
+      </section>
+      <section class="card settings-card notifications-thresholds">
+        <header class="settings-card-head">${icon('clock',18)}<div><h2>${e(t('alertThresholds'))}</h2><p>${e(t('alertThresholdsHint'))}</p></div></header>
+        <div class="form-grid">
+          ${field('low_stock_days',p.low_stock_days,{type:'number',label:'expiryDays',hint:t('expiryDaysHint')})}
+        </div>
         <div class="form-error" role="alert"></div>
-        <footer class="form-footer"><button class="btn btn-primary" type="submit"><span>${e(t('save'))}</span></button></footer>
-      </form>
-    </section>`;
+        <footer class="form-footer"><button class="btn btn-primary" type="submit" id="threshold-save"><span>${e(t('save'))}</span></button></footer>
+      </section>
+    </div>`;
   };
 
   const paintAppearance=()=>{
@@ -327,21 +358,43 @@ export async function render(root,params={}){
       return;
     }
     if(tab==='notifications'){
-      body.querySelector('#notifications-form').onsubmit=async event=>{
+      const body=root.querySelector('#settings-body');
+      const save=async(patch,formEl)=>{
+        try{
+          await api('settings',patch);
+          await refreshPreferences();
+          if(formEl)formEl.querySelector('.form-error').textContent='';
+          toast(t('recordSaved'));
+        }catch(error){
+          if(formEl)formEl.querySelector('.form-error').textContent=error.message;
+          else toast(error.message,'error');
+        }
+      };
+      body.querySelectorAll('[data-alert]').forEach(node=>node.onchange=async()=>{
+        const key=node.dataset.alert;
+        if(key==='notify_desktop'&&node.checked){
+          const permission=await requestDesktopPermission();
+          const badge=body.querySelector('.permission-badge');
+          if(badge){badge.dataset.permission=permission;badge.textContent=t({granted:'permissionGranted',denied:'permissionDenied',default:'permissionAsk',unsupported:'permissionUnsupported'}[permission]||'permissionAsk');}
+          if(permission!=='granted'){
+            node.checked=false;
+            toast(t(permission==='denied'?'permissionDeniedHint':'permissionAskHint'),'error');
+            return;
+          }
+        }
+        await save({[key]:node.checked?1:0});
+      });
+      body.querySelector('#sound-preview').onclick=()=>{
+        const previous=state.preferences.notify_sound;
+        state.preferences.notify_sound='1';
+        const played=playSaleSound();
+        state.preferences.notify_sound=previous;
+        if(!played)toast(t('soundUnavailable'),'error');
+      };
+      const thresholdForm=body.querySelector('.notifications-thresholds');
+      thresholdForm.querySelector('#threshold-save').onclick=event=>{
         event.preventDefault();
-        const formEl=event.currentTarget;
-        const data=new FormData(formEl);
-        await run(async()=>{
-          try{
-            await saveSettings({
-              low_stock_days:data.get('low_stock_days'),
-              notify_low_stock:data.get('notify_low_stock')?1:0,
-              notify_expiry:data.get('notify_expiry')?1:0,
-              notify_register:data.get('notify_register')?1:0
-            });
-            formEl.querySelector('.form-error').textContent='';
-          }catch(error){formEl.querySelector('.form-error').textContent=error.message;}
-        });
+        save({low_stock_days:thresholdForm.querySelector('[name=low_stock_days]').value},thresholdForm);
       };
       return;
     }

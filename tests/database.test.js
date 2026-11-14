@@ -413,6 +413,13 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
  assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
  assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);
+ // Notification switches from the Settings panel, including the newer ones.
+ s.settings(admin,{notify_out_of_stock:0,notify_daily_summary:1,notify_sound:1,notify_desktop:1});
+ const alerts=s.preferences(admin);
+ assert.equal(alerts.notify_out_of_stock,'0');assert.equal(alerts.notify_daily_summary,'1');
+ assert.equal(alerts.notify_sound,'1');assert.equal(alerts.notify_desktop,'1');
+ s.settings(admin,{notify_sound:'true',notify_desktop:0});
+ assert.equal(s.preferences(admin).notify_sound,'1');assert.equal(s.preferences(admin).notify_desktop,'0');
  // Everyone may change their own profile, even without the users module.
  const cashierUser=s.saveUser(admin,{username:'cashier7',name:'Cashier Seven',password:'CashierPassword1',role:'cashier',active:1,permissions:{users:false}}).id;
  const cashier=s.get('SELECT * FROM users WHERE id=?',cashierUser);
