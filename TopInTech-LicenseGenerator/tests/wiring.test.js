@@ -110,7 +110,6 @@ test('the installer is configured for Windows setup and portable exe', () => {
   assert.deepEqual(pkg.build.win.target, ['nsis', 'portable']);
   assert.equal(pkg.build.win.signAndEditExecutable, false);
   assert.equal(pkg.build.nsis.deleteAppDataOnUninstall, false, 'the license database must survive an uninstall');
-  assert.equal(pkg.build.nsis.oneClick, false);
   assert.equal(pkg.build.nsis.perMachine, false);
   assert.equal(pkg.build.asar, true);
   assert.equal(pkg.build.directories.output, 'release');
@@ -181,19 +180,31 @@ test('every database query is parameterised, never string-concatenated with user
   assert.match(db, /CHECK\(status IN \('unused','assigned','used'\)\)/);
 });
 
-test('the installer always creates a desktop shortcut and opens the app when it finishes', () => {
-  // The owner installs this once on a laptop: double-clicking the setup file
-  // must leave a desktop icon behind and start the app straight away.
-  assert.equal(pkg.build.nsis.createDesktopShortcut, 'always');
-  assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
-  assert.equal(pkg.build.nsis.runAfterFinish, true);
-  assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, true);
-  assert.equal(pkg.build.nsis.oneClick, false, 'a visible wizard, not a silent install');
+test('the setup file installs with one double-click and leaves a desktop icon', () => {
+  // The owner installs this once on a laptop, so there is no wizard to answer:
+  // double-click -> install -> desktop icon -> the app opens by itself.
+  assert.equal(pkg.build.nsis.oneClick, true, 'a one-click install, not a wizard');
   assert.equal(pkg.build.nsis.perMachine, false, 'a per-user install needs no administrator password');
+  assert.equal(pkg.build.nsis.allowElevation, true);
+  assert.equal(pkg.build.nsis.createDesktopShortcut, true);
+  assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the app must open when the install finishes');
+  assert.equal(pkg.build.nsis.artifactName, 'Top In Tech License Generator.exe');
+  assert.equal(pkg.build.nsis.shortcutName, 'Top In Tech License Generator');
   assert.match(pkg.build.nsis.installerIcon, /\.ico$/);
   assert.match(pkg.build.nsis.uninstallerIcon, /\.ico$/);
+  assert.equal(pkg.build.portable.artifactName, 'Top In Tech License Generator Portable.exe');
   assert.equal(pkg.build.portable.unpackDirName, 'TopInTechLicenseGenerator');
-  assert.match(pkg.build.artifactName, /-\$\{version\}-\$\{arch\}\.\$\{ext\}$/);
+});
+
+test('the two downloads are named in plain words, not with version numbers', () => {
+  const names = [pkg.build.nsis.artifactName, pkg.build.portable.artifactName];
+  for (const name of names) {
+    assert.match(name, /\.exe$/);
+    assert.doesNotMatch(name, /\$\{/, 'the file name must be literal so it looks the same after every build');
+    assert.doesNotMatch(name, /-1\.0\.0-/, 'no version noise in the download name');
+  }
+  assert.notEqual(names[0], names[1], 'setup and portable must not overwrite each other');
 });
 
 test('the icon files exist and the ico holds several sizes', () => {

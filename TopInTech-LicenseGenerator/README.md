@@ -63,33 +63,36 @@ The installer never deletes your data on uninstall
 
 <https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.0.0>
 
-| File | Size | SHA-256 |
-| --- | --- | --- |
-| `TopInTech-LicenseGenerator-1.0.0-x64.exe` (Setup) | 102,656,560 B | `eb5c87a953a8f75308a643647f20e1285b4632c5bb2c200954354a0d96d209cc` |
-| `TopInTech-LicenseGenerator-1.0.0-Portable.exe` | 94,304,994 B | `add67f0e3a0f8060f60b658404320b3b825e1b13edb95408f925c3abd38b284b` |
+Two files, both double-clickable:
 
-Install on the owner's laptop:
+| Download | What happens when you double-click |
+| --- | --- |
+| **`Top In Tech License Generator.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
+| **`Top In Tech License Generator Portable.exe`** | Opens the app immediately without installing anything. No desktop icon. |
 
-1. Open the link above and download `TopInTech-LicenseGenerator-1.0.0-x64.exe`.
-2. Run it. Windows SmartScreen shows *Windows protected your PC* because the
-   build is unsigned — choose **More info → Run anyway**.
-3. Keep the default folder or pick one, then **Install**. The installer always
-   creates a desktop shortcut and a Start menu entry named *Top In Tech License
-   Generator*, whatever answers you give in the wizard.
-4. The app opens by itself when the installer finishes (`runAfterFinish`), and it
-   opens again from the new desktop icon. The key pair is created automatically
-   on that computer the first time it starts.
+Sizes and checksums are printed by the build run and listed on the release page.
+
+Installing on the owner's laptop:
+
+1. Open the link above and download `Top In Tech License Generator.exe`.
+2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
+   the build is unsigned → **More info → Run anyway**. (If the file came from a
+   browser and still refuses to start: right-click → **Properties → Unblock**.)
+3. A short progress window appears, then the app opens and the desktop icon
+   *Top In Tech License Generator* is already there.
+4. The key pair is created on that computer the first time the app starts.
 5. Press **Back up keys** and keep the copy somewhere offline and safe.
 
-The portable EXE needs no installation at all: double-click it and it runs.
-Both builds store their data in the same place, so they can be used
-interchangeably. Uninstalling never deletes the license database or the keys, and
-upgrading to a newer build keeps them too.
+The install is per-user (`perMachine: false`), so Windows does not ask for an
+administrator password. Uninstalling (Settings → Apps) never deletes the license
+database or the keys, and upgrading to a newer build keeps them too.
 
 The installers are built by `.github/workflows/license-generator.yml` on a
 Windows runner every time something inside `TopInTech-LicenseGenerator/` changes
-outside the documentation. That workflow is separate from the Pharmacy one: the
-Pharmacy application has its own release and installer, and the two never mix.
+outside the documentation, and the previous files are removed from the release
+page so only the current two downloads are ever offered. That workflow is
+separate from the Pharmacy one: the Pharmacy application has its own release and
+installer, and the two never mix.
 
 ## Where the files live
 

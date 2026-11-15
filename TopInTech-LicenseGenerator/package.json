@@ -48,20 +48,20 @@
       "icon": "buildResources/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
+      "allowElevation": true,
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Top In Tech License Generator",
-      "deleteAppDataOnUninstall": false,
-      "allowElevation": true,
       "runAfterFinish": true,
+      "artifactName": "Top In Tech License Generator.exe",
       "installerIcon": "buildResources/icon.ico",
-      "uninstallerIcon": "buildResources/icon.ico"
+      "uninstallerIcon": "buildResources/icon.ico",
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "TopInTech-LicenseGenerator-${version}-Portable.exe",
+      "artifactName": "Top In Tech License Generator Portable.exe",
       "unpackDirName": "TopInTechLicenseGenerator"
     }
   }
