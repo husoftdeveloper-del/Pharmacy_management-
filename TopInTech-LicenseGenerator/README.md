@@ -59,16 +59,34 @@ Output in `release\`:
 The installer never deletes your data on uninstall
 (`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
 
-### Download a ready-built installer
-
-Every change inside `TopInTech-LicenseGenerator/` is built on a Windows runner by
-`.github/workflows/license-generator.yml`, which attaches both EXEs to the
-release tagged `generator-v1.0.0`:
+### Download the ready-built installer (built on Windows)
 
 <https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.0.0>
 
-Download `TopInTech-LicenseGenerator-1.0.0-x64.exe` and run it. The Pharmacy
-application has its own separate release and installer; the two never mix.
+| File | Size | SHA-256 |
+| --- | --- | --- |
+| `TopInTech-LicenseGenerator-1.0.0-x64.exe` (Setup) | 102,512,419 B | `00a9a02008e9461691d983006324440ad26c7cda4205650aed70e5e992fec19d` |
+| `TopInTech-LicenseGenerator-1.0.0-Portable.exe` | 94,305,017 B | `a4ed09027159731237bed3f2fbf54919c57943a58518b55912505549accc8fd6` |
+
+Install on the owner's laptop:
+
+1. Open the link above and download `TopInTech-LicenseGenerator-1.0.0-x64.exe`.
+2. Run it. Windows SmartScreen shows *Windows protected your PC* because the
+   build is unsigned — choose **More info → Run anyway**.
+3. Keep the default folder or pick one, then **Install**. A desktop and Start
+   menu shortcut named *Top In Tech License Generator* is created.
+4. Open it once. The key pair is created automatically on that computer.
+5. Press **Back up keys** and keep the copy somewhere offline and safe.
+
+The portable EXE needs no installation at all: double-click it and it runs.
+Both builds store their data in the same place, so they can be used
+interchangeably. Uninstalling never deletes the license database or the keys, and
+upgrading to a newer build keeps them too.
+
+The installers are built by `.github/workflows/license-generator.yml` on a
+Windows runner every time something inside `TopInTech-LicenseGenerator/` changes
+outside the documentation. That workflow is separate from the Pharmacy one: the
+Pharmacy application has its own release and installer, and the two never mix.
 
 ## Where the files live
 
