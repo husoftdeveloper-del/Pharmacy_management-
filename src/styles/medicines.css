@@ -73,3 +73,22 @@
 .btn-soft{background:color-mix(in srgb,var(--primary) 12%,var(--surface));color:var(--primary);border-color:transparent}
 .btn-soft:hover{background:color-mix(in srgb,var(--primary) 20%,var(--surface))}
 @media(max-width:650px){.modal-medicine .modal-body{padding:18px 16px}.medicine-form .mf-grid{grid-template-columns:1fr}.medicine-form-footer{flex-wrap:wrap}.medicine-form-footer .btn{flex:1 1 45%}}
+
+/* Row anatomy from the approved screen: a small pill mark before the medicine
+   name, the stock number beside the unit pill, em dashes for prices that are
+   not set yet, and three quiet icon actions that turn teal (or red) on hover. */
+.medicine-name{display:flex;align-items:center;gap:10px;min-width:0}
+.medicine-mark{flex:0 0 auto;width:26px;height:26px;display:grid;place-items:center;border-radius:7px;background:var(--primary-soft);color:var(--primary)}
+.medicine-name .table-name{display:block;font-size:12.5px;font-weight:600}
+.medicine-name .table-sub{display:block;margin-top:2px}
+.medicine-stock{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.unit-pill{display:inline-flex;align-items:center;font-size:10px;font-weight:550;letter-spacing:.2px;color:#b34a6a;background:#fdeaf0;border-radius:5px;padding:3px 8px;white-space:nowrap}
+[data-theme=dark] .unit-pill{color:#f3a7bd;background:#4a2430}
+.medicine-actions{display:inline-flex;align-items:center;gap:2px;justify-content:flex-end}
+.row-icon{width:28px;height:28px;display:inline-grid;place-items:center;border:0;border-radius:7px;background:none;color:var(--muted)}
+.row-icon:hover{background:var(--primary-soft);color:var(--primary)}
+.row-icon.danger:hover{background:var(--red-soft);color:var(--red)}
+.row-icon:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:1px}
+.medicines-table tr.medicine-archived{opacity:.55}
+.medicines-footer{justify-content:center}
+.medicines-footer span{font-size:11.5px;color:var(--muted);text-align:center;width:100%}
