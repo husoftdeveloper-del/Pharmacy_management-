@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.66**
+Verified release: **v1.0.0-build.67**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.66
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.66/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.66/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.67
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.67/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.67/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-777e55b774806231151be90dca594826c8611cb9cb6439b8f6580d3b744bd37f  Pharmacy-1.0.0-x64.exe
-0aaacefdbdb7fe3357a61a715618caae4c00f7bdb052cbfd25b74edf666235d4  Pharmacy-1.0.0-Portable.exe
+92bf5eff453a713c03301703d9a22554660bb41b51249ec3978dbb12c5d03957  Pharmacy-1.0.0-x64.exe
+b0b95b96c7f165490885de06de233676b7fc1f39a4b5af4bf1534ab454bca115  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,35 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Edit medicine no longer fails on the barcode (build 67)
+
+**Symptom:** opening a medicine, changing something and pressing Save showed
+`UNIQUE constraint failed: medicines.barcode` and the medicine was not updated.
+
+**Cause:** the New/Edit Medicine form is a plain set of inputs and never posted the
+medicine **id**. The main process therefore treated the save as a brand-new
+medicine, generated a fresh SKU and tried to insert a second row — which the
+unique index on `medicines.barcode` refused because the original row already had
+that barcode.
+
+**Fix:** the form now keeps the id of the medicine it was opened for and sends it
+with the record, so an edit updates that row and keeps its barcode, stock,
+batches and history. Nothing else in the medicine flow changed.
+
+Also in this build:
+
+- A barcode that belongs to another medicine now reads **"That barcode is already
+  used by another medicine. Clear it or enter a different one."** instead of the
+  raw SQLite text. Username, SKU, customer, supplier, category, manufacturer,
+  location, staff and account-code conflicts each have their own message too.
+- An empty barcode is stored as `NULL`, so any number of medicines may have no
+  barcode at all.
+- Database test: editing keeps the same row and its stock, a duplicate barcode is
+  refused, and two medicines may both have no barcode.
+- Smoke test: opens a medicine, renames it and saves, then checks the row count is
+  unchanged, the new name and generic name show, and a duplicate barcode produces
+  the friendly message.
 
 ## Medicines table rebuilt to the approved screen (build 66)
 
@@ -655,7 +684,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.66` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.67` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
