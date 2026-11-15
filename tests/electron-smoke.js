@@ -420,7 +420,7 @@ app.whenReady().then(async()=>{
   await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine'));row.querySelector('[data-edit]').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form.medicine-form')"),'edit medicine form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=name]').value"),'edit form is prefilled');
-  assert.ok(!(await run("return !!document.querySelector('#modal-root .opening-stock')")),'opening stock is only offered for new medicines');
+  assert.ok(!(await run("return !!document.querySelector('#modal-root .opening-stock:not(.add-stock)')")),'opening stock is only offered for new medicines');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=price]') && document.querySelector('#modal-root [name=price]').value!==''"),'editing keeps the selling price editable in the form');
   // The edit form also carries an Add stock section: a quantity with its expiry
   // turns into a new batch on top of the existing stock.
