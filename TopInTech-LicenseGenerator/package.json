@@ -45,7 +45,7 @@
         "portable"
       ],
       "signAndEditExecutable": false,
-      "icon": "buildResources/icon.png"
+      "icon": "buildResources/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -54,9 +54,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Top In Tech License Generator",
-      "deleteAppDataOnUninstall": false,
-      "installerIcon": "buildResources/icon.png",
-      "uninstallerIcon": "buildResources/icon.png"
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
       "artifactName": "TopInTech-LicenseGenerator-${version}-Portable.exe"

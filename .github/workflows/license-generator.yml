@@ -89,7 +89,24 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          if [ -f TopInTech-LicenseGenerator/build.log ]; then
-            message=$(tail -c 50000 TopInTech-LicenseGenerator/build.log)
-            echo "::error title=Generator build failure::${message//$'\\n'/%0A}"
+          if [ -f build.log ]; then
+            tail -c 6000 build.log > failure-tail.txt
+            {
+              echo '### Generator build failed'
+              echo '```'
+              cat failure-tail.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            message=$(tail -c 20000 build.log)
+            echo "::error title=Generator build failure::${message//$'\n'/%0A}"
           fi
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: top-in-tech-license-generator-build-log
+          path: |
+            TopInTech-LicenseGenerator/build.log
+            TopInTech-LicenseGenerator/failure-tail.txt
+          if-no-files-found: ignore
+          retention-days: 14
