@@ -80,8 +80,8 @@ the bottom-right of its window.
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-1.2.0-Setup.exe` | 102,596,877 B | `d391b1b18e1ba12d1b60d2352cada94ecea53125a79bc7ff99787cc9eb3b5406` |
-| `Top-In-Tech-License-Generator-1.2.0-Portable.exe` | 94,306,338 B | `c94f53d2c865e90bc9485b1f5aab8d6a624e64d8c6728842bfc11ab071525258` |
+| `Top-In-Tech-License-Generator-1.2.0-Setup.exe` | 102,597,818 B | `c0eadd5cc36419e36b5adfee02efc05748bbc2b7f280a49dbb2deee8fb2e53f2` |
+| `Top-In-Tech-License-Generator-1.2.0-Portable.exe` | 94,310,466 B | `be47f5fdbac5632777f5cbdfa693ab6c19e40e8d3b615a2445e81d514b8a56f0` |
 
 Installing on the owner's laptop:
 
