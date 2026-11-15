@@ -15,6 +15,13 @@ const store = require('./lib/database');
 const shortcuts = require('./lib/shortcut');
 
 const APP_NAME = 'Top In Tech License Generator';
+
+// Smoke mode is used by tests/electron-smoke.js on a real Windows runner: it
+// keeps the profile and the shortcut inside a temporary folder so the test can
+// inspect them without touching the machine it runs on.
+const SMOKE = process.env.TIT_SMOKE === '1';
+const SMOKE_ROOT = SMOKE ? fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'tit-smoke-')) : '';
+
 app.setName(APP_NAME);
 if (!app.requestSingleInstanceLock()) app.quit();
 app.enableSandbox();
@@ -208,7 +215,30 @@ const channels = {
     return { path: dataFolder };
   },
 
-  createShortcut: () => ({ ...ensureDesktopShortcut(), exe: process.execPath }),
+  createShortcut: () => {
+    const result = { ...ensureDesktopShortcut(), exe: process.execPath, userData: dataFolder, desktop: desktopCandidates() };
+    try {
+      const report = [
+        'Top In Tech License Generator — desktop shortcut report',
+        `When        : ${new Date().toISOString()}`,
+        `Windows user: ${process.env.USERNAME || ''}`,
+        `Home        : ${require('node:os').homedir()}`,
+        `Program     : ${process.execPath}`,
+        `Portable    : ${isPortable() ? 'yes' : 'no'}`,
+        '',
+        'Desktop folders checked:',
+        ...(result.checked || []).map(file => `  ${file}  ${fs.existsSync(file) ? 'EXISTS' : 'missing'}`),
+        '',
+        `Result      : ${result.created ? 'created' : 'NOT created'}`,
+        `Reason      : ${result.reason || ''}`,
+        `Written to  : ${(result.paths || []).join(', ')}`
+      ].join('\n');
+      const file = path.join(dataFolder, 'desktop-shortcut-report.txt');
+      fs.writeFileSync(file, report, { encoding: 'utf8' });
+      result.report = file;
+    } catch { /* a report is never more important than the shortcut itself */ }
+    return result;
+  },
 
   showShortcut: payload => {
     const file = String(payload?.path || '');
@@ -314,6 +344,42 @@ async function backupKeys() {
   return { path: folder };
 }
 
+/* ---- Smoke test -------------------------------------------------------- */
+// Runs on a real Windows runner: proves the main process starts, the window
+// renders, a serial can be generated and stored, and the desktop shortcut is
+// written where the test can see it.
+async function runSmokeTest() {
+  const say = value => process.stdout.write(`${value}\n`);
+  try {
+    const page = await mainWindow.webContents.executeJavaScript(`({
+      title: document.title,
+      product: Boolean(document.querySelector('#product')),
+      version: document.querySelector('#app-version').textContent,
+      keyId: document.querySelector('#key-id').textContent,
+      rows: document.querySelectorAll('#license-rows tr').length,
+      publicKey: document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')
+    })`);
+
+    const generated = await channels.generate({ product: 'Pharmacy Management', plan: '1y' });
+    const verified = await channels.verify({ serial: generated.license.formatted });
+    const shortcut = ensureDesktopShortcut();
+    const linkExists = (shortcut.paths || []).every(file => fs.existsSync(file));
+
+    say(`SMOKE_RESULT ${JSON.stringify({
+      page,
+      generated: { serial: generated.license.formatted, plan: generated.license.planLabel, id: generated.license.id },
+      verified: { valid: verified.valid, product: verified.product },
+      shortcut: { created: shortcut.created, paths: shortcut.paths, checked: shortcut.checked, reason: shortcut.reason || '' },
+      linkExists,
+      counts: counts()
+    })}`);
+    setTimeout(() => app.exit(0), 150);
+  } catch (error) {
+    say(`SMOKE_ERROR ${error.stack || error.message}`);
+    setTimeout(() => app.exit(1), 150);
+  }
+}
+
 /* ---- Window ------------------------------------------------------------ */
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -345,6 +411,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (SMOKE) {
+    app.setPath('userData', path.join(SMOKE_ROOT, 'profile'));
+    app.setPath('desktop', path.join(SMOKE_ROOT, 'Desktop'));
+  }
   dataFolder = app.getPath('userData');
   keyFolder = path.join(dataFolder, 'keys');
   keys.ensureKeyPair(keyFolder);
@@ -369,6 +439,10 @@ app.whenReady().then(() => {
   createWindow();
   // Give the window a moment to appear, then make sure the desktop icon exists.
   mainWindow.webContents.once('did-finish-load', () => {
+    if (SMOKE) {
+      runSmokeTest();
+      return;
+    }
     const result = ensureDesktopShortcut();
     if (result.created) console.log('[generator] desktop shortcut created:', result.path);
     else if (result.reason && result.reason !== 'exists' && result.reason !== 'portable') {

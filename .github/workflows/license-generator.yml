@@ -46,6 +46,10 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
+      - name: Electron window, serial, database and desktop-icon smoke test
+        shell: bash
+        run: npx electron tests/electron-smoke.js 2>&1 | tee smoke.log
+
       - name: Build the Windows setup and portable EXE
         shell: bash
         run: |
@@ -65,6 +69,8 @@ jobs:
           path: |
             TopInTech-LicenseGenerator/release/*.exe
             TopInTech-LicenseGenerator/build.log
+            TopInTech-LicenseGenerator/smoke.log
+            TopInTech-LicenseGenerator/artifacts/**
           if-no-files-found: warn
           retention-days: 30
 
@@ -124,6 +130,22 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          if [ -f smoke.log ]; then
+            {
+              echo '### Electron smoke output'
+              echo '```'
+              tail -c 4000 smoke.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/smoke-error.txt ]; then
+            {
+              echo '### Smoke failure'
+              echo '```'
+              tail -c 4000 artifacts/smoke-error.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f build.log ]; then
             tail -c 6000 build.log > failure-tail.txt
             {
