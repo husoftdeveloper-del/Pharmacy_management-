@@ -45,6 +45,7 @@ function status() {
     userData: dataFolder,
     database: dbFile,
     created: info.createdAt,
+    desktop: desktopCandidates(),
     electron: process.versions.electron,
     node: process.versions.node,
     signingReady: true
@@ -69,31 +70,58 @@ function newLicenseId() {
 }
 
 /* ---- Desktop shortcut --------------------------------------------------- */
-/* The installer writes the icon from setup, but Windows hides it when the
-   Desktop folder is redirected (OneDrive does this on most laptops). The app
-   asks Windows for the current desktop folder and fills the gap itself.      */
-function desktopFolder() {
-  try {
-    const folder = app.getPath('desktop');
-    if (folder) return folder;
-  } catch { /* fall through to the home directory */ }
-  return path.join(require('node:os').homedir(), 'Desktop');
+/* Setup already writes the icon, but Windows can hide it when the Desktop
+   folder is redirected (OneDrive does this on most laptops) or when the shell
+   points somewhere else. The app therefore fills the gap itself, in every
+   Desktop folder that exists, and can use PowerShell as a fallback.          */
+function desktopCandidates() {
+  const home = require('node:os').homedir();
+  const list = [];
+  try { list.push(app.getPath('desktop')); } catch { /* not reported */ }
+  list.push(path.join(home, 'Desktop'));
+  list.push(path.join(home, 'OneDrive', 'Desktop'));
+  if (process.env.OneDrive) list.push(path.join(process.env.OneDrive, 'Desktop'));
+  if (process.env.OneDriveConsumer) list.push(path.join(process.env.OneDriveConsumer, 'Desktop'));
+  if (process.env.OneDriveCommercial) list.push(path.join(process.env.OneDriveCommercial, 'Desktop'));
+  // A folder that does not exist is skipped inside ensureDesktopShortcut().
+  return list;
 }
 
 function isPortable() {
   return Boolean(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE);
 }
 
+// Last resort: let Windows itself create the shortcut through WScript.Shell.
+function powerShellShortcut(file, data) {
+  const { spawnSync } = require('node:child_process');
+  const quote = value => String(value).replace(/'/g, "''");
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    '$shell = New-Object -ComObject WScript.Shell',
+    `$link = $shell.CreateShortcut('${quote(file)}')`,
+    `$link.TargetPath = '${quote(data.target)}'`,
+    `$link.WorkingDirectory = '${quote(data.cwd)}'`,
+    `$link.Description = '${quote(data.description)}'`,
+    `$link.IconLocation = '${quote(data.icon)}'`,
+    '$link.Save()'
+  ].join('; ');
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script
+  ], { windowsHide: true, timeout: 20000 });
+  return result.status === 0;
+}
+
 function ensureDesktopShortcut() {
   return shortcuts.ensureDesktopShortcut({
     platform: process.platform,
     portable: isPortable(),
-    desktopFolder: desktopFolder(),
+    desktopFolders: desktopCandidates(),
     name: APP_NAME,
     target: process.execPath,
     appUserModelId: 'com.topintech.licensegenerator',
     fs,
-    writeShortcutLink: (file, data) => shell.writeShortcutLink(file, data)
+    writeShortcutLink: (file, data) => shell.writeShortcutLink(file, data),
+    powerShell: powerShellShortcut
   });
 }
 
@@ -171,6 +199,16 @@ const channels = {
   },
 
   createShortcut: () => ensureDesktopShortcut(),
+
+  showShortcut: payload => {
+    const file = String(payload?.path || '');
+    if (file && fs.existsSync(file)) {
+      shell.showItemInFolder(file);
+      return { shown: true, path: file };
+    }
+    const error = shell.openPath(dataFolder);
+    return { shown: false, path: file, error: error || '' };
+  },
 
   copyPublicKey: () => ({ publicKey: keys.readPublic(keyFolder), keyId: keys.describe(keyFolder).keyId }),
 

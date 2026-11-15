@@ -144,6 +144,8 @@ function createApp() {
           return respond({ path: 'C:\\Backups\\keys' });
         case 'createShortcut':
           return respond(shortcut.result);
+        case 'showShortcut':
+          return respond({ shown: true, path: payload.path });
         default:
           return respond({});
       }
@@ -351,33 +353,44 @@ test('export and backup report the saved path in a toast', async () => {
 
 test('the app checks the desktop icon on start-up and reports one it had to create', async () => {
   const app = createApp();
-  app.shortcut.result = { created: true, path: 'C:\\Users\\Owner\\OneDrive\\Desktop\\Top In Tech License Generator.lnk' };
+  app.shortcut.result = {
+    created: true, allExisted: false,
+    path: 'C:\\Users\\Owner\\OneDrive\\Desktop\\Top In Tech License Generator.lnk',
+    paths: ['C:\\Users\\Owner\\OneDrive\\Desktop\\Top In Tech License Generator.lnk']
+  };
   app.document.dispatch('DOMContentLoaded');
   await app.settle();
   const call = app.calls.find(entry => entry.channel === 'createShortcut');
   assert.ok(call, 'the window must ask main for the shortcut on start-up');
   const messages = app.elements.get('toasts').children.map(node => node.children[1].textContent);
-  assert.ok(messages.includes('Desktop icon created'), `toasts were ${JSON.stringify(messages)}`);
+  assert.ok(messages.some(text => text.startsWith('Desktop icon created in C:\\Users\\Owner\\OneDrive\\Desktop')),
+    `toasts were ${JSON.stringify(messages)}`);
 });
 
 test('an icon that is already there produces no toast', async () => {
   const app = createApp();
-  app.shortcut.result = { created: false, reason: 'exists' };
+  app.shortcut.result = { created: true, allExisted: true, path: 'C:\\Users\\Owner\\Desktop\\x.lnk', paths: ['C:\\Users\\Owner\\Desktop\\x.lnk'] };
   app.document.dispatch('DOMContentLoaded');
   await app.settle();
   assert.equal(app.elements.get('toasts').children.length, 0);
 });
 
-test('the Desktop shortcut button explains what happened', async () => {
+test('the Desktop shortcut button explains what happened and opens the folder', async () => {
   const app = createApp();
   app.document.dispatch('DOMContentLoaded');
   await app.settle();
+  const before = app.calls.filter(entry => entry.channel === 'showShortcut').length;
 
-  app.shortcut.result = { created: true, path: 'C:\\Users\\Owner\\Desktop\\Top In Tech License Generator.lnk' };
+  app.shortcut.result = {
+    created: true, allExisted: false, path: 'C:\\Users\\Owner\\OneDrive\\Desktop\\Top In Tech License Generator.lnk',
+    paths: ['C:\\Users\\Owner\\OneDrive\\Desktop\\Top In Tech License Generator.lnk', 'C:\\Users\\Owner\\Desktop\\Top In Tech License Generator.lnk']
+  };
   app.elements.get('desktop-shortcut').dispatch('click');
   await app.settle();
+  const shown = app.calls.filter(entry => entry.channel === 'showShortcut');
+  assert.equal(shown.length, before + 1, 'the folder is opened so the icon can be confirmed by eye');
 
-  app.shortcut.result = { created: false, reason: 'exists' };
+  app.shortcut.result = { created: true, allExisted: true, path: 'C:\\Users\\Owner\\Desktop\\x.lnk', paths: ['C:\\Users\\Owner\\Desktop\\x.lnk'] };
   app.elements.get('desktop-shortcut').dispatch('click');
   await app.settle();
 
@@ -385,13 +398,18 @@ test('the Desktop shortcut button explains what happened', async () => {
   app.elements.get('desktop-shortcut').dispatch('click');
   await app.settle();
 
-  app.shortcut.result = { created: false, reason: 'Windows refused to write the desktop icon.' };
+  app.shortcut.result = {
+    created: false, reason: 'Windows refused to write the desktop icon.',
+    checked: ['C:\\Users\\Owner\\Desktop', 'C:\\Users\\Owner\\OneDrive\\Desktop']
+  };
   app.elements.get('desktop-shortcut').dispatch('click');
   await app.settle();
 
   const messages = app.elements.get('toasts').children.map(node => node.children[1].textContent);
-  assert.ok(messages.some(text => text.startsWith('Desktop icon created in C:\\Users\\Owner\\Desktop')));
-  assert.ok(messages.includes('The desktop icon is already there'));
+  assert.ok(messages.some(text => text.startsWith('Desktop icon created in 2 desktop folders')), JSON.stringify(messages));
+  assert.ok(messages.some(text => text.startsWith('The desktop icon is already in')));
   assert.ok(messages.includes('The portable copy does not add a desktop icon'));
-  assert.ok(messages.includes('Windows refused to write the desktop icon.'));
+  const failure = messages.find(text => text.startsWith('Windows refused'));
+  assert.ok(failure, JSON.stringify(messages));
+  assert.match(failure, /Checked: .*OneDrive/);
 });

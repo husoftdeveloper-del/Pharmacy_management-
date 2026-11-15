@@ -91,13 +91,32 @@ Installing on the owner's laptop:
 
 ### If the desktop icon does not appear
 
-Windows hides icons that an installer wrote into a **redirected** Desktop folder
-— OneDrive moves the desktop on most laptops, so setup writes the shortcut to the
-old path. The app therefore creates the icon itself: it asks Windows for the
-current desktop folder and writes
-`Top In Tech License Generator.lnk` there the first time it starts. The same
-thing can be repeated any time with the **Desktop shortcut** button in the app,
-which explains in a toast what happened. The portable copy never leaves an icon.
+Some Windows setups hide the icon that an installer writes:
+
+* **OneDrive** redirects the Desktop folder, so setup writes the shortcut into
+  `%USERPROFILE%\Desktop` while the user sees
+  `%USERPROFILE%\OneDrive\Desktop`;
+* a company profile can point the shell at yet another folder;
+* `shell.writeShortcutLink` sometimes reports success without writing anything.
+
+The app therefore fixes it itself, every time it starts:
+
+1. it asks Windows for the current desktop folder and also checks
+   `%USERPROFILE%\Desktop`, `%USERPROFILE%\OneDrive\Desktop` and the
+   `OneDrive` / `OneDriveConsumer` / `OneDriveCommercial` folders;
+2. it writes `Top In Tech License Generator.lnk` into **every one of those that
+   exists** (creating the folder Windows reported if a new profile has none);
+3. it checks that the file really appeared, and if not, it creates the shortcut
+   through PowerShell and `WScript.Shell`, the same mechanism Explorer uses;
+4. the **Desktop shortcut** button in the app repeats all of this on demand,
+   opens the folder containing the shortcut so you can see it, and if nothing
+   could be written it lists the exact folders that were checked.
+
+Hover the data line at the bottom of the window to see every desktop folder the
+app checks. The portable copy never leaves an icon.
+
+Still nothing? Right-click the desktop → **View → Show desktop icons** (Windows
+can hide all icons) and check the desktop on the second monitor if you use one.
 
 The install is per-user (`perMachine: false`), so Windows does not ask for an
 administrator password. Uninstalling (Settings → Apps) never deletes the license

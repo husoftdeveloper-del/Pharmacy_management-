@@ -237,6 +237,9 @@ async function loadStatus() {
   $('#key-id').textContent = info.keyId;
   $('#app-version').textContent = info.version;
   $('#paths').textContent = `Data: ${info.userData}  ·  DB: ${info.database}`;
+  if (Array.isArray(info.desktop) && info.desktop.length) {
+    $('#paths').title = `Desktop folders checked for the icon:\n${info.desktop.join('\n')}`;
+  }
   $('#public-key').value = info.publicKey;
   $('#key-note').textContent = info.created
     ? `Created ${String(info.created).slice(0, 10)} · private key stays in ${info.keyFolder}`
@@ -361,10 +364,19 @@ function wire() {
   $('#desktop-shortcut').addEventListener('click', async () => {
     try {
       const result = await call('createShortcut', {});
-      if (result.created) toast(`Desktop icon created in ${result.path}`);
-      else if (result.reason === 'exists') toast('The desktop icon is already there');
-      else if (result.reason === 'portable') toast('The portable copy does not add a desktop icon');
-      else toast(result.reason || 'The desktop icon could not be created', 'error');
+      state.shortcut = result;
+      if (result.created) {
+        const places = result.paths.length > 1 ? `${result.paths.length} desktop folders` : result.path;
+        toast(result.allExisted
+          ? `The desktop icon is already in ${places}`
+          : `Desktop icon created in ${places}`);
+        // Show the owner where it went, so it can be confirmed by eye.
+        await call('showShortcut', { path: result.path });
+      } else if (result.reason === 'portable') {
+        toast('The portable copy does not add a desktop icon');
+      } else {
+        toast(`${result.reason} Checked: ${(result.checked || []).join(', ')}`, 'error');
+      }
     } catch (error) {
       toast(error.message, 'error');
     }
@@ -387,7 +399,10 @@ async function boot() {
     // The installer may have written the icon into a Desktop folder Windows no
     // longer shows (OneDrive redirects it), so make sure it exists.
     const shortcut = await call('createShortcut', {});
-    if (shortcut.created) toast('Desktop icon created');
+    state.shortcut = shortcut;
+    if (shortcut.created && !shortcut.allExisted) {
+      toast(`Desktop icon created in ${shortcut.path}`);
+    }
   } catch (error) {
     toast(error.message, 'error');
   }
