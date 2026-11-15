@@ -1,0 +1,95 @@
+name: Build Windows License Generator
+
+# Builds the separate Top In Tech License Generator that lives in
+# TopInTech-LicenseGenerator/. It is a completely independent application, so
+# this workflow never runs for Pharmacy changes and the Pharmacy workflow never
+# runs for generator changes. The two products keep separate installers, and the
+# Pharmacy application, its package.json and its installer config stay untouched.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['arena/**']
+    paths:
+      - 'TopInTech-LicenseGenerator/**'
+      - '.github/workflows/license-generator.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: license-generator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: TopInTech-LicenseGenerator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: TopInTech-LicenseGenerator/package-lock.json
+
+      - name: Install the generator's own dependencies
+        run: npm ci
+
+      - name: Test signing, keys, database, wiring and renderer
+        run: npm test
+
+      - name: Build the Windows setup and portable EXE
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run dist:win 2>&1 | tee build.log
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: List the built files
+        shell: bash
+        run: ls -l release/*.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top-in-tech-license-generator
+          path: |
+            TopInTech-LicenseGenerator/release/*.exe
+            TopInTech-LicenseGenerator/build.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish the downloadable installer
+        if: success()
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./TopInTech-LicenseGenerator/package.json').version")
+          tag="generator-v${version}"
+          notes="Owner-only offline serial key generator for Top In Tech desktop applications. Electron + SQLite + HTML/CSS/Vanilla JavaScript. Install the Setup EXE, or run the Portable EXE without installing. The private signing key is created on the owner's computer on first run and never ships with the app. Unsigned build: verify the source commit and checksums."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" TopInTech-LicenseGenerator/release/*.exe --clobber
+          else
+            gh release create "$tag" TopInTech-LicenseGenerator/release/*.exe \
+              --target "$GITHUB_SHA" \
+              --title "Top In Tech License Generator ${version} — Windows" \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+      - name: Show build failures in the run summary
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f TopInTech-LicenseGenerator/build.log ]; then
+            message=$(tail -c 50000 TopInTech-LicenseGenerator/build.log)
+            echo "::error title=Generator build failure::${message//$'\\n'/%0A}"
+          fi

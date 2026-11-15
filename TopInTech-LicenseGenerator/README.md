@@ -59,6 +59,17 @@ Output in `release\`:
 The installer never deletes your data on uninstall
 (`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
 
+### Download a ready-built installer
+
+Every change inside `TopInTech-LicenseGenerator/` is built on a Windows runner by
+`.github/workflows/license-generator.yml`, which attaches both EXEs to the
+release tagged `generator-v1.0.0`:
+
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.0.0>
+
+Download `TopInTech-LicenseGenerator-1.0.0-x64.exe` and run it. The Pharmacy
+application has its own separate release and installer; the two never mix.
+
 ## Where the files live
 
 | What | Path |
