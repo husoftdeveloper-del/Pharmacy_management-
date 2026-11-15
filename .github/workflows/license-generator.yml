@@ -76,36 +76,49 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p "require('./TopInTech-LicenseGenerator/package.json').version")
+          setup=$(node -p "require('./TopInTech-LicenseGenerator/package.json').build.nsis.artifactName")
+          portable=$(node -p "require('./TopInTech-LicenseGenerator/package.json').build.portable.artifactName")
           tag="generator-v${version}"
+          echo "expected setup    : $setup"
+          echo "expected portable : $portable"
+          echo "::notice title=Expected downloads::$setup and $portable"
+          ls -l TopInTech-LicenseGenerator/release/
           notes="Owner-only offline serial key generator for Top In Tech desktop applications (Electron + SQLite + HTML/CSS/Vanilla JavaScript). **Top In Tech License Generator.exe** installs with one double-click, creates a desktop icon and opens the app. **Top In Tech License Generator Portable.exe** runs without installing. The private signing key is created on the owner's computer on first run and never ships with the app. Unsigned build: verify the source commit and checksums."
-          files=(TopInTech-LicenseGenerator/release/*.exe)
-          for file in "${files[@]}"; do
-            echo "built: $(basename "$file") $(stat -c %s "$file") bytes"
-          done
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --title "Top In Tech License Generator ${version} for Windows" --notes "$notes" --prerelease
           fi
           gh release edit "$tag" --notes "$notes"
-          gh release upload "$tag" "${files[@]}" --clobber
-          # Remove installers from earlier builds, so the page only ever offers
-          # the two current downloads.
-          keep=()
-          for file in "${files[@]}"; do keep+=("$(basename "$file")"); done
-          gh release view "$tag" --json assets -q '.assets[].name' > current-assets.txt
-          while read -r asset; do
+          # Remove installers from earlier builds first, so the page only ever
+          # offers the current downloads.
+          gh release view "$tag" --json assets -q '.assets[].name' > current-assets.txt || true
+          while IFS= read -r asset; do
             [ -z "$asset" ] && continue
-            case "$asset" in *.exe|*.blockmap) ;; *) continue ;; esac
-            found=""
-            for name in "${keep[@]}"; do
-              if [ "$name" = "$asset" ]; then found=1; fi
-            done
-            if [ -z "$found" ]; then
-              echo "removing stale asset: $asset"
-              gh release delete-asset "$tag" "$asset" -y
-            fi
+            if [ "$asset" = "$setup" ] || [ "$asset" = "$portable" ]; then continue; fi
+            case "$asset" in *.exe|*.blockmap|*.yml) ;; *) continue ;; esac
+            echo "removing stale asset: $asset"
+            gh release delete-asset "$tag" "$asset" -y || true
           done < current-assets.txt
           rm -f current-assets.txt
-          gh release view "$tag" --json assets -q '.assets[] | "\(.name) \(.size) bytes"'
+          shopt -s nullglob
+          built=(TopInTech-LicenseGenerator/release/*.exe)
+          if [ ${#built[@]} -eq 0 ]; then
+            echo "::error title=Nothing to publish::electron-builder produced no .exe in release/"
+            exit 1
+          fi
+          for file in "${built[@]}"; do echo "uploading: $(basename "$file")"; done
+          gh release upload "$tag" "${built[@]}" --clobber
+          count=$(gh release view "$tag" --json assets -q '.assets | length')
+          echo "assets after upload: $count"
+          gh release view "$tag" --json assets -q '.assets[] | "\(.name) | \(.size) bytes"' > assets.txt || true
+          cat assets.txt || true
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::notice title=Release asset::$line"
+          done < assets.txt
+          rm -f assets.txt
+          if [ "$count" -lt 2 ]; then
+            echo "::error title=Missing installers::the release does not have both installers"
+            exit 1
+          fi
 
       - name: Show build failures in the run summary
         if: failure()
