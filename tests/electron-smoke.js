@@ -315,6 +315,8 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=returns]').click();return true;");
   await until(()=>run("return !!document.querySelector('#returns-rows') && !document.querySelector('.loading-state')"),'returns page from sidebar');
   await run("await window.pharmacy.invoke('return',{type:'sale',documentId:1,items:[{itemId:1,quantity:1,restock:1}],reason:'Smoke return',method:'cash'});return true;");
+  await run("document.querySelector('[data-page=returns]').click();return true;");
+  await until(()=>run("return document.querySelectorAll('#returns-rows tr[data-return]').length>0"),'returns reloaded with the new return');
   // Returns & Refunds layout: type buttons, then search + From + To + New return.
   assert.equal(await run("return [...document.querySelectorAll('.returns-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Return #|Invoice|Date|Subtotal|Refund|Reason|Recorded by|Actions','returns columns');
   assert.ok(await run("return !!document.querySelector('#returns-search') && !!document.querySelector('#returns-from') && !!document.querySelector('#returns-to') && !!document.querySelector('#new-return')"),'returns toolbar renders');
