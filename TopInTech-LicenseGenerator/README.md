@@ -21,6 +21,7 @@ TopInTech-LicenseGenerator/
 │  ├─ styles/app.css    dark owner console styling
 │  └─ scripts/app.js    renderer (talks only through window.generator)
 ├─ tools/cli.js         issue and check keys from a terminal
+├─ build-windows.ps1    install + test + build the Windows EXEs
 ├─ tests/               node --test suites (no Electron needed)
 └─ docs/                how the customer app verifies a serial
 ```
@@ -40,6 +41,12 @@ its own `node_modules`; nothing is shared with the Pharmacy application.
 
 ```powershell
 npm run dist:win
+```
+
+Or run the helper, which installs, tests and builds in one step:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
 Output in `release\`:
