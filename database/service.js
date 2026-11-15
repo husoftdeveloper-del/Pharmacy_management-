@@ -662,9 +662,14 @@ class PharmacyService {
     const opening = record.opening_stock;
     const quantity = opening ? Number(opening.quantity) : 0;
     if (quantity > 0 && record.id) fail('Opening stock is only entered when the medicine is created. Use purchases or stock adjustments to add stock.');
+    // Extra stock from the edit form arrives as add_stock and becomes a batch.
+    const addition = record.add_stock;
+    const addedQuantity = addition ? Number(addition.quantity) : 0;
+    if (addedQuantity > 0 && !record.id) fail('Use Opening Stock when the medicine is created.');
     return transaction(this.db, () => {
       const saved = this.saveEntity(user, 'medicines', record);
       if (quantity > 0) this.openingStock(user, saved.id, opening);
+      if (addedQuantity > 0) this.addStock(user, saved.id, addition);
       return saved;
     });
   }
@@ -695,6 +700,43 @@ class PharmacyService {
       if (value > 0) this.journal(user, 'Opening stock', [[4, value], [8, 0, value]], `MED-${medicine.id}`);
       audit(this.db, user, 'opening_stock', 'batches', r.lastInsertRowid, { quantity, value });
       return { id: Number(r.lastInsertRowid), quantity, value };
+    });
+  }
+  // Extra stock booked from the medicine form: a new batch with its own expiry,
+  // counted as a stock adjustment (inventory up, stock adjustment gain up) so the
+  // books stay balanced and the movement is auditable.
+  addStock(user, medicineId, input) {
+    this.require(user, 'inventory', true);
+    const medicine = this.get('SELECT * FROM medicines WHERE id=?', id(medicineId, 'medicine'));
+    if (!medicine) fail('Medicine not found.');
+    const quantity = integer(input.quantity, 'quantity');
+    if (quantity < 1) fail('Enter the quantity you want to add.');
+    if (quantity > 1000000) fail('Quantity is too large.');
+    const expiry = date(input.expiry);
+    if (expiry <= new Date().toISOString().slice(0, 10)) fail('Expiry must be a future date.');
+    const location = id(input.location_id || 1, 'location');
+    if (!this.get('SELECT id FROM locations WHERE id=?', location)) fail('Stock location not found.');
+    // Prices are optional on the form: the medicine's own prices are the default.
+    const cost = input.cost === undefined || input.cost === '' ? Number(medicine.cost) : round(number(input.cost, 'purchase price', 0));
+    const price = input.price === undefined || input.price === '' ? Number(medicine.price) : round(number(input.price, 'selling price', 0));
+    const value = round(quantity * cost);
+    return transaction(this.db, () => {
+      // A unique batch number per addition keeps the batch list readable.
+      let batchNo = text(input.batch_no, 'batch number', false, 80);
+      if (!batchNo) {
+        const used = this.get("SELECT COUNT(*) AS n FROM batches WHERE medicine_id=? AND batch_no LIKE 'ADD-%'", medicine.id).n;
+        batchNo = `ADD-${used + 1}`;
+      }
+      if (this.get('SELECT id FROM batches WHERE medicine_id=? AND batch_no=?', medicine.id, batchNo)) fail('That batch number already exists for this medicine.');
+      if (price > 0 && Number(medicine.price) !== price) this.run('UPDATE medicines SET price=? WHERE id=?', price, medicine.id);
+      if (cost > 0 && Number(medicine.cost) !== cost) this.run('UPDATE medicines SET cost=? WHERE id=?', cost, medicine.id);
+      const r = this.run('INSERT INTO batches(medicine_id,location_id,batch_no,expiry,cost,quantity) VALUES(?,?,?,?,?,?)', medicine.id, location, batchNo, expiry, cost, quantity);
+      const batchId = Number(r.lastInsertRowid);
+      this.run("INSERT INTO stock_movements(batch_id,quantity,reason,reference,user_id) VALUES(?,?,'adjustment',?,?)", batchId, quantity, `ADJ-MED-${medicine.id}`, user.id);
+      this.run('INSERT INTO adjustments(batch_id,quantity,reason,user_id) VALUES(?,?,?,?)', batchId, quantity, 'Stock added from the medicine form', user.id);
+      if (value > 0) this.journal(user, 'Stock adjustment', [[4, value], [16, 0, value]], `ADJ-MED-${medicine.id}`);
+      audit(this.db, user, 'add_stock', 'batches', batchId, { quantity, expiry, value, batchNo });
+      return { id: batchId, quantity, value, batchNo };
     });
   }
   catalog(user, search = '') {

@@ -92,3 +92,6 @@
 .medicines-table tr.medicine-archived{opacity:.55}
 .medicines-footer{justify-content:center}
 .medicines-footer span{font-size:11.5px;color:var(--muted);text-align:center;width:100%}
+/* Add stock inside the edit form: the same open/close section as opening stock,
+   with a one-line note that it is booked as a stock adjustment. */
+.add-stock-hint{margin:0 0 2px;font-size:11px;color:var(--muted);line-height:1.6}

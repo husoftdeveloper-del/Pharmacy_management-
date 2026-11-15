@@ -145,6 +145,33 @@ test('editing a medicine updates the same row and never collides on its barcode'
  assert.equal(s.get('SELECT COUNT(*) AS n FROM medicines WHERE barcode IS NULL').n,2,'several medicines may have no barcode');
  balanced(s);
 });
+test('the edit form can add stock through a new batch, booked as an adjustment',(t)=>{
+ const {s,admin}=fixture(t);
+ const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',unit:'tablet',cost:6,price:12,reorder_level:5,active:1,opening_stock:{quantity:10,expiry:'2031-05-31'}});
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,10);
+ // Adding 25 more from the edit form keeps the medicine row and adds a batch.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,name:'Panadol',cost:6.5,price:13,
+   add_stock:{quantity:25,expiry:'2032-04-30',cost:6.5,price:13}});
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,35,'the new stock is on top of the old stock');
+ const batches=s.all('SELECT * FROM batches WHERE medicine_id=? ORDER BY id',saved.id);
+ assert.equal(batches.length,2,'a second batch is created');
+ assert.equal(batches[1].quantity,25);assert.equal(batches[1].expiry,'2032-04-30');assert.equal(batches[1].cost,6.5);assert.match(batches[1].batch_no,/^ADD-/);
+ assert.equal(s.get('SELECT price FROM medicines WHERE id=?',saved.id).price,13,'the selling price follows the form');
+ assert.equal(s.get('SELECT cost FROM medicines WHERE id=?',saved.id).cost,6.5);
+ const movement=s.get("SELECT quantity,reason FROM stock_movements WHERE batch_id=? AND reason='adjustment'",batches[1].id);
+ assert.equal(movement.quantity,25);
+ assert.equal(s.get('SELECT quantity FROM adjustments WHERE batch_id=?',batches[1].id).quantity,25,'the addition is stored as an adjustment');
+ const gain=s.all("SELECT l.debit,l.credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE j.description='Stock adjustment'");
+ assert.equal(gain.length,2);assert.equal(gain.find(l=>l.debit>0).debit,162.5);assert.equal(gain.find(l=>l.credit>0).credit,162.5);
+ balanced(s);
+ // Everything the form can get wrong is refused with a clear message.
+ assert.throws(()=>s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,add_stock:{quantity:5,expiry:'2020-01-01'}}),/future/);
+ // A zero quantity simply means "no stock to add", so the form saves quietly.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,add_stock:{quantity:0,expiry:'2032-01-01'}});
+ assert.equal(s.all('SELECT id FROM batches WHERE medicine_id=?',saved.id).length,2,'a zero quantity creates no batch');
+ assert.throws(()=>s.addStock(admin,saved.id,{quantity:5,expiry:'2032-01-01',batch_no:batches[1].batch_no}),/already exists/);
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,35,'refused additions never move stock');
+});
 test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
  const {s,admin}=fixture(t);
  const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',barcode_type:'internal',generic_name:'Paracetamol',brand:'GSK',dosage_form:'tablet',unit:'tablet',cost:6,price:12,reorder_level:20,reorder_qty:100,manufacturer_id:null,category_id:null,active:1,
