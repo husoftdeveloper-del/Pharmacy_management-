@@ -189,11 +189,11 @@ test('the setup file installs with one double-click and leaves a desktop icon', 
   assert.equal(pkg.build.nsis.createDesktopShortcut, true);
   assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
   assert.equal(pkg.build.nsis.runAfterFinish, true, 'the app must open when the install finishes');
-  assert.equal(pkg.build.nsis.artifactName, 'Top In Tech License Generator.exe');
+  assert.equal(pkg.build.nsis.artifactName, 'Top-In-Tech-License-Generator-Setup.exe');
   assert.equal(pkg.build.nsis.shortcutName, 'Top In Tech License Generator');
   assert.match(pkg.build.nsis.installerIcon, /\.ico$/);
   assert.match(pkg.build.nsis.uninstallerIcon, /\.ico$/);
-  assert.equal(pkg.build.portable.artifactName, 'Top In Tech License Generator Portable.exe');
+  assert.equal(pkg.build.portable.artifactName, 'Top-In-Tech-License-Generator-Portable.exe');
   assert.equal(pkg.build.portable.unpackDirName, 'TopInTechLicenseGenerator');
 });
 
@@ -203,6 +203,7 @@ test('the two downloads are named in plain words, not with version numbers', () 
     assert.match(name, /\.exe$/);
     assert.doesNotMatch(name, /\$\{/, 'the file name must be literal so it looks the same after every build');
     assert.doesNotMatch(name, /-1\.0\.0-/, 'no version noise in the download name');
+    assert.doesNotMatch(name, /\s/, 'GitHub turns spaces in asset names into dots, so use hyphens');
   }
   assert.notEqual(names[0], names[1], 'setup and portable must not overwrite each other');
 });

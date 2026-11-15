@@ -55,13 +55,13 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Top In Tech License Generator",
       "runAfterFinish": true,
-      "artifactName": "Top In Tech License Generator.exe",
+      "artifactName": "Top-In-Tech-License-Generator-Setup.exe",
       "installerIcon": "buildResources/icon.ico",
       "uninstallerIcon": "buildResources/icon.ico",
       "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "Top In Tech License Generator Portable.exe",
+      "artifactName": "Top-In-Tech-License-Generator-Portable.exe",
       "unpackDirName": "TopInTechLicenseGenerator"
     }
   }

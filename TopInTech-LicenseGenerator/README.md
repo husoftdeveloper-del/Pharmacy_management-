@@ -67,14 +67,14 @@ Two files, both double-clickable:
 
 | Download | What happens when you double-click |
 | --- | --- |
-| **`Top In Tech License Generator.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
-| **`Top In Tech License Generator Portable.exe`** | Opens the app immediately without installing anything. No desktop icon. |
+| **`Top-In-Tech-License-Generator-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
+| **`Top-In-Tech-License-Generator-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
 
-Sizes and checksums are printed by the build run and listed on the release page.
+(Hyphens instead of spaces, because GitHub rewrites spaces in file names.)
 
 Installing on the owner's laptop:
 
-1. Open the link above and download `Top In Tech License Generator.exe`.
+1. Open the link above and download `Top-In-Tech-License-Generator-Setup.exe`.
 2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
    the build is unsigned → **More info → Run anyway**. (If the file came from a
    browser and still refuses to start: right-click → **Properties → Unblock**.)
