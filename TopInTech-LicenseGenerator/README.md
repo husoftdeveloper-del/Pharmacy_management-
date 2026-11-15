@@ -72,6 +72,11 @@ Two files, both double-clickable:
 
 (Hyphens instead of spaces, because GitHub rewrites spaces in file names.)
 
+| File | Size | SHA-256 |
+| --- | --- | --- |
+| `Top-In-Tech-License-Generator-Setup.exe` | 102,593,778 B | `302d2bd739ebdb1cc223bdb1a6b980a54a684a7e0bade6421baaaf61ee339c79` |
+| `Top-In-Tech-License-Generator-Portable.exe` | 94,304,994 B | `0ab98cc5839ed6a5b9abfbb68a3fdf5f728660ebb006f488f10ff8a593977c2c` |
+
 Installing on the owner's laptop:
 
 1. Open the link above and download `Top-In-Tech-License-Generator-Setup.exe`.
