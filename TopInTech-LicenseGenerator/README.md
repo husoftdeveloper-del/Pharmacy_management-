@@ -75,8 +75,8 @@ Two files, both double-clickable:
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-Setup.exe` | 102,593,778 B | `302d2bd739ebdb1cc223bdb1a6b980a54a684a7e0bade6421baaaf61ee339c79` |
-| `Top-In-Tech-License-Generator-Portable.exe` | 94,304,994 B | `0ab98cc5839ed6a5b9abfbb68a3fdf5f728660ebb006f488f10ff8a593977c2c` |
+| `Top-In-Tech-License-Generator-Setup.exe` | 102,595,060 B | `7990ffc27d08c24ba07da4e00c4e5ce994714e6212e75d612219146e576ff6fe` |
+| `Top-In-Tech-License-Generator-Portable.exe` | 94,302,032 B | `60af75b4cd6e9c09e08ef803060f30a48059100658b33858db61303d7437b183` |
 
 Installing on the owner's laptop:
 
