@@ -358,6 +358,17 @@ function wire() {
     }
   });
   $('#copy-public').addEventListener('click', () => copyText($('#public-key').value, 'Public key'));
+  $('#desktop-shortcut').addEventListener('click', async () => {
+    try {
+      const result = await call('createShortcut', {});
+      if (result.created) toast(`Desktop icon created in ${result.path}`);
+      else if (result.reason === 'exists') toast('The desktop icon is already there');
+      else if (result.reason === 'portable') toast('The portable copy does not add a desktop icon');
+      else toast(result.reason || 'The desktop icon could not be created', 'error');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
   $('#backup-keys').addEventListener('click', async () => {
     try {
       const saved = await call('backupKeys', {});
@@ -373,6 +384,10 @@ async function boot() {
   try {
     await loadStatus();
     await refresh();
+    // The installer may have written the icon into a Desktop folder Windows no
+    // longer shows (OneDrive redirects it), so make sure it exists.
+    const shortcut = await call('createShortcut', {});
+    if (shortcut.created) toast('Desktop icon created');
   } catch (error) {
     toast(error.message, 'error');
   }

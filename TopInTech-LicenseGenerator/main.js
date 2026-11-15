@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const keys = require('./lib/keys');
 const serial = require('./lib/serial');
 const store = require('./lib/database');
+const shortcuts = require('./lib/shortcut');
 
 const APP_NAME = 'Top In Tech License Generator';
 app.setName(APP_NAME);
@@ -65,6 +66,35 @@ function decorate(row) {
 
 function newLicenseId() {
   return crypto.randomBytes(6).toString('hex').toUpperCase().slice(0, 9);
+}
+
+/* ---- Desktop shortcut --------------------------------------------------- */
+/* The installer writes the icon from setup, but Windows hides it when the
+   Desktop folder is redirected (OneDrive does this on most laptops). The app
+   asks Windows for the current desktop folder and fills the gap itself.      */
+function desktopFolder() {
+  try {
+    const folder = app.getPath('desktop');
+    if (folder) return folder;
+  } catch { /* fall through to the home directory */ }
+  return path.join(require('node:os').homedir(), 'Desktop');
+}
+
+function isPortable() {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE);
+}
+
+function ensureDesktopShortcut() {
+  return shortcuts.ensureDesktopShortcut({
+    platform: process.platform,
+    portable: isPortable(),
+    desktopFolder: desktopFolder(),
+    name: APP_NAME,
+    target: process.execPath,
+    appUserModelId: 'com.topintech.licensegenerator',
+    fs,
+    writeShortcutLink: (file, data) => shell.writeShortcutLink(file, data)
+  });
 }
 
 /* ---- Channels ---------------------------------------------------------- */
@@ -139,6 +169,8 @@ const channels = {
     if (error) throw new Error('The data folder could not be opened.');
     return { path: dataFolder };
   },
+
+  createShortcut: () => ensureDesktopShortcut(),
 
   copyPublicKey: () => ({ publicKey: keys.readPublic(keyFolder), keyId: keys.describe(keyFolder).keyId }),
 
@@ -287,6 +319,14 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  // Give the window a moment to appear, then make sure the desktop icon exists.
+  mainWindow.webContents.once('did-finish-load', () => {
+    const result = ensureDesktopShortcut();
+    if (result.created) console.log('[generator] desktop shortcut created:', result.path);
+    else if (result.reason && result.reason !== 'exists' && result.reason !== 'portable') {
+      console.log('[generator] desktop shortcut not created:', result.reason);
+    }
+  });
 }).catch(error => {
   dialog.showErrorBox('Top In Tech License Generator cannot start', error.message);
   app.quit();

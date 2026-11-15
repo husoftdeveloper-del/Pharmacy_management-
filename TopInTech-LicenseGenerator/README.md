@@ -15,7 +15,8 @@ TopInTech-LicenseGenerator/
 ├─ lib/
 │  ├─ serial.js         serial format, Ed25519 signing and verifying
 │  ├─ keys.js           key pair creation, storage and description
-│  └─ database.js       SQLite schema and license queries
+│  ├─ database.js       SQLite schema and license queries
+│  └─ shortcut.js       desktop icon, incl. OneDrive-redirected desktops
 ├─ src/
 │  ├─ index.html        the window
 │  ├─ styles/app.css    dark owner console styling
@@ -87,6 +88,16 @@ Installing on the owner's laptop:
    *Top In Tech License Generator* is already there.
 4. The key pair is created on that computer the first time the app starts.
 5. Press **Back up keys** and keep the copy somewhere offline and safe.
+
+### If the desktop icon does not appear
+
+Windows hides icons that an installer wrote into a **redirected** Desktop folder
+— OneDrive moves the desktop on most laptops, so setup writes the shortcut to the
+old path. The app therefore creates the icon itself: it asks Windows for the
+current desktop folder and writes
+`Top In Tech License Generator.lnk` there the first time it starts. The same
+thing can be repeated any time with the **Desktop shortcut** button in the app,
+which explains in a toast what happened. The portable copy never leaves an icon.
 
 The install is per-user (`perMachine: false`), so Windows does not ask for an
 administrator password. Uninstalling (Settings → Apps) never deletes the license
