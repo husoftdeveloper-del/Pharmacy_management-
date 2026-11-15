@@ -75,15 +75,25 @@ function newLicenseId() {
    points somewhere else. The app therefore fills the gap itself, in every
    Desktop folder that exists, and can use PowerShell as a fallback.          */
 function desktopCandidates() {
-  const home = require('node:os').homedir();
+  const os = require('node:os');
+  const home = os.homedir();
   const list = [];
+  // 1. The folder Windows itself reports: this is the one the user sees.
   try { list.push(app.getPath('desktop')); } catch { /* not reported */ }
+  // 2. The classic profile folder, in case the shell points elsewhere.
   list.push(path.join(home, 'Desktop'));
+  // 3. OneDrive, which redirects the desktop on most laptops.
   list.push(path.join(home, 'OneDrive', 'Desktop'));
   if (process.env.OneDrive) list.push(path.join(process.env.OneDrive, 'Desktop'));
   if (process.env.OneDriveConsumer) list.push(path.join(process.env.OneDriveConsumer, 'Desktop'));
   if (process.env.OneDriveCommercial) list.push(path.join(process.env.OneDriveCommercial, 'Desktop'));
-  // A folder that does not exist is skipped inside ensureDesktopShortcut().
+  // 4. The all-users desktop, which some installers write to.
+  const publicRoot = process.env.PUBLIC || 'C:\\Users\\Public';
+  list.push(path.join(publicRoot, 'Desktop'));
+  try { list.push(path.join(app.getPath('appData'), '..', '..', 'Public', 'Desktop')); } catch { /* not reported */ }
+  // 5. The Start menu, so the app can always be found even without an icon.
+  try { list.push(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs')); } catch { /* not reported */ }
+  // Folders that do not exist are skipped inside ensureDesktopShortcut().
   return list;
 }
 
@@ -198,7 +208,7 @@ const channels = {
     return { path: dataFolder };
   },
 
-  createShortcut: () => ensureDesktopShortcut(),
+  createShortcut: () => ({ ...ensureDesktopShortcut(), exe: process.execPath }),
 
   showShortcut: payload => {
     const file = String(payload?.path || '');

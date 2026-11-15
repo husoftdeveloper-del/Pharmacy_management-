@@ -400,10 +400,15 @@ test('the Desktop shortcut button explains what happened and opens the folder', 
 
   app.shortcut.result = {
     created: false, reason: 'Windows refused to write the desktop icon.',
-    checked: ['C:\\Users\\Owner\\Desktop', 'C:\\Users\\Owner\\OneDrive\\Desktop']
+    checked: ['C:\\Users\\Owner\\Desktop', 'C:\\Users\\Owner\\OneDrive\\Desktop'],
+    exe: 'C:\\Users\\Owner\\AppData\\Local\\Programs\\Top In Tech License Generator\\Top In Tech License Generator.exe'
   };
+  const shownBefore = app.calls.filter(entry => entry.channel === 'showShortcut').length;
   app.elements.get('desktop-shortcut').dispatch('click');
   await app.settle();
+  const shownAfter = app.calls.filter(entry => entry.channel === 'showShortcut');
+  assert.equal(shownAfter.length, shownBefore + 1, 'the program file is shown so the icon can be made by hand');
+  assert.match(shownAfter[shownAfter.length - 1].payload.path, /Top In Tech License Generator\.exe$/);
 
   const messages = app.elements.get('toasts').children.map(node => node.children[1].textContent);
   assert.ok(messages.some(text => text.startsWith('Desktop icon created in 2 desktop folders')), JSON.stringify(messages));

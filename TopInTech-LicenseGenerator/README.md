@@ -60,27 +60,31 @@ Output in `release\`:
 The installer never deletes your data on uninstall
 (`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
 
-### Download the ready-built installer (built on Windows)
+### Download the ready-built installer (version 1.1.0, built on Windows)
 
-<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.0.0>
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.1.0>
 
 Two files, both double-clickable:
 
 | Download | What happens when you double-click |
 | --- | --- |
-| **`Top-In-Tech-License-Generator-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
-| **`Top-In-Tech-License-Generator-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
+| **`Top-In-Tech-License-Generator-1.1.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
+| **`Top-In-Tech-License-Generator-1.1.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
+
+The version number is part of the file name, so an older download in your
+Downloads folder can be told apart at a glance. The app shows the same version at
+the bottom-right of its window.
 
 (Hyphens instead of spaces, because GitHub rewrites spaces in file names.)
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-Setup.exe` | 102,596,612 B | `16ebbc7eaef050553b5266f1eb4cb831fbc14f7006ccd9e4c6462fc0ec636784` |
-| `Top-In-Tech-License-Generator-Portable.exe` | 94,314,339 B | `7f4ab3d9f1710dfa2ad7affe4fbdffe5e5648e324e793edb79b65aeb6466ec7d` |
+| `Top-In-Tech-License-Generator-1.1.0-Setup.exe` | see the release page | verified by the build run |
+| `Top-In-Tech-License-Generator-1.1.0-Portable.exe` | see the release page | verified by the build run |
 
 Installing on the owner's laptop:
 
-1. Open the link above and download `Top-In-Tech-License-Generator-Setup.exe`.
+1. Open the link above and download `Top-In-Tech-License-Generator-1.1.0-Setup.exe`.
 2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
    the build is unsigned → **More info → Run anyway**. (If the file came from a
    browser and still refuses to start: right-click → **Properties → Unblock**.)

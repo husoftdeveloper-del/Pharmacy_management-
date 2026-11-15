@@ -156,9 +156,10 @@ test('the createShortcut channel is wired from window to main', () => {
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(root, 'src/scripts/app.js'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'src/index.html'), 'utf8');
-  assert.match(main, /createShortcut: \(\) => ensureDesktopShortcut\(\)/);
+  assert.match(main, /createShortcut: \(\) => \(\{ \.\.\.ensureDesktopShortcut\(\), exe: process\.execPath \}\)/);
   assert.match(main, /app\.getPath\('desktop'\)/);
   assert.match(main, /OneDrive/);
+  assert.match(main, /Parts|Public/);
   assert.match(main, /WScript\.Shell/);
   assert.match(main, /PORTABLE_EXECUTABLE_DIR/);
   assert.match(main, /shell\.showItemInFolder/);

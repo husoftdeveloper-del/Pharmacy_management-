@@ -376,6 +376,9 @@ function wire() {
         toast('The portable copy does not add a desktop icon');
       } else {
         toast(`${result.reason} Checked: ${(result.checked || []).join(', ')}`, 'error');
+        // Nothing could be written: show the program file itself, so the icon
+        // can be made by hand with right-click → Send to → Desktop.
+        if (result.exe) await call('showShortcut', { path: result.exe });
       }
     } catch (error) {
       toast(error.message, 'error');
