@@ -79,8 +79,8 @@ the bottom-right of its window.
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-1.1.0-Setup.exe` | see the release page | verified by the build run |
-| `Top-In-Tech-License-Generator-1.1.0-Portable.exe` | see the release page | verified by the build run |
+| `Top-In-Tech-License-Generator-1.1.0-Setup.exe` | 102,596,877 B | `d391b1b18e1ba12d1b60d2352cada94ecea53125a79bc7ff99787cc9eb3b5406` |
+| `Top-In-Tech-License-Generator-1.1.0-Portable.exe` | 94,306,338 B | `c94f53d2c865e90bc9485b1f5aab8d6a624e64d8c6728842bfc11ab071525258` |
 
 Installing on the owner's laptop:
 
