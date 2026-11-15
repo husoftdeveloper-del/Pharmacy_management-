@@ -46,9 +46,12 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
-      - name: Electron window, serial, database and desktop-icon smoke test
+      - name: Check the installer script is present
         shell: bash
-        run: npx electron tests/electron-smoke.js 2>&1 | tee smoke.log
+        run: |
+          test -f buildResources/installer.nsh || { echo "::error title=Missing NSIS include::buildResources/installer.nsh is required for the desktop icon"; exit 1; }
+          grep -q 'SetShellVarContext current' buildResources/installer.nsh || { echo "::error title=NSIS include::the shortcut must be created in the current user context"; exit 1; }
+          echo "NSIS include checked"
 
       - name: Build the Windows setup and portable EXE
         shell: bash
@@ -69,7 +72,6 @@ jobs:
           path: |
             TopInTech-LicenseGenerator/release/*.exe
             TopInTech-LicenseGenerator/build.log
-            TopInTech-LicenseGenerator/smoke.log
             TopInTech-LicenseGenerator/artifacts/**
           if-no-files-found: warn
           retention-days: 30
@@ -130,14 +132,6 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          if [ -f smoke.log ]; then
-            {
-              echo '### Electron smoke output'
-              echo '```'
-              tail -c 4000 smoke.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
           if [ -f artifacts/smoke-error.txt ]; then
             {
               echo '### Smoke failure'

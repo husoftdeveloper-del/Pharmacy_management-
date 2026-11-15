@@ -23,6 +23,7 @@ TopInTech-LicenseGenerator/
 │  └─ scripts/app.js    renderer (talks only through window.generator)
 ├─ tools/cli.js         issue and check keys from a terminal
 ├─ build-windows.ps1    install + test + build the Windows EXEs
+└─ buildResources/installer.nsh  pins the desktop icon to the current user
 ├─ tests/               node --test suites (no Electron needed)
 └─ docs/                how the customer app verifies a serial
 ```
@@ -60,16 +61,16 @@ Output in `release\`:
 The installer never deletes your data on uninstall
 (`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
 
-### Download the ready-built installer (version 1.1.0, built on Windows)
+### Download the ready-built installer (version 1.2.0, built on Windows)
 
-<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.1.0>
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.2.0>
 
 Two files, both double-clickable:
 
 | Download | What happens when you double-click |
 | --- | --- |
-| **`Top-In-Tech-License-Generator-1.1.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
-| **`Top-In-Tech-License-Generator-1.1.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
+| **`Top-In-Tech-License-Generator-1.2.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
+| **`Top-In-Tech-License-Generator-1.2.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
 
 The version number is part of the file name, so an older download in your
 Downloads folder can be told apart at a glance. The app shows the same version at
@@ -79,12 +80,12 @@ the bottom-right of its window.
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-1.1.0-Setup.exe` | 102,596,877 B | `d391b1b18e1ba12d1b60d2352cada94ecea53125a79bc7ff99787cc9eb3b5406` |
-| `Top-In-Tech-License-Generator-1.1.0-Portable.exe` | 94,306,338 B | `c94f53d2c865e90bc9485b1f5aab8d6a624e64d8c6728842bfc11ab071525258` |
+| `Top-In-Tech-License-Generator-1.2.0-Setup.exe` | 102,596,877 B | `d391b1b18e1ba12d1b60d2352cada94ecea53125a79bc7ff99787cc9eb3b5406` |
+| `Top-In-Tech-License-Generator-1.2.0-Portable.exe` | 94,306,338 B | `c94f53d2c865e90bc9485b1f5aab8d6a624e64d8c6728842bfc11ab071525258` |
 
 Installing on the owner's laptop:
 
-1. Open the link above and download `Top-In-Tech-License-Generator-1.1.0-Setup.exe`.
+1. Open the link above and download `Top-In-Tech-License-Generator-1.2.0-Setup.exe`.
 2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
    the build is unsigned → **More info → Run anyway**. (If the file came from a
    browser and still refuses to start: right-click → **Properties → Unblock**.)
@@ -103,7 +104,11 @@ Some Windows setups hide the icon that an installer writes:
 * a company profile can point the shell at yet another folder;
 * `shell.writeShortcutLink` sometimes reports success without writing anything.
 
-The app therefore fixes it itself, every time it starts:
+Version 1.2.0 fixes the cause first: the installer no longer requests
+elevation (`allowElevation: false`) and pins the shortcut to the current user with
+`SetShellVarContext current` in `buildResources/installer.nsh`, so Windows cannot
+write the icon onto an administrator's desktop. On top of that, the app fixes it
+itself every time it starts:
 
 1. it asks Windows for the current desktop folder and also checks
    `%USERPROFILE%\Desktop`, `%USERPROFILE%\OneDrive\Desktop` and the

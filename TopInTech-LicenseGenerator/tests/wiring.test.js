@@ -185,11 +185,14 @@ test('the setup file installs with one double-click and leaves a desktop icon', 
   // double-click -> install -> desktop icon -> the app opens by itself.
   assert.equal(pkg.build.nsis.oneClick, true, 'a one-click install, not a wizard');
   assert.equal(pkg.build.nsis.perMachine, false, 'a per-user install needs no administrator password');
-  assert.equal(pkg.build.nsis.allowElevation, true);
+  // Elevation makes Windows put the icon on the administrator's desktop, which
+  // is the "the icon never appears" bug, so a per-user install must never ask.
+  assert.equal(pkg.build.nsis.allowElevation, false);
   assert.equal(pkg.build.nsis.createDesktopShortcut, true);
   assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
   assert.equal(pkg.build.nsis.runAfterFinish, true, 'the app must open when the install finishes');
   assert.equal(pkg.build.nsis.artifactName, 'Top-In-Tech-License-Generator-${version}-Setup.exe');
+  assert.equal(pkg.build.nsis.include, 'buildResources/installer.nsh');
   assert.equal(pkg.build.nsis.shortcutName, 'Top In Tech License Generator');
   assert.match(pkg.build.nsis.installerIcon, /\.ico$/);
   assert.match(pkg.build.nsis.uninstallerIcon, /\.ico$/);
@@ -222,4 +225,15 @@ test('the icon files exist and the ico holds several sizes', () => {
   }
   for (const size of [256, 48, 32, 16]) assert.ok(sizes.includes(size), `missing the ${size}px icon`);
   assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
+});
+
+test('the NSIS include pins the desktop icon to the current user', () => {
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro customInstall/);
+  assert.match(nsh, /SetShellVarContext current/);
+  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /\$\{APP_EXECUTABLE_FILENAME\}/);
+  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
+  assert.match(nsh, /!macro customUnInstall/);
+  assert.match(nsh, /Delete "\$DESKTOP/);
 });
