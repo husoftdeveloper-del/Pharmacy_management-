@@ -1,3 +1,23 @@
+## Build 69 — the delivered pharmacy logo is the application icon
+
+- **Setup**: `Pharmacy-1.0.0-x64.exe` — 102,734,059 B, sha256 `bde39472c6adc9b8e4d37c7928c724f8c67678422b84bbcc317cc542b52104b0`
+- **Portable**: `Pharmacy-1.0.0-Portable.exe` — 94,544,255 B, sha256 `1eefe0702373d2c36bd436033ee82e8257dfd5f961ea2c2298762292f27290ba`
+- **Release**: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.69
+- **CI**: run 43710517158 — check, 40/40 tests, Electron smoke, installer build and release publishing all passed. The follow-up step that copies the installer into `src/pages/` failed to push in that run, so the downloadable files come from the release above.
+
+The icon the owner supplied (leaf, capsule and cross) replaces the old placeholder
+everywhere Windows shows one:
+
+| Place | File |
+| --- | --- |
+| Installer, program file, desktop shortcut, taskbar | `build/icon.ico` (16, 32, 48, 64, 128, 256 px) |
+| Window icon in `main.js` | `build/icon.png` |
+| Page icon | `src/assets/pharmacy-logo.png` + `<link rel="icon">` in `src/pages/index.html` |
+
+No application code, database schema, dependency or installer setting changed:
+`package.json` already pointed `win.icon` at `build/icon.ico`, so the new build
+picks the logo up through that existing setting.
+
 # Pharmacy Management — delivery
 
 ## Windows downloads
