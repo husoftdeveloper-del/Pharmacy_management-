@@ -22,7 +22,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.62')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.63')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -306,7 +306,7 @@ app.whenReady().then(async()=>{
   const boxLabels=await run("return [...document.querySelectorAll('.insight-card')].map(x=>x.dataset.go).join(',')");
   assert.equal(boxLabels,'finance,inventory,reports,sales');
   await run("document.querySelector('.insight-card[data-go=sales]').click();return true;");
-  await until(()=>run("return !!document.querySelector('#sales-rows table') && document.querySelectorAll('[data-page=\"sales\"]').length>=0"),'sales page from dashboard box');
+  await until(()=>run("return !!document.querySelector('.sales-table') && document.querySelectorAll('[data-page=\"sales\"]').length>=0"),'sales page from dashboard box');
   await run("document.querySelector('[data-page=dashboard]').click();return true;");
   await until(()=>run("return document.querySelectorAll('.insight-card').length===4"),'dashboard again');
   await run("document.querySelector('.insight-card[data-go=reports]').click();return true;");
@@ -637,7 +637,27 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-kind=sale]').click();return true;");
   await pause(200);
   await run("document.querySelector('[data-page=sales]').click();return true;");
-  await until(()=>run("return !!document.querySelector('#sales-rows table')"),'sales history table');
+  await until(()=>run("return !!document.querySelector('.sales-table')"),'sales history table');
+  // Sales history layout: search and period on one row, count and total under
+  // them, and the nine columns of the design.
+  assert.equal(await run("return [...document.querySelectorAll('.sales-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Invoice #|Date|Subtotal|Discount|Total|Paid|Balance|Recorded by|Actions','sales history columns');
+  assert.ok(await run("return !!document.querySelector('#sales-search') && !!document.querySelector('#sales-period')"),'sales filters render');
+  assert.equal(await run("return document.querySelector('#sales-period').value"),'30','last 30 days by default');
+  assert.ok(await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length>0"),'completed sales are listed');
+  assert.equal(await run("return document.querySelector('#sales-count').textContent"),String(await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length")),'the count matches the rows');
+  assert.ok(await run("return document.querySelector('#sales-sum').textContent!=='0.00'"),'the total follows the rows');
+  const allSalesRows=await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length");
+  await run("const input=document.querySelector('#sales-search');input.value='INV-0000-nothing';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run("return document.querySelectorAll('#sales-rows tr[data-sale]').length===0"),'search filters the table');
+  assert.ok(await run("return !document.querySelector('#sales-empty').hidden && document.querySelector('#sales-empty').innerText.length>0"),'empty state shows for no matches');
+  assert.equal(await run("return document.querySelector('#sales-count').textContent"),'0','the count follows the filter');
+  await run("const input=document.querySelector('#sales-search');input.value='';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run(`return document.querySelectorAll('#sales-rows tr[data-sale]').length===${allSalesRows}`),'clearing the search restores the rows');
+  // A row opens the invoice preview.
+  await run("document.querySelector('#sales-rows tr[data-sale]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'row opens the invoice');
+  await run("document.querySelector('#modal-root [data-close]').click();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'invoice closed');
   assert.equal(await run("return document.querySelectorAll('#returns-rows, #returns-total').length"),0,'sales page must not contain the returns list');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Sales history')"),'sales page titled as sales history');
   // Finance: Expenses totals and filters, the Ledger statement and the Reports KPIs.
@@ -778,7 +798,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.62',autoBackup:true},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.63',autoBackup:true},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
