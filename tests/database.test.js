@@ -124,6 +124,27 @@ test('price list shows shelf quantity, both prices and profit per medicine',(t)=
  assert.throws(()=>s.updateMedicinePrice(cashier,{id:panadol.id,price:11}),/permission/i);
  assert.equal(s.permissions(s.get('SELECT * FROM users WHERE id=?',admin.id)).includes('pricelist'),true);
 });
+test('editing a medicine updates the same row and never collides on its barcode',(t)=>{
+ const {s,admin}=fixture(t);
+ const first=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',unit:'tablet',cost:6,price:12,reorder_level:5,active:1,opening_stock:{quantity:20,expiry:'2031-05-31'}});
+ const second=s.saveMedicine(admin,{name:'Brufen',unit:'tablet',cost:4,price:9,reorder_level:5,active:1,opening_stock:{quantity:7,expiry:'2031-06-30'}});
+ // The edit form always posts the id, so the save is an update, not an insert.
+ const edited=s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',first.id),id:first.id,name:'Panadol Extra',generic_name:'Paracetamol',price:14,cost:7});
+ assert.equal(edited.id,first.id,'the same row is updated');
+ assert.equal(s.get('SELECT COUNT(*) AS n FROM medicines').n,2,'editing never creates a second medicine');
+ const row=s.get('SELECT * FROM medicines WHERE id=?',first.id);
+ assert.equal(row.name,'Panadol Extra');assert.equal(row.price,14);assert.equal(row.barcode,'2040798152855','the barcode is kept');
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===first.id).stock,20,'editing keeps the stock');
+ // A barcode already used by another medicine is refused with the column named.
+ assert.throws(()=>s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',second.id),id:second.id,barcode:'2040798152855'}),/UNIQUE constraint failed: medicines\.barcode/);
+ // Clearing the barcode stores NULL, and two medicines without a barcode coexist.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',second.id),id:second.id,barcode:''});
+ assert.equal(s.get('SELECT barcode FROM medicines WHERE id=?',second.id).barcode,null,'an empty barcode is stored as NULL');
+ const third=s.saveMedicine(admin,{name:'No Code',unit:'tablet',cost:1,price:2,active:1});
+ assert.equal(s.get('SELECT barcode FROM medicines WHERE id=?',third.id).barcode,null);
+ assert.equal(s.get('SELECT COUNT(*) AS n FROM medicines WHERE barcode IS NULL').n,2,'several medicines may have no barcode');
+ balanced(s);
+});
 test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
  const {s,admin}=fixture(t);
  const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',barcode_type:'internal',generic_name:'Paracetamol',brand:'GSK',dosage_form:'tablet',unit:'tablet',cost:6,price:12,reorder_level:20,reorder_qty:100,manufacturer_id:null,category_id:null,active:1,

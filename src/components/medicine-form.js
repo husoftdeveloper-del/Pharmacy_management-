@@ -78,6 +78,9 @@ function readForm(form){
 
 export function openMedicineForm(record={},done){
   const editing=Boolean(record.id);
+  // The form is a plain set of inputs, so the id it edits is kept here: without
+  // it the save would look like a brand-new medicine and hit the unique barcode.
+  const editingId=editing?Number(record.id):null;
   const m=modal(t(editing?'editMedicine':'newMedicine'),medicineForm(record,editing));
   m.root.querySelector('.modal').classList.add('modal-medicine');
   const form=m.root.querySelector('form');
@@ -99,6 +102,7 @@ export function openMedicineForm(record={},done){
     if(busy)return;busy=true;submit.disabled=true;error.textContent='';
     try{
       const record=readForm(form);
+      if(editingId)record.id=editingId;
       if(!record.name){error.textContent=t('nameRequired');return;}
       if(!editing&&!(record.price>0)){error.textContent=t('priceRequired');form.querySelector('.opening-stock').open=true;form.querySelector('[name=opening_price]').focus();return;}
       if(record.opening_stock&&!record.opening_stock.expiry){form.querySelector('.opening-stock').open=true;error.textContent=t('openingExpiryRequired');return;}

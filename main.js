@@ -401,7 +401,20 @@ app.whenReady().then(()=>{
   ipcMain.handle('pharmacy:request',async(event,request)=>{
     try{senderWindow(event);const data=await dispatch(event,request);return {ok:true,data};}
     catch(error){
-      const safe=error.code==='SESSION_EXPIRED'?error.message:(/ UNIQUE constraint/.test(error.message)?'That value already exists. Use a unique SKU, barcode, username or record name.':/ FOREIGN KEY constraint/.test(error.message)?'This record is linked to other records and cannot be changed that way.':error.message?.slice(0,250)||'The operation could not be completed.');
+      const uniqueField=/UNIQUE constraint failed: (\w+)\.(\w+)/.exec(error.message||'');
+      const uniqueMessage=uniqueField?({
+        'medicines.barcode':'That barcode is already used by another medicine. Clear it or enter a different one.',
+        'medicines.sku':'That medicine code is already used. Choose a different SKU.',
+        'users.username':'That username is already taken.',
+        'customers.name':'A customer with that name already exists.',
+        'suppliers.name':'A supplier with that name already exists.',
+        'categories.name':'A category with that name already exists.',
+        'manufacturers.name':'A manufacturer with that name already exists.',
+        'locations.name':'A stock location with that name already exists.',
+        'staff.name':'A staff member with that name already exists.',
+        'accounts.code':'That account code already exists.'
+      }[`${uniqueField[1]}.${uniqueField[2]}`]||`That ${uniqueField[2].replaceAll('_',' ')} is already used by another record.`):null;
+      const safe=error.code==='SESSION_EXPIRED'?error.message:(uniqueMessage||(/ FOREIGN KEY constraint/.test(error.message)?'This record is linked to other records and cannot be changed that way.':error.message?.slice(0,250)||'The operation could not be completed.'));
       console.error('[application]',error.message);
       return {ok:false,error:safe,code:error.code||'OPERATION_FAILED'};
     }
