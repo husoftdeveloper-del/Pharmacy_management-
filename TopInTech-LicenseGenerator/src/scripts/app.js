@@ -90,6 +90,18 @@ function renderStats() {
   $('#stat-used').textContent = state.stats.used;
 }
 
+// Products already used become suggestions, so the second key for the same
+// product is typed exactly like the first.
+function renderProductOptions() {
+  const list = $('#product-list');
+  const names = [...new Set(state.licenses.map(row => row.product).filter(Boolean))].slice(0, 25);
+  list.replaceChildren(...names.map(name => {
+    const option = document.createElement('option');
+    option.value = name;
+    return option;
+  }));
+}
+
 function renderRows() {
   const body = $('#license-rows');
   body.replaceChildren();
@@ -216,6 +228,7 @@ async function refresh() {
   state.stats = data.stats;
   renderStats();
   renderRows();
+  renderProductOptions();
 }
 
 /* ---- Status / keys ---------------------------------------------------- */

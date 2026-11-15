@@ -33,7 +33,8 @@
       <form id="generate-form" class="form" novalidate>
         <label class="field">
           <span>Product name <b>*</b></span>
-          <input id="product" name="product" maxlength="60" autocomplete="off" placeholder="e.g. Pharmacy Management" required>
+          <input id="product" name="product" maxlength="60" autocomplete="off" list="product-list" placeholder="e.g. Pharmacy Management" required>
+          <datalist id="product-list"></datalist>
         </label>
         <label class="field">
           <span>License duration <b>*</b></span>

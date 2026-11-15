@@ -198,6 +198,9 @@ test('the table shows one row per license with status, plan and customer', async
   assert.equal(rows[1].children[5].children[0].className, 'status-select assigned');
   assert.equal(rows[1].children[6].children[0].value, 'Kabul Pharmacy');
   assert.equal(app.elements.get('empty-state').hidden, true);
+  // Products already issued become suggestions for the next key.
+  const suggestions = app.elements.get('product-list').children.map(option => option.value);
+  assert.equal(JSON.stringify(suggestions), JSON.stringify(['Pharmacy Management', 'Clinic Manager']));
 });
 
 test('the customer field is empty-with-placeholder and the row actions are present', async () => {
