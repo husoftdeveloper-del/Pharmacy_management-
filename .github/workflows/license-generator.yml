@@ -77,31 +77,34 @@ jobs:
         run: |
           version=$(node -p "require('./TopInTech-LicenseGenerator/package.json').version")
           tag="generator-v${version}"
-          notes="Owner-only offline serial key generator for Top In Tech desktop applications. Electron + SQLite + HTML/CSS/Vanilla JavaScript.\r\n\r\n**Top In Tech License Generator.exe** installs with one double-click, creates a desktop icon and opens the app. **Top In Tech License Generator Portable.exe** runs without installing. The private signing key is created on the owner's computer on first run and never ships with the app. Unsigned build: verify the source commit and checksums."
+          notes="Owner-only offline serial key generator for Top In Tech desktop applications (Electron + SQLite + HTML/CSS/Vanilla JavaScript). **Top In Tech License Generator.exe** installs with one double-click, creates a desktop icon and opens the app. **Top In Tech License Generator Portable.exe** runs without installing. The private signing key is created on the owner's computer on first run and never ships with the app. Unsigned build: verify the source commit and checksums."
           files=(TopInTech-LicenseGenerator/release/*.exe)
           for file in "${files[@]}"; do
             echo "built: $(basename "$file") $(stat -c %s "$file") bytes"
           done
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --target "$GITHUB_SHA" \
-              --title "Top In Tech License Generator ${version} — Windows" \
-              --notes "$notes" --prerelease
+            gh release create "$tag" --target "$GITHUB_SHA" --title "Top In Tech License Generator ${version} for Windows" --notes "$notes" --prerelease
           fi
           gh release edit "$tag" --notes "$notes"
           gh release upload "$tag" "${files[@]}" --clobber
-          # Remove installers from older builds so the page only ever offers the
-          # two current downloads; the build they came from stays in the notes.
-          keep=""
-          for file in "${files[@]}"; do keep="$keep$(basename "$file")\
-"; done
-          gh release view "$tag" --json assets -q '.assets[].name' | while read -r asset; do
+          # Remove installers from earlier builds, so the page only ever offers
+          # the two current downloads.
+          keep=()
+          for file in "${files[@]}"; do keep+=("$(basename "$file")"); done
+          gh release view "$tag" --json assets -q '.assets[].name' > current-assets.txt
+          while read -r asset; do
             [ -z "$asset" ] && continue
             case "$asset" in *.exe|*.blockmap) ;; *) continue ;; esac
-            if ! printf '%s' "$keep" | grep -Fxq "$asset"; then
+            found=""
+            for name in "${keep[@]}"; do
+              if [ "$name" = "$asset" ]; then found=1; fi
+            done
+            if [ -z "$found" ]; then
               echo "removing stale asset: $asset"
               gh release delete-asset "$tag" "$asset" -y
             fi
-          done
+          done < current-assets.txt
+          rm -f current-assets.txt
           gh release view "$tag" --json assets -q '.assets[] | "\(.name) \(.size) bytes"'
 
       - name: Show build failures in the run summary
