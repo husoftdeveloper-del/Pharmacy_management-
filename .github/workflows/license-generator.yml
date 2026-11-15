@@ -12,6 +12,9 @@ on:
     branches: ['arena/**']
     paths:
       - 'TopInTech-LicenseGenerator/**'
+      # Documentation edits do not need a new installer.
+      - '!TopInTech-LicenseGenerator/**.md'
+      - '!TopInTech-LicenseGenerator/docs/**'
       - '.github/workflows/license-generator.yml'
 
 permissions:
