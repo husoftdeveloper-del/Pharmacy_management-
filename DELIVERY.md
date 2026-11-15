@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.63**
+Verified release: **v1.0.0-build.64**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.63
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.63/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.63/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.64
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.64/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.64/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-ecc0370f1d59c16c2213811e4a7afd3c1bf2e46bec18aaedc55c28bc4e6173a9  Pharmacy-1.0.0-x64.exe
-453389feb2be6d40087fd31b4824c1d87eb098352eeb31bff03399da80b599c5  Pharmacy-1.0.0-Portable.exe
+9120bb952f175afa3abc15c3f1496f4d1e2a1c530f3368424b9e7fe92b6541cb  Pharmacy-1.0.0-x64.exe
+7288ee75e2cd55b495979f7dfc98cfdf4c9231cb6e9f15840e69c4329f48571a  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,27 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Returns & Refunds rebuilt to the approved screen (build 64)
+
+```
+Returns & Refunds
+Process customer and supplier returns with automatic stock adjustment.
+
+[ Sale Returns ] [ Purchase Returns ]
+
+[ Search by return # or invoice # ... ]  [From  ] [To  ]   [New Sale Return]
+
+Return #     Invoice       Date          Subtotal  Refund  Reason       Recorded by  Actions
+RET-0001     INV-1731-482  28/10/2026     40.00    40.00  Damaged box  Administrator    >
+```
+
+- **Heading + hint** — "Process customer and supplier returns with automatic stock adjustment." with the two type buttons underneath.
+- **One toolbar row** — search by return number, invoice, reason or cashier; **From** and **To** dates reload the list; **New Sale Return** / **New Purchase Return** follows the selected type.
+- **Columns** — Return #, Invoice, Date, Subtotal, Refund, Reason, Recorded by, Actions. **Refund** shows only the money actually handed back; the rest of a return is credited against the customer or supplier balance, so the two figures are honest.
+- **New return** — the button opens an invoice picker (searchable), and choosing an invoice opens the familiar return form; the list refreshes when it is saved.
+- **Row detail** — clicking a return shows the original invoice, the amounts and the returned lines, and can start another return from the same invoice.
+- **Empty state** — "No sale returns yet / Process a return from an invoice to see it here." inside the card, with a clear-filters hint while searching.
 
 ## Sales history rebuilt to the approved screen (build 63)
 
@@ -612,7 +633,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.63` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.64` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
