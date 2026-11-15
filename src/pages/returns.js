@@ -3,22 +3,33 @@ import {t} from '../scripts/i18n.js';
 import {pageHeader,icon,empty,run,modal,table} from '../components/ui.js';
 import {showDocument,openReturn} from '../components/documents.js';
 
-/* Returns & Refunds, rebuilt to the approved screen: a heading with the hint
+/* Returns & Refunds, rebuilt to the approved screens: a heading with the hint
    "Process customer and supplier returns with automatic stock adjustment.",
-   two type buttons, one row of search + From + To + New return, and a table of
-   Return #, Invoice, Date, Subtotal, Refund, Reason, Recorded by and Actions.
-   A return is always created from its invoice, so "New Sale Return" first asks
-   which invoice the goods came back from. */
-const COLUMNS=['returnNo','invoice','date','subtotal','refund','reason','recordedBy','actions'];
+   two type buttons, one row of search + From + To + New return, and then the
+   table for the selected type. The two lists carry different money columns
+   because they answer different questions: a sale return shows what the
+   customer got back (Refund) plus the reason, while a purchase return shows
+   which supplier it came from and how much was credited (Credit).
+   A return is always created from its invoice, so "New ... Return" first asks
+   which invoice the goods came from. */
+const COLUMNS={
+  sale:['returnNo','invoice','date','subtotal','refund','reason','recordedBy','actions'],
+  purchase:['returnNo','invoice','party','date','subtotal','credit','recordedBy','actions']
+};
 
 export async function render(root,params={}){
   let kind='sale',rows=[],search='',from='',to='';
   const docType=()=>kind==='sale'?'sale':'purchase';
-  const partyKey=()=>kind==='sale'?'customer':'supplier';
   const docIdKey=()=>kind==='sale'?'sale_id':'purchase_id';
   const listType=()=>kind==='sale'?'salereturns':'purchasereturns';
   const returnNumber=row=>`RET-${String(row.id).padStart(4,'0')}`;
+  // What the customer actually got back: the return value minus the part that
+  // was only credited against their outstanding balance.
   const refundOf=row=>Math.max(0,Number(row.total||0)-Number(row.credit_amount||0));
+  // What the supplier's account was credited with by this return.
+  const creditOf=row=>Math.min(Number(row.total||0),Math.max(0,Number(row.credit_amount||0)));
+  const searchHint=()=>kind==='sale'?t('searchReturnOrInvoice'):t('searchPurchaseReturn');
+  const emptyHint=()=>kind==='sale'?t('processSaleReturnHint'):t('processPurchaseReturnHint');
 
   root.innerHTML=pageHeader(t('returnsRefunds'),t('returnsHint'))+`<div class="returns-page">
       <div class="tabs returns-types" role="tablist">
@@ -27,7 +38,7 @@ export async function render(root,params={}){
       </div>
       <section class="card returns-toolbar">
         <div class="returns-filters">
-          <label class="returns-search">${icon('search',18)}<input id="returns-search" type="search" placeholder="${e(t('searchReturnOrInvoice'))}" autocomplete="off" aria-label="${e(t('searchReturnOrInvoice'))}"></label>
+          <label class="returns-search">${icon('search',18)}<input id="returns-search" type="search" placeholder="${e(searchHint())}" autocomplete="off" aria-label="${e(searchHint())}"></label>
           <label class="returns-date"><span>${e(t('from'))}</span><input id="returns-from" type="date" aria-label="${e(t('from'))}"></label>
           <label class="returns-date"><span>${e(t('to'))}</span><input id="returns-to" type="date" aria-label="${e(t('to'))}"></label>
           <button type="button" class="btn btn-primary returns-new" id="new-return">${icon('transfer',16)}<span id="new-return-label">${e(t('newSaleReturn'))}</span></button>
@@ -49,33 +60,39 @@ export async function render(root,params={}){
   const matches=row=>{
     const query=search.trim().toLowerCase();
     if(!query)return true;
-    return [returnNumber(row),row.invoice_no,row.reason,row.user,row[partyKey()]]
+    return [returnNumber(row),row.invoice_no,row.reason,row.user,row.customer,row.supplier]
       .filter(Boolean).some(value=>String(value).toLowerCase().includes(query));
   };
 
-  const labels={returnNo:t('returnNo'),invoice:t('invoice'),date:t('date'),subtotal:t('subtotal'),refund:t('refund'),reason:t('reason'),recordedBy:t('recordedBy'),actions:t('actions')};
+  const labels={returnNo:t('returnNo'),invoice:t('invoice'),party:t('supplierName'),date:t('date'),subtotal:t('subtotal'),refund:t('refund'),credit:t('credit'),reason:t('reason'),recordedBy:t('recordedBy'),actions:t('actions')};
   const drawHead=()=>{
-    $('#returns-head').innerHTML=COLUMNS.map(key=>`<th class="${key==='subtotal'||key==='refund'||key==='actions'?'num':''}">${e(labels[key])}</th>`).join('');
+    $('#returns-head').innerHTML=COLUMNS[kind].map(key=>`<th class="${['subtotal','refund','credit','actions'].includes(key)?'num':''}">${e(labels[key])}</th>`).join('');
   };
 
   const draw=()=>{
     const visible=rows.filter(matches);
-    $('#returns-rows').innerHTML=visible.map(row=>`<tr data-return="${row.id}">
+    $('#returns-rows').innerHTML=visible.map(row=>{
+      const moneyCell=kind==='sale'
+        ? `<td class="num negative">− ${money(refundOf(row))}</td><td class="muted reason-cell">${e(row.reason||'')}</td>`
+        : `<td class="num positive">${money(creditOf(row))}</td>`;
+      const partyCell=kind==='sale'?'':`<td class="party-cell">${e(row.supplier||'—')}</td>`;
+      return `<tr data-return="${row.id}">
         <td class="mono positive">${e(returnNumber(row))}</td>
         <td class="mono">${e(row.invoice_no||'')}</td>
+        ${partyCell}
         <td class="nowrap">${e(dateTime(row.date))}</td>
         <td class="num">${money(row.total)}</td>
-        <td class="num negative">− ${money(refundOf(row))}</td>
-        <td class="muted reason-cell">${e(row.reason||'')}</td>
+        ${moneyCell}
         <td class="nowrap">${e(row.user||'—')}</td>
         <td class="num">${icon('chevron',15)}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
     const filtered=Boolean(search||from||to);
     $('#returns-empty').hidden=visible.length>0;
     if(!visible.length){
       $('#returns-empty').innerHTML=empty(
         kind==='sale'?t('noSaleReturns'):t('noPurchaseReturns'),
-        filtered?t('clearFiltersHint'):t('processReturnHint'),
+        filtered?t('clearFiltersHint'):emptyHint(),
         'transfer'
       );
     }
@@ -88,13 +105,15 @@ export async function render(root,params={}){
   // The dialog shows the original invoice, what came back, and what was refunded.
   const openRow=async row=>{
     const document=await api('document',{type:docType(),id:Number(row[docIdKey()])});
+    const moneyLabel=kind==='sale'?t('refund'):t('credit');
+    const moneyValue=kind==='sale'?`− ${money(refundOf(row))}`:money(creditOf(row));
     const sheet=modal(`${returnNumber(row)} · ${document.invoice_no}`,
       `<div class="summary-strip">
          <div><small>${e(t('invoice'))}</small><strong>${e(document.invoice_no)}</strong></div>
-         <div><small>${e(t(partyKey()))}</small><strong>${e(document.party?.name||t('walkIn'))}</strong></div>
+         <div><small>${e(kind==='sale'?t('customer'):t('supplier'))}</small><strong>${e(document.party?.name||t('walkIn'))}</strong></div>
          <div><small>${e(t('date'))}</small><strong>${e(dateTime(row.date))}</strong></div>
          <div><small>${e(t('subtotal'))}</small><strong>${money(row.total)}</strong></div>
-         <div><small>${e(t('refund'))}</small><strong>− ${money(refundOf(row))}</strong></div>
+         <div><small>${e(moneyLabel)}</small><strong>${moneyValue}</strong></div>
        </div>
        <p class="return-reason"><strong>${e(t('reason'))}:</strong> ${e(row.reason||'')}</p>
        <div class="document-table">${table(['name','quantity','price'],document.items,item=>`<tr><td>${e(item.name)}</td><td>${item.quantity}</td><td>${money(kind==='sale'?item.price:item.cost)}</td></tr>`)}</div>
@@ -106,6 +125,9 @@ export async function render(root,params={}){
   };
 
   const load=async()=>{
+    const input=$('#returns-search');
+    input.placeholder=searchHint();
+    input.setAttribute('aria-label',searchHint());
     rows=await api('documents',{type:listType(),from,to});
     $('#new-return-label').textContent=kind==='sale'?t('newSaleReturn'):t('newPurchaseReturn');
     drawHead();
