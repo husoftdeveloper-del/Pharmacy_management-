@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.61**
+Verified release: **v1.0.0-build.62**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.61
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.61/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.61/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.62
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.62/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.62/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-2c7b7e9ae4100c155beda9166479e303552082f4740378bd9abc329f3109c339  Pharmacy-1.0.0-x64.exe
-bf42837c19d16118770f5d73b8b91cee2a528f7af6090e486af662be5d2ff030  Pharmacy-1.0.0-Portable.exe
+aa5c71e82f5b1c880aa172d345b287215ba89473506f8124deadbdd8b5034a92  Pharmacy-1.0.0-x64.exe
+3a48014b5de73455bac983a5eab66c310c295e8bc222aebea38596ba1188d044  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,34 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Point of sale rebuilt to the approved screen (build 62)
+
+**Sales / POS** now matches the design: one search field over a cart table, and a single Total card on the right.
+
+```
+Sales / POS                                                    [Shortcuts]
+
+[ search a medicine or scan a barcode ]
+
+ Cart (0)                                    Total
+ Item            Qty   Price   Total         Subtotal          AFN 0
+                                             Discount   [ 0        ]
+ Cart is empty. Scan or search a             Customer   [ Walk-in  v]
+ medicine to begin.                          Paid Amount [ 0       ]
+                                             Walk-in sales require full payment.
+                                             Select a customer to allow credit.
+                                             ----------------------------
+                                             Total            AFN 0
+                                             [      Complete Sale      ]
+```
+
+- **Search** — typing shows the matching medicines in a drop-down (name, generic or SKU, price and remaining stock). Clicking a result adds it to the cart. A barcode scanner still works: the exact barcode (or SKU) typed into the field and followed by Enter drops the medicine straight into the cart.
+- **Cart** — a four-column table (Item, Qty, Price, Total) with the quantity stepper on each line and a remove button; the badge next to "Cart" counts the units.
+- **Total card** — subtotal, discount, customer, paid amount, the payment hint, the grand total and **Complete Sale**, in the order of the design.
+- **Paid amount works now.** A walk-in sale must be paid in full; choosing a customer allows a part payment and the remainder is posted as that customer's balance. The service used to reject anything that was not the exact total — it now records the part payment and the outstanding amount on the customer account, keeping the books balanced.
+- **More details** (collapsed) holds the payment method, cash/bank account, patient, prescription and offer, so the everyday screen stays clean. A cart with prescription-only medicines opens it automatically and asks for the patient and the prescription before the sale can be completed.
+- **Shortcuts** — `F2` jumps to the search, `Enter` adds the first result, `F4` completes the sale, `Esc` closes the drop-down. The Shortcuts button lists them.
 
 ## Data tab rebuilt as automatic local backups (build 61)
 
@@ -566,7 +594,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.61` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.62` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
