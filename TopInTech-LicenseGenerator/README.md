@@ -65,17 +65,20 @@ The installer never deletes your data on uninstall
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `TopInTech-LicenseGenerator-1.0.0-x64.exe` (Setup) | 102,512,419 B | `00a9a02008e9461691d983006324440ad26c7cda4205650aed70e5e992fec19d` |
-| `TopInTech-LicenseGenerator-1.0.0-Portable.exe` | 94,305,017 B | `a4ed09027159731237bed3f2fbf54919c57943a58518b55912505549accc8fd6` |
+| `TopInTech-LicenseGenerator-1.0.0-x64.exe` (Setup) | 102,656,560 B | `eb5c87a953a8f75308a643647f20e1285b4632c5bb2c200954354a0d96d209cc` |
+| `TopInTech-LicenseGenerator-1.0.0-Portable.exe` | 94,304,994 B | `add67f0e3a0f8060f60b658404320b3b825e1b13edb95408f925c3abd38b284b` |
 
 Install on the owner's laptop:
 
 1. Open the link above and download `TopInTech-LicenseGenerator-1.0.0-x64.exe`.
 2. Run it. Windows SmartScreen shows *Windows protected your PC* because the
    build is unsigned — choose **More info → Run anyway**.
-3. Keep the default folder or pick one, then **Install**. A desktop and Start
-   menu shortcut named *Top In Tech License Generator* is created.
-4. Open it once. The key pair is created automatically on that computer.
+3. Keep the default folder or pick one, then **Install**. The installer always
+   creates a desktop shortcut and a Start menu entry named *Top In Tech License
+   Generator*, whatever answers you give in the wizard.
+4. The app opens by itself when the installer finishes (`runAfterFinish`), and it
+   opens again from the new desktop icon. The key pair is created automatically
+   on that computer the first time it starts.
 5. Press **Back up keys** and keep the copy somewhere offline and safe.
 
 The portable EXE needs no installation at all: double-click it and it runs.
