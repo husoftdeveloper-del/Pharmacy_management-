@@ -180,3 +180,33 @@ test('every database query is parameterised, never string-concatenated with user
   assert.match(db, /PRAGMA foreign_keys=ON/);
   assert.match(db, /CHECK\(status IN \('unused','assigned','used'\)\)/);
 });
+
+test('the installer always creates a desktop shortcut and opens the app when it finishes', () => {
+  // The owner installs this once on a laptop: double-clicking the setup file
+  // must leave a desktop icon behind and start the app straight away.
+  assert.equal(pkg.build.nsis.createDesktopShortcut, 'always');
+  assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
+  assert.equal(pkg.build.nsis.runAfterFinish, true);
+  assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, true);
+  assert.equal(pkg.build.nsis.oneClick, false, 'a visible wizard, not a silent install');
+  assert.equal(pkg.build.nsis.perMachine, false, 'a per-user install needs no administrator password');
+  assert.match(pkg.build.nsis.installerIcon, /\.ico$/);
+  assert.match(pkg.build.nsis.uninstallerIcon, /\.ico$/);
+  assert.equal(pkg.build.portable.unpackDirName, 'TopInTechLicenseGenerator');
+  assert.match(pkg.build.artifactName, /-\$\{version\}-\$\{arch\}\.\$\{ext\}$/);
+});
+
+test('the icon files exist and the ico holds several sizes', () => {
+  const ico = fs.readFileSync(path.join(root, 'buildResources/icon.ico'));
+  assert.equal(ico.readUInt16LE(0), 0, 'reserved field');
+  assert.equal(ico.readUInt16LE(2), 1, 'type 1 = icon');
+  const count = ico.readUInt16LE(4);
+  assert.ok(count >= 4, `expected at least four icon sizes, found ${count}`);
+  const sizes = [];
+  for (let index = 0; index < count; index += 1) {
+    const offset = 6 + index * 16;
+    sizes.push(ico[offset] || 256);
+  }
+  for (const size of [256, 48, 32, 16]) assert.ok(sizes.includes(size), `missing the ${size}px icon`);
+  assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
+});
