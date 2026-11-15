@@ -455,7 +455,8 @@ app.whenReady().then(async()=>{
   assert.match(await run("return document.querySelector('#labels-rows').innerText"),/\d+ tablet/i,'labels show the stock badge');
   await run("document.querySelector('#copies-stock').click();return true;");
   await pause(200);
-  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'105','copies from stock fills the quantity');
+  const paracetamolStock=await run("const rows=await window.pharmacy.invoke('catalog',{search:'PAR-500'});return String(rows[0].stock)");
+  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),paracetamolStock,'copies from stock fills the current quantity');
   assert.ok(await run("return !document.querySelector('#print-labels').disabled"),'print is enabled once copies exist');
   assert.match(await run("return document.querySelector('#labels-total').textContent"),/\d+ labels/,'the bar counts the labels');
   const visibleCount=await run("return document.querySelectorAll('#labels-rows tr[data-row]').length");
