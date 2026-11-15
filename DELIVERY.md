@@ -2,20 +2,20 @@
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.67**
+Verified release: **v1.0.0-build.68**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.67
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.67/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.67/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.68
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.68/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.68/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-92bf5eff453a713c03301703d9a22554660bb41b51249ec3978dbb12c5d03957  Pharmacy-1.0.0-x64.exe
-b0b95b96c7f165490885de06de233676b7fc1f39a4b5af4bf1534ab454bca115  Pharmacy-1.0.0-Portable.exe
+276fa434483cc50dc7b2529ae7e4191634ff8b6a568e63cc76eb699e54a255d5  Pharmacy-1.0.0-x64.exe
+e2e0b7e8e246a5402184ce1a74765b22c4afa11220940f14806edcea0b2f544e  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +73,36 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Adding stock from the Edit Medicine form (build 68)
+
+The Edit Medicine form now carries an **Add stock** section, so stock can be
+topped up without leaving the catalogue or opening the Purchases page.
+
+```
+Edit medicine
+Name            [ Panadol                    ]
+Barcode         [ 2040798152855        ] [barcode icon]
+…
+Add stock                                                    +
+Use this to add stock that did not come through a purchase. It is
+recorded as a stock adjustment with its own batch and expiry.
+Quantity [ 40 ]   Expiry [ 2032-04-30 ]
+Purchase price [ 6.5 ]   Selling price [ 13 ]
+```
+
+- The four inputs are the same four as Opening Stock: **Quantity**, **Expiry**,
+  **Purchase price** and **Selling price**. A quantity of 0 (the default) saves
+  the medicine without touching stock, so the section can be ignored.
+- A quantity above 0 books a **new batch** with its own `ADD-1`, `ADD-2`… number
+  and expiry, on top of what is already on the shelf.
+- It is a real stock adjustment, not a silent edit: a stock movement, an
+  `adjustments` row and a balanced journal entry (inventory up, stock adjustment
+  gain up) are written and audited.
+- Expiry is required and must be in the future; purchase and selling price are
+  optional and update the medicine when filled in.
+- Every addition shows up in Inventory, the batch list, Reports and the audit
+  log like any other stock movement.
 
 ## Edit medicine no longer fails on the barcode (build 67)
 
@@ -684,7 +714,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.67` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.68` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 
