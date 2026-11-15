@@ -145,8 +145,8 @@ Screens are served by the main process from `src/` with `cache-control: no-store
 │   ├── components/              Reusable Vanilla JS forms, tables, dialogs, documents
 │   ├── styles/                  Shared design system and per-page stylesheet files
 │   ├── scripts/                 Shell, API adapter, navigation, translations
-│   └── assets/                  Local-only asset location
-├── build/                       Application PNG/ICO/SVG icon
+│   └── assets/                  Local-only assets (pharmacy-logo.png)
+├── build/                       Application icon: icon.ico (16-256px), icon.png, icon.svg
 ├── tests/                       Database invariants and Electron smoke test
 ├── scripts/check.js             Syntax and technology-rule checks
 └── .github/workflows/windows.yml

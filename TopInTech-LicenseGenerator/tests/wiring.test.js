@@ -212,6 +212,17 @@ test('the two downloads are named in plain words, not with version numbers', () 
   assert.notEqual(names[0], names[1], 'setup and portable must not overwrite each other');
 });
 
+test('the owner logo is used for the window, the shortcut and the installer', () => {
+  const page = read('src/index.html');
+  assert.match(page, /<link rel="icon" href="assets\/pharmacy-logo\.png">/);
+  assert.match(page, /brand-mark[\s\S]{0,200}assets\/pharmacy-logo\.png/);
+  assert.equal(pkg.build.win.icon, 'buildResources/icon.ico');
+  for (const file of ['buildResources/icon.ico', 'buildResources/icon.png', 'src/assets/pharmacy-logo.png']) {
+    assert.ok(fs.existsSync(path.join(root, file)), `${file} is missing`);
+  }
+  assert.ok(pkg.build.files.includes('src/**/*'), 'the renderer and its logo must be packaged');
+});
+
 test('the icon files exist and the ico holds several sizes', () => {
   const ico = fs.readFileSync(path.join(root, 'buildResources/icon.ico'));
   assert.equal(ico.readUInt16LE(0), 0, 'reserved field');

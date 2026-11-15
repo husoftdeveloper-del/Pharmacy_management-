@@ -41,7 +41,8 @@ input::placeholder,textarea::placeholder{color:#6f9298}
 /* ---- Top bar ---------------------------------------------------------- */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 26px;border-bottom:1px solid var(--border);background:#0d2028cc;backdrop-filter:blur(6px);position:sticky;top:0;z-index:20}
 .brand{display:flex;align-items:center;gap:13px}
-.brand-mark{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(150deg,#1cc3a6,#0d8676);color:#04211d;box-shadow:0 8px 18px #18b79c33}
+.brand-mark{width:46px;height:46px;display:grid;place-items:center;border-radius:12px;background:#fff;border:1px solid #d9e6dd;box-shadow:0 6px 16px #04121a33;overflow:hidden}
+.brand-mark img{display:block;width:38px;height:38px;object-fit:contain}
 .brand h1{font-size:16.5px}
 .brand h1 span{font-weight:450;color:var(--muted)}
 .brand p{font-size:11px;margin-top:2px}
