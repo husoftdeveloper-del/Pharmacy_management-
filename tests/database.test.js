@@ -38,6 +38,25 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('a walk-in sale is paid in full, a named customer may pay part on account',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin);
+ // Walk-in: a short payment is rejected, the full amount still works.
+ assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:5}),/Walk-in sales require full payment/);
+ assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:99}),/cannot be more than the total/);
+ const cash=s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:20});
+ assert.equal(cash.total,20);assert.equal(cash.paid,20);
+ // Named customer: half paid now, the rest becomes a customer balance.
+ const customer=s.saveEntity(admin,'customers',{name:'Part Pay Customer',opening_balance:0,credit_limit:0,active:1}).id;
+ const partial=s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:10});
+ assert.equal(partial.total,20);assert.equal(partial.paid,10);
+ assert.equal(s.customerBook(admin).rows.find(row=>row.id===customer).balance,10);
+ const payment=s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:10,method:'cash',accountId:1});
+ assert.ok(payment.id);
+ const after=s.customerBook(admin).rows.find(row=>row.id===customer).balance;
+ assert.ok(Math.abs(after)<0.005,'paying the rest clears the customer balance');
+ assert.equal(s.get('SELECT SUM(paid) AS n FROM sales WHERE id=?',partial.id).n,10,'the sale keeps the amount that was handed over');
+ balanced(s);
+});
 test('purchase book, supplier book and supplier accounts share one ledger',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  const supplierId=s.get('SELECT supplier_id FROM purchases ORDER BY id DESC LIMIT 1').supplier_id;

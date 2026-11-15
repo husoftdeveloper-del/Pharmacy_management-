@@ -3,3 +3,93 @@
 @media(max-width:1250px){.pos-layout{grid-template-columns:minmax(0,1fr) 320px}.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-line{grid-template-columns:1fr 1fr 1fr}.auth-art{padding:45px}.auth-art-copy h1{font-size:39px}}
 @media(max-width:950px){.auth-art{padding:35px}.auth-panel{padding:35px}.auth-art-copy h1{font-size:35px}.pos-layout{grid-template-columns:minmax(0,1fr) 330px}.settings-grid{grid-template-columns:1fr}.register-hero{flex-wrap:wrap}.register-hero .heading-actions{margin-inline-start:0}}
 @media(max-width:700px){.auth-screen{grid-template-columns:1fr}.auth-art{display:none}.auth-panel{min-height:100vh;padding:30px}.pos-layout{grid-template-columns:1fr}.cart-panel{position:static}.product-grid{grid-template-columns:repeat(2,1fr)}.purchase-line{grid-template-columns:1fr 1fr}.document-meta{grid-template-columns:1fr 1fr}.backup-card{padding:22px;flex-direction:column}.report-controls .field{width:100%}.welcome-strip>.inline{display:none}}
+
+/* ---- Point of sale: search over a cart table, one Total card on the right ----
+   Built to the approved screen: the cart is a four-column table (Item, Qty,
+   Price, Total) and every control the cashier needs day to day sits in the
+   single card on the right. */
+.pos-screen{grid-template-columns:minmax(0,1fr) 372px;gap:18px;align-items:start}
+.pos-heading h1{font-size:24px}
+.pos-left{display:grid;gap:16px;min-width:0}
+.pos-search-wrap{position:relative}
+.pos-search{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:12px 15px;color:var(--muted);transition:border-color .15s,box-shadow .15s}
+.pos-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
+.pos-search input{border:0;background:none;box-shadow:none;width:100%;min-width:0;font-size:13px;color:var(--text);padding:0}
+.pos-search input:focus{outline:0}
+.pos-results{position:absolute;inset-inline:0;top:calc(100% + 6px);z-index:12;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 34px #0b1c2b1f;overflow:auto;max-height:330px}
+.pos-result{display:flex;align-items:center;gap:11px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text);text-align:start}
+.pos-result:last-child{border-bottom:0}
+.pos-result:hover,.pos-result:focus-visible{background:var(--surface2);outline:0}
+.pos-result:disabled{opacity:.5;cursor:not-allowed}
+.pos-result-icon{display:grid;place-items:center;width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:var(--primary-soft);color:var(--primary)}
+.pos-result-copy{display:grid;gap:2px;min-width:0;flex:1}
+.pos-result-copy strong{font-size:12px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pos-result-copy small{font-size:10.5px;color:var(--muted)}
+.pos-result-meta{display:grid;gap:2px;justify-items:end;flex:0 0 auto}
+.pos-result-meta b{font-size:12px;color:var(--primary)}
+.pos-result-meta small{font-size:10px;color:var(--muted)}
+.pos-no-result{padding:16px 14px;font-size:12px;color:var(--muted)}
+.pos-cart{padding:0}
+.pos-cart-head{display:flex;align-items:center;gap:9px;padding:15px 20px;border-bottom:1px solid var(--border);color:var(--text)}
+.pos-cart-head svg{color:var(--muted)}
+.pos-cart-head h2{font-size:14px;font-weight:600}
+.pos-count{display:inline-grid;place-items:center;min-width:22px;height:20px;padding:0 7px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:10.5px;font-weight:650}
+.pos-table-head,.cart-item{display:grid;grid-template-columns:minmax(0,1fr) 88px 88px 96px 28px;align-items:center;gap:10px;padding:11px 20px}
+.pos-table-head{border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);font-weight:500}
+.pos-table-head span:nth-child(2),.pos-table-head span:nth-child(3),.pos-table-head span:nth-child(4){justify-self:end}
+.cart-item{border-bottom:1px solid var(--border);min-height:58px}
+.cart-item:last-child{border-bottom:0}
+.cart-item:hover{background:color-mix(in srgb,var(--surface2) 55%,transparent)}
+.cart-item-name{display:grid;gap:3px;min-width:0}
+.cart-item-name strong{font-size:12px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cart-item-name small{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pos-cart .quantity-control{justify-self:start;display:inline-flex;align-items:center;gap:1px;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:2px}
+.pos-cart .quantity-control button{width:23px;height:24px;border:0;background:none;color:var(--muted);font-size:13px;line-height:1;border-radius:5px}
+.pos-cart .quantity-control button:hover:not(:disabled){background:var(--primary-soft);color:var(--primary)}
+.pos-cart .quantity-control button:disabled{opacity:.4;cursor:not-allowed}
+.pos-cart .quantity-control span{min-width:24px;text-align:center;font-size:11.5px;font-weight:600}
+.cart-price{justify-self:end;font-size:11.5px;color:var(--muted)}
+.cart-line-total{justify-self:end;font-size:12.5px;font-weight:600}
+.cart-remove{width:26px;height:26px;justify-self:end;color:var(--muted)}
+.cart-remove:hover{color:var(--red);background:var(--red-soft);border-color:transparent}
+.pos-empty{padding:46px 20px;text-align:center;font-size:12px;color:var(--muted)}
+.pos-total{padding:20px 22px;display:grid;gap:12px;align-content:start;position:sticky;top:100px}
+.pos-total h2{font-size:14px;font-weight:600;margin-bottom:2px}
+.pos-subtotal{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}
+.pos-subtotal span{color:var(--muted)}
+.pos-subtotal strong{font-weight:600}
+.pos-field{display:grid;gap:6px}
+.pos-field>span{font-size:11.5px;color:var(--muted)}
+.pos-field input,.pos-field select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:12px;min-height:38px}
+.pos-field input:focus,.pos-field select:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
+.pos-hint{font-size:10.5px;color:var(--muted);line-height:1.55;margin:0}
+.pos-grand{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-top:1px solid var(--border);padding-top:13px;margin-top:2px}
+.pos-grand span{font-size:13px;font-weight:600}
+.pos-grand strong{font-size:22px;font-weight:700;letter-spacing:-.6px}
+.pos-complete{width:100%;min-height:44px;border-radius:9px;font-size:13px;font-weight:600;letter-spacing:.1px}
+.pos-complete:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.pos-more{border-top:1px solid var(--border);padding-top:10px;margin-top:2px}
+.pos-more summary{font-size:11.5px;color:var(--muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+.pos-more summary::-webkit-details-marker{display:none}
+.pos-more summary:hover{color:var(--primary)}
+.pos-more summary:after{content:'+';margin-inline-start:auto;font-size:13px;line-height:1}
+.pos-more[open] summary:after{content:'−'}
+.pos-more-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:11px}
+.pos-rx-note{font-size:10.5px;color:var(--amber);background:var(--amber-soft);border-radius:7px;padding:8px 10px;margin:10px 0 0;line-height:1.5}
+.shortcuts-list{display:grid;gap:2px}
+.shortcut-row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px}
+.shortcut-row:last-child{border-bottom:0}
+.shortcut-row kbd{min-width:52px;text-align:center;font:11px var(--font);padding:4px 8px;border:1px solid var(--border);border-bottom-width:2px;border-radius:6px;background:var(--surface2);color:var(--text)}
+.shortcut-row span{color:var(--muted)}
+@media(max-width:1150px){.pos-screen{grid-template-columns:minmax(0,1fr) 330px}}
+@media(max-width:960px){
+  .pos-screen{grid-template-columns:1fr}
+  .pos-total{position:static}
+}
+@media(max-width:620px){
+  .pos-table-head,.cart-item{grid-template-columns:minmax(0,1fr) 82px 62px 26px;padding:10px 14px}
+  .pos-table-head span:nth-child(3),.cart-price{display:none}
+  .pos-cart-head{padding:13px 14px}
+  .pos-total{padding:16px}
+  .pos-more-grid{grid-template-columns:1fr}
+}

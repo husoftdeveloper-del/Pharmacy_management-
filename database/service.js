@@ -741,9 +741,11 @@ class PharmacyService {
       const tax = round((subtotal-discount)*number(this.setting('tax_percent'),'tax',0,100)/100);
       const total = round(subtotal-discount+tax);
       const paid = payment === 'credit' ? 0 : round(number(input.paid ?? total,'paid'));
-      if (paid > total || (payment !== 'credit' && paid !== total)) fail('Enter the exact non-cash total, or the full cash amount. Split tender is not supported.');
+      if (paid > total) fail('The paid amount cannot be more than the total.');
       const due = round(total-paid);
-      if (due > 0 && !customer) fail('Credit sales require a customer.');
+      // A part payment is allowed, but only against a named customer: the
+      // remainder becomes a balance on that customer's account.
+      if (due > 0 && !customer) fail('Walk-in sales require full payment. Select a customer to allow credit.');
       if (due > 0 && customer.credit_limit > 0 && customer.balance+due > customer.credit_limit) fail('Customer credit limit would be exceeded.');
       const account = payment === 'credit' ? null : this.paymentAccount(input.accountId,payment);
       const invoice = 'INV-' + Date.now() + '-' + Math.floor(Math.random()*1000);

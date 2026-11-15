@@ -1,5 +1,10 @@
 'use strict';
-const {app,BrowserWindow}=require('electron');
+const {app,BrowserWindow,dialog}=require('electron');
+// Native file dialogs would block an unattended test runner, so every dialog
+// in this run answers immediately: save/open cancel, message boxes confirm.
+dialog.showSaveDialog=async()=>({canceled:true,filePath:undefined});
+dialog.showOpenDialog=async()=>({canceled:true,filePaths:[]});
+dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});
 const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
@@ -17,7 +22,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.61')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.62')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -272,10 +277,25 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('#generate-barcode').click();return true;");
   await until(()=>run("return /^MED-/.test(document.querySelector('[name=barcode]').value) && !!document.querySelector('#barcode-preview svg') && !document.querySelector('#print').disabled"),'automatic barcode preview');
   const barcodeShot=await win.webContents.capturePage();fs.writeFileSync(path.join(artifacts,'electron-barcode-generator.png'),barcodeShot.toPNG());
-  await run("document.querySelector('[data-page=pos]').click();return true;");await until(()=>run("return !!document.querySelector('[data-product]')"),'POS products');
-  await run("document.querySelector('[data-product]').click();return true;");
-  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1);
-  await run("await window.pharmacy.invoke('sale',{items:[{medicineId:1,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
+  await run("document.querySelector('[data-page=pos]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#product-search')"),'POS search');
+  assert.ok(await run("return document.body.innerText.includes('Cart is empty')"),'empty cart message');
+  await run("const input=document.querySelector('#product-search');input.value='Paracetamol';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run("return !!document.querySelector('#pos-results [data-product]')"),'POS search results');
+  await run("document.querySelector('#pos-results [data-product]').click();return true;");
+  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1,'one cart line');
+  assert.equal(await run("return document.querySelector('#cart-count').textContent"),'1','cart badge counts the line');
+  assert.ok(await run("return /^AFN/.test(document.querySelector('#pos-subtotal').innerText.trim())"),'subtotal shows the currency');
+  assert.equal(await run("return document.querySelector('#checkout').disabled"),false,'complete sale unlocks with a line');
+  // A walk-in with a short payment is refused by the main process, then the full amount goes through.
+  await run("const paid=document.querySelector('#pos-paid');paid.value='1';paid.dispatchEvent(new Event('input'));document.querySelector('#checkout').click();return true;");
+  await pause(400);
+  assert.ok(await run("return document.querySelector('#toasts').innerText.includes('Walk-in')"),'walk-in short payment is blocked');
+  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1,'the cart survives a refused payment');
+  const salesBefore=await run("const rows=await window.pharmacy.invoke('documents',{type:'sales'});return rows.length");
+  await run("const input=document.querySelector('#pos-paid');input.value=document.querySelector('#pos-total').innerText.replace(/[^0-9.]/g,'');input.dispatchEvent(new Event('input'));document.querySelector('#checkout').click();return true;");
+  await until(()=>run("return document.querySelectorAll('.cart-item').length===0"),'sale completes from the POS screen');
+  await until(async()=>{const rows=await run("const rows=await window.pharmacy.invoke('documents',{type:'sales'});return rows.length");return rows===salesBefore+1;},'the sale is stored');
   const {renderPDF}=require('../database/pdf');
   const pdf=await renderPDF('printBarcode',{value:'PAR50001',svg:require('../database/barcode').code128('PAR50001')},{pharmacy_name:'Kabul Care Pharmacy'});
   assert.equal(pdf.subarray(0,5).toString(),'%PDF-');fs.writeFileSync(path.join(artifacts,'electron-barcode.pdf'),pdf);
@@ -757,7 +777,7 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.61',autoBackup:true},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.62',autoBackup:true},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
