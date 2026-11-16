@@ -104,13 +104,13 @@ test('the private key never reaches the renderer', () => {
   assert.doesNotMatch(main, /privateKey:\s*keys\.readPrivate/);
 });
 
-test('the installer is configured for Windows setup and portable exe', () => {
+test('the installer is configured as a Windows setup wizard', () => {
   assert.equal(pkg.build.appId, 'com.topintech.licensegenerator');
   assert.equal(pkg.build.productName, 'Top In Tech License Generator');
-  assert.deepEqual(pkg.build.win.target, ['nsis', 'portable']);
+  assert.deepEqual(pkg.build.win.target, ['nsis']);
   assert.equal(pkg.build.win.signAndEditExecutable, false);
   assert.equal(pkg.build.nsis.deleteAppDataOnUninstall, false, 'the license database must survive an uninstall');
-  assert.equal(pkg.build.nsis.perMachine, false);
+  assert.equal(pkg.build.nsis.perMachine, true);
   assert.equal(pkg.build.asar, true);
   assert.equal(pkg.build.directories.output, 'release');
   assert.equal(pkg.main, 'main.js');
@@ -180,34 +180,41 @@ test('every database query is parameterised, never string-concatenated with user
   assert.match(db, /CHECK\(status IN \('unused','assigned','used'\)\)/);
 });
 
-test('the setup file installs with one double-click and leaves a desktop icon', () => {
-  // The owner installs this once on a laptop, so there is no wizard to answer:
-  // double-click -> install -> desktop icon -> the app opens by itself.
-  assert.equal(pkg.build.nsis.oneClick, true, 'a one-click install, not a wizard');
-  assert.equal(pkg.build.nsis.perMachine, false, 'a per-user install needs no administrator password');
-  // Elevation makes Windows put the icon on the administrator's desktop, which
-  // is the "the icon never appears" bug, so a per-user install must never ask.
-  assert.equal(pkg.build.nsis.allowElevation, false);
+test('the setup file is a full Windows installation wizard, not a portable copy', () => {
+  // Requirement: double-clicking the setup file must show Welcome -> Location ->
+  // Install -> Finish, install into Program Files and leave both shortcuts.
+  assert.equal(pkg.build.nsis.oneClick, false, 'a wizard, so the user sees the steps');
+  assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, true, 'the Installation Location page');
+  assert.equal(pkg.build.nsis.perMachine, true, 'install for all users, into Program Files');
+  assert.equal(pkg.build.nsis.allowElevation, true, 'Program Files needs the UAC prompt');
   assert.equal(pkg.build.nsis.createDesktopShortcut, true);
   assert.equal(pkg.build.nsis.createStartMenuShortcut, true);
-  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the app must open when the install finishes');
-  assert.equal(pkg.build.nsis.artifactName, 'Top-In-Tech-License-Generator-${version}-Setup.exe');
-  assert.equal(pkg.build.nsis.include, 'buildResources/installer.nsh');
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page can start the app');
   assert.equal(pkg.build.nsis.shortcutName, 'Top In Tech License Generator');
+  assert.equal(pkg.build.nsis.deleteAppDataOnUninstall, false, 'licences and keys must survive an uninstall');
+  assert.equal(pkg.build.nsis.artifactName, 'Top In Tech License Generator Setup.exe');
   assert.match(pkg.build.nsis.installerIcon, /\.ico$/);
   assert.match(pkg.build.nsis.uninstallerIcon, /\.ico$/);
-  assert.equal(pkg.build.portable.artifactName, 'Top-In-Tech-License-Generator-${version}-Portable.exe');
-  assert.equal(pkg.build.portable.unpackDirName, 'TopInTechLicenseGenerator');
+  assert.equal(pkg.build.nsis.uninstallDisplayName, 'Top In Tech License Generator');
+  assert.equal(pkg.build.nsis.include, 'buildResources/installer.nsh');
+});
+
+test('the default Windows build produces the setup wizard only', () => {
+  assert.deepEqual(pkg.build.win.target, ['nsis'], 'no portable target by default');
+  assert.match(pkg.scripts['dist:win'], /--win nsis /);
+  assert.doesNotMatch(pkg.scripts['dist:win'], /portable/, 'the main installer is the setup wizard');
+  // A portable build is still available, but only when explicitly asked for.
+  assert.match(pkg.scripts['dist:portable'], /--win portable /);
 });
 
 test('the two downloads are named in plain words, not with version numbers', () => {
   const names = [pkg.build.nsis.artifactName, pkg.build.portable.artifactName];
   for (const name of names) {
     assert.match(name, /\.exe$/);
-    // The version is part of the file name on purpose: it tells the owner at a
-    // glance that a download is the newest build and not an older copy.
-    assert.match(name, /\$\{version\}/);
-    assert.doesNotMatch(name, /\s/, 'GitHub turns spaces in asset names into dots, so use hyphens');
+    assert.match(name, /Setup\.exe$|Portable\.exe$/);
+    // The owner asked for the literal name "Top In Tech License Generator Setup.exe".
+    // GitHub rewrites the spaces in release asset names, which is why the run also
+    // publishes a hyphenated copy; locally the file keeps the requested name.
   }
   assert.notEqual(names[0], names[1], 'setup and portable must not overwrite each other');
 });
@@ -245,7 +252,8 @@ test('the NSIS include pins the desktop icon to the current user', () => {
   assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
   assert.match(nsh, /\$\{APP_EXECUTABLE_FILENAME\}/);
   assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
-  assert.ok(nsh.includes('Exec \'"$INSTDIR\\${APP_EXECUTABLE_FILENAME}"\''), 'the installer must open the app after installing');
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
+  assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
   // The icon is written to every desktop a redirected profile may use.
   assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
   assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);

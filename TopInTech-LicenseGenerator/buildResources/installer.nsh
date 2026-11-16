@@ -1,25 +1,26 @@
-; Custom NSIS steps for the License Generator.
+; Custom NSIS steps for the License Generator setup wizard.
 ;
-; Goal, exactly as the owner asked: double-click the setup file, it installs,
-; the app opens, and an icon stays on the desktop that opens the app again later.
+; The installer itself is a classic Windows wizard (nsis.oneClick = false):
+; Welcome -> Installation location (Program Files by default) -> Install ->
+; Finish with "Run Top In Tech License Generator". The Finish page launches the
+; app through runAfterFinish, so nothing is started from an elevated context.
 ;
-; Some Windows machines hide an installer shortcut because the Desktop folder has
-; been redirected (OneDrive does this on most laptops). So the shortcut is written
-; here into the current user's real desktop *and* into the OneDrive desktops when
-; they exist, always with "SetShellVarContext current" so nothing lands on another
-; account. The app repeats the same work on every start as a second safety net.
-;
-; The installer is per-user (allowElevation: false), so no password is ever asked.
+; What is added here is only the shortcut work. A per-machine install runs
+; elevated, and Windows then resolves $DESKTOP/$SMPROGRAMS to the administrator's
+; profile. "SetShellVarContext current" switches them back to the account that
+; started setup, so the desktop icon appears for the person who installed it.
+; The shortcut is also copied into the profile and OneDrive desktops when those
+; folders exist, because OneDrive redirects the desktop on many laptops.
 
 !macro customInstall
   SetShellVarContext current
 
   StrCpy $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
 
-  ; 1. The desktop Windows hands to this user.
+  ; 1. The desktop Windows gives this user.
   CreateShortcut "$DESKTOP\Top In Tech License Generator.lnk" "$0" "" "$0" 0
 
-  ; 2. The classic profile desktop, when it exists.
+  ; 2. The profile desktop, when it exists.
   IfFileExists "$PROFILE\Desktop\*.*" 0 +2
     CreateShortcut "$PROFILE\Desktop\Top In Tech License Generator.lnk" "$0" "" "$0" 0
 
@@ -27,12 +28,9 @@
   IfFileExists "$PROFILE\OneDrive\Desktop\*.*" 0 +2
     CreateShortcut "$PROFILE\OneDrive\Desktop\Top In Tech License Generator.lnk" "$0" "" "$0" 0
 
-  ; 4. Start menu, so the app can always be found.
+  ; 4. Start menu entry for this user (the all-users entry is made by the wizard).
   CreateDirectory "$SMPROGRAMS\Top In Tech License Generator"
   CreateShortcut "$SMPROGRAMS\Top In Tech License Generator\Top In Tech License Generator.lnk" "$0" "" "$0" 0
-
-  ; 5. Open the application straight away.
-  Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
 !macroend
 
 !macro customUnInstall

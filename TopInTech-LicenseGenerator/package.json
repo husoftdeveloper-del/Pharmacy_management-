@@ -1,6 +1,6 @@
 {
   "name": "top-in-tech-license-generator",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Offline serial-key generator for Top In Tech desktop applications",
   "author": "Top In Tech",
@@ -16,8 +16,9 @@
     "new-license": "node tools/cli.js new",
     "verify": "node tools/cli.js verify",
     "pack": "electron-builder --dir",
-    "dist:win": "electron-builder --win nsis portable --x64 --publish never",
-    "smoke": "electron tests/electron-smoke.js"
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "smoke": "electron tests/electron-smoke.js",
+    "dist:portable": "electron-builder --win portable --x64 --publish never"
   },
   "devDependencies": {
     "electron": "39.8.10",
@@ -43,23 +44,25 @@
     "npmRebuild": false,
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "signAndEditExecutable": false,
       "icon": "buildResources/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowElevation": false,
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "menuCategory": false,
       "shortcutName": "Top In Tech License Generator",
       "runAfterFinish": true,
-      "artifactName": "Top-In-Tech-License-Generator-${version}-Setup.exe",
+      "artifactName": "Top In Tech License Generator Setup.exe",
       "installerIcon": "buildResources/icon.ico",
       "uninstallerIcon": "buildResources/icon.ico",
+      "uninstallDisplayName": "Top In Tech License Generator",
       "deleteAppDataOnUninstall": false,
       "include": "buildResources/installer.nsh"
     },
