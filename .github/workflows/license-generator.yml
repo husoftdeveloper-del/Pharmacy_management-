@@ -78,31 +78,73 @@ jobs:
           done
           exit 0
 
-      - name: Check the activation form is compiled into the setup file
+      # The installer body is compressed inside setup.exe, so the compiled page
+      # cannot be found by scanning the exe bytes. Instead the real NSIS compiler
+      # used by the build preprocesses a wizard script that includes this
+      # repository's installer.nsh, and the page is asserted in that output.
+      # (The build itself runs makensis with -WX, so a warning about an
+      # unreferenced page callback already fails it - a green build also proves
+      # the page is wired into the wizard.)
+      - name: Check the activation page compiles into the wizard
         shell: pwsh
         run: |
-          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
-          if (-not $setup) { Write-Error 'No Setup.exe was produced'; exit 1 }
-          $bytes = [System.IO.File]::ReadAllBytes($setup.FullName)
-          $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-          $unicode = [System.Text.Encoding]::Unicode.GetString($bytes)
+          $nsis = Get-ChildItem "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Filter 'makensis.exe' |
+            Where-Object { $_.FullName -like '*nsis-3.0.4.1*' } | Select-Object -First 1
+          if (-not $nsis) { Write-Error 'makensis.exe was not found in the electron-builder cache'; exit 1 }
+          # The compiler sits in Bin, the includes one level up: NSISDIR has to say so.
+          $env:NSISDIR = Split-Path (Split-Path $nsis.FullName -Parent) -Parent
+          Write-Host "makensis: $($nsis.FullName)"
+          Write-Host "NSISDIR : $env:NSISDIR"
+
+          $include = (Resolve-Path 'buildResources\installer.nsh').Path
+          $harness = Join-Path $env:RUNNER_TEMP 'activation-check.nsi'
+          $harnessText = @"
+          !include "$include"
+          Name "Activation check"
+          OutFile "$env:RUNNER_TEMP\activation-check.exe"
+          InstallDir "`$PROGRAMFILES64\Top In Tech License Generator"
+          !include "MUI2.nsh"
+          !insertmacro customWelcomePage
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_LANGUAGE "English"
+          !define APP_EXECUTABLE_FILENAME "Top In Tech License Generator.exe"
+          Section
+          SectionEnd
+          Function .onInit
+            !insertmacro customInit
+          FunctionEnd
+          "@
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($harness, $harnessText, $utf8)
+
+          $output = & $nsis.FullName -V2 -INPUTCHARSET UTF8 -PPO $harness 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::error::makensis rejected the installer script'
+            foreach ($line in ($output -split "`n" | Select-Object -Last 8)) { Write-Host "::error::$line" }
+            exit 1
+          }
 
           $checks = [ordered]@{
-            'NSIS installer'          = ($ascii.Contains('Nullsoft') -or $ascii.Contains('NSIS'))
-            'Software Activation form' = $unicode.Contains('Software Activation')
-            'Enter Your Key label'     = $unicode.Contains('Enter Your Key')
-            'Continue button'          = $unicode.Contains('Continue')
-            'invalid key message'      = $unicode.Contains('The key you entered is not valid')
-            'empty key message'        = $unicode.Contains('Please enter your license key')
+            'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
+            'page title'                    = $output.Contains('Software Activation')
+            'key label'                     = $output.Contains('Enter Your Key')
+            'Continue button'               = $output.Contains('STR:Continue')
+            'Cancel button'                 = $output.Contains('STR:Cancel')
+            'case-sensitive comparison'     = $output.Contains('StrCmpS $0 "mynewpharmacy1221"')
+            'empty key message'             = $output.Contains('Please enter your license key')
+            'invalid key message'           = $output.Contains('The key you entered is not valid')
+            'silent guard'                  = $output.Contains('StrCmpS $R0 "mynewpharmacy1221"')
           }
           $failed = 0
           foreach ($key in $checks.Keys) {
             $ok = $checks[$key]
             Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
-            Write-Host "::notice title=setup-contains-$($key -replace ' ','-')=$ok::$key"
+            Write-Host "::notice title=wizard-contains-$($key -replace ' ','-')=$ok::$key"
             if (-not $ok) { $failed += 1 }
           }
-          if ($failed -gt 0) { Write-Error "$failed installer content check(s) failed"; exit 1 }
+          if ($failed -gt 0) { Write-Error "$failed wizard content check(s) failed"; exit 1 }
 
       - name: A silent install must be refused without the activation key
         shell: pwsh
@@ -122,6 +164,22 @@ jobs:
           if (-not $refused) {
             Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles $appName) -ErrorAction SilentlyContinue
             Write-Error 'A silent install without the activation key was allowed'
+            exit 1
+          }
+
+          # The key is case-sensitive: an upper-case copy must be refused too.
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          $env:TIT_SETUP_KEY = 'MYNEWPHARMACY1221'
+          $upper = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $upper.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $caseRefused = -not (Test-Path $exe)
+          Write-Host "upper-case key exit code: $($upper.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=upper-case-key-refused=$caseRefused::an upper-case copy of the key is rejected"
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          if (-not $caseRefused) {
+            Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles $appName) -ErrorAction SilentlyContinue
+            Write-Error 'An upper-case copy of the activation key was accepted'
             exit 1
           }
 
