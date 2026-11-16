@@ -45,109 +45,48 @@ its own `node_modules`; nothing is shared with the Pharmacy application.
 npm run dist:win
 ```
 
+`dist:win` builds **only the setup wizard** (`electron-builder --win nsis`). The
+file is written to:
+
+```
+TopInTech-LicenseGenerator\release\Top In Tech License Generator Setup.exe
+```
+
+Double-clicking it shows the standard Windows wizard — Welcome → Installation
+Location (`C:\Program Files\Top In Tech License Generator` by default) → Install
+→ Finish — and leaves a desktop shortcut and a Start menu entry. Uninstalling
+keeps the licence database and the keys.
+
+A portable build is still possible, but only when asked for explicitly:
+
+```powershell
+npm run dist:portable     # release\Top-In-Tech-License-Generator-<version>-Portable.exe
+```
+
 Or run the helper, which installs, tests and builds in one step:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-Output in `release\`:
+### Download the ready-built setup (version 2.0.0, built and installed on a Windows runner)
 
-| File | Purpose |
-| --- | --- |
-| `TopInTech-LicenseGenerator-1.0.0-x64.exe` | Setup installer (choose folder, desktop + Start menu shortcut) |
-| `TopInTech-LicenseGenerator-1.0.0-Portable.exe` | Single-file portable build |
-
-The installer never deletes your data on uninstall
-(`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
-
-### Download the ready-built installer (version 1.5.0, built on Windows)
-
-<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.5.0>
-
-Two files, both double-clickable:
-
-| Download | What happens when you double-click |
-| --- | --- |
-| **`Top-In-Tech-License-Generator-1.5.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
-| **`Top-In-Tech-License-Generator-1.5.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
-
-The version number is part of the file name, so an older download in your
-Downloads folder can be told apart at a glance. The app shows the same version at
-the bottom-right of its window.
-
-(Hyphens instead of spaces, because GitHub rewrites spaces in file names.)
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v2.0.0>
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-1.5.0-Setup.exe` | 102,597,818 B | `c0eadd5cc36419e36b5adfee02efc05748bbc2b7f280a49dbb2deee8fb2e53f2` |
-| `Top-In-Tech-License-Generator-1.5.0-Portable.exe` | 94,310,466 B | `be47f5fdbac5632777f5cbdfa693ab6c19e40e8d3b615a2445e81d514b8a56f0` |
+| `Top-In-Tech-License-Generator-Setup-2.0.0.exe` | 102,687,461 B | `7e423241be376e05a127d7b27a3aa3e5de40c2ff2b59992999235515c3dae8f5` |
 
-Installing on the owner's laptop:
+The release also carries `Top.In.Tech.License.Generator.Setup.exe`, the same
+file: GitHub rewrites spaces in asset names, so the hyphenated copy is the one
+with a clean download name. Rename your download to
+`Top In Tech License Generator Setup.exe` if you prefer the exact title.
 
-1. Open the link above and download `Top-In-Tech-License-Generator-1.5.0-Setup.exe`.
-2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
-   the build is unsigned → **More info → Run anyway**. (If the file came from a
-   browser and still refuses to start: right-click → **Properties → Unblock**.)
-3. A short progress window appears, then the app opens and the desktop icon
-   *Top In Tech License Generator* is already there.
-4. The key pair is created on that computer the first time the app starts.
-5. Press **Back up keys** and keep the copy somewhere offline and safe.
-
-### If the desktop icon does not appear
-
-Some Windows setups hide the icon that an installer writes:
-
-* **OneDrive** redirects the Desktop folder, so setup writes the shortcut into
-  `%USERPROFILE%\Desktop` while the user sees
-  `%USERPROFILE%\OneDrive\Desktop`;
-* a company profile can point the shell at yet another folder;
-* `shell.writeShortcutLink` sometimes reports success without writing anything.
-
-Every build now installs its own setup file on a Windows runner and checks the
-result, so this is measured, not assumed:
-
-| Check | Result |
-| --- | --- |
-| Program installed | ✅ |
-| Desktop icon created | ✅ |
-| App opened by the installer | ✅ |
-| Start menu icon, shortcut target exists | ✅ |
-
-Version 1.5.0 writes the shortcut into the current user's desktop, the profile desktop and the OneDrive desktop straight from the installer, ships the pharmacy logo as the application icon, opens the app from
-the installer itself (`Exec` in `installer.nsh`), and fixes the icon cause first: the installer no longer requests
-elevation (`allowElevation: false`) and pins the shortcut to the current user with
-`SetShellVarContext current` in `buildResources/installer.nsh`, so Windows cannot
-write the icon onto an administrator's desktop. On top of that, the app fixes it
-itself every time it starts:
-
-1. it asks Windows for the current desktop folder and also checks
-   `%USERPROFILE%\Desktop`, `%USERPROFILE%\OneDrive\Desktop` and the
-   `OneDrive` / `OneDriveConsumer` / `OneDriveCommercial` folders;
-2. it writes `Top In Tech License Generator.lnk` into **every one of those that
-   exists** (creating the folder Windows reported if a new profile has none);
-3. it checks that the file really appeared, and if not, it creates the shortcut
-   through PowerShell and `WScript.Shell`, the same mechanism Explorer uses;
-4. the **Desktop shortcut** button in the app repeats all of this on demand,
-   opens the folder containing the shortcut so you can see it, and if nothing
-   could be written it lists the exact folders that were checked.
-
-Hover the data line at the bottom of the window to see every desktop folder the
-app checks. The portable copy never leaves an icon.
-
-Still nothing? Right-click the desktop → **View → Show desktop icons** (Windows
-can hide all icons) and check the desktop on the second monitor if you use one.
-
-The install is per-user (`perMachine: false`), so Windows does not ask for an
-administrator password. Uninstalling (Settings → Apps) never deletes the license
-database or the keys, and upgrading to a newer build keeps them too.
-
-The installers are built by `.github/workflows/license-generator.yml` on a
-Windows runner every time something inside `TopInTech-LicenseGenerator/` changes
-outside the documentation, and the previous files are removed from the release
-page so only the current two downloads are ever offered. That workflow is
-separate from the Pharmacy one: the Pharmacy application has its own release and
-installer, and the two never mix.
+Every change inside `TopInTech-LicenseGenerator/` is built on a Windows runner by
+`.github/workflows/license-generator.yml`, which **installs the setup it just
+built** and checks Program Files, the desktop shortcut, the Start menu entry and
+the uninstaller before publishing. The Pharmacy application has its own separate
+release and installer; the two never mix.
 
 ## Where the files live
 
