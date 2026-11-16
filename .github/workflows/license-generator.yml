@@ -61,6 +61,52 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Install the built setup silently and verify the desktop icon
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No setup file was produced'; exit 1 }
+          Write-Host "Installing $($setup.Name) ($($setup.Length) bytes)"
+          $target = 'C:\tit-install'
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -PassThru -Wait
+          Write-Host "installer exit code: $($process.ExitCode)"
+          Start-Sleep -Seconds 8
+
+          # The app may have been started by the installer (runAfterFinish).
+          Get-Process -Name 'Top In Tech License Generator' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          $exe = Join-Path $target 'Top In Tech License Generator.exe'
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $link = Join-Path $desktop 'Top In Tech License Generator.lnk'
+          $publicLink = Join-Path $env:PUBLIC 'Desktop\Top In Tech License Generator.lnk'
+          $startLink = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Top In Tech License Generator\Top In Tech License Generator.lnk'
+
+          $results = @(
+            [pscustomobject]@{ Check = 'program installed';        Ok = (Test-Path $exe);         Path = $exe },
+            [pscustomobject]@{ Check = 'desktop icon';             Ok = (Test-Path $link);        Path = $link },
+            [pscustomobject]@{ Check = 'public desktop icon';      Ok = (Test-Path $publicLink);  Path = $publicLink },
+            [pscustomobject]@{ Check = 'start menu icon';          Ok = (Test-Path $startLink);   Path = $startLink },
+            [pscustomobject]@{ Check = 'desktop folder';           Ok = (Test-Path $desktop);     Path = $desktop }
+          )
+          $failed = 0
+          foreach ($row in $results) {
+            $state = if ($row.Ok) { 'ok  ' } else { 'FAIL' }
+            Write-Host "$state $($row.Check): $($row.Path)"
+            if (-not $row.Ok) { $failed += 1 }
+          }
+
+          # What the shortcut would point at, when it exists.
+          if (Test-Path $link) {
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcut = $shell.CreateShortcut($link)
+            Write-Host "shortcut target: $($shortcut.TargetPath)"
+            if (-not (Test-Path $shortcut.TargetPath)) { Write-Host 'FAIL the shortcut target does not exist'; $failed += 1 }
+          }
+
+          Write-Host "::notice title=Desktop icon (setup)=$((Test-Path $link))::$link"
+          Write-Host "::notice title=Installed program=$((Test-Path $exe))::$exe"
+          if ($failed -gt 0) { Write-Error "$failed installer check(s) failed"; exit 1 }
+
       - name: List the built files
         shell: bash
         run: ls -l release/*.exe
