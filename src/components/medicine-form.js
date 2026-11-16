@@ -41,7 +41,14 @@ export function medicineForm(record={},editing=false){
       ${editing?input('cost',t('purchasePrice'),record.cost??0,'number')+input('price',t('sellingPrice'),record.price??'','number','required'):''}
       ${input('storage',t('storage'),record.storage??'')}
     </div>
-    ${editing?'':`<details class="opening-stock" ${record.openingOpen?'open':''}><summary><span class="opening-stock-icon">${icon('box',17)}</span><span>${e(t('openingStock'))}</span>${icon('chevron',16)}</summary>
+    ${editing?`<details class="opening-stock add-stock"><summary><span class="opening-stock-icon">${icon('box',17)}</span><span>${e(t('addStock'))}</span>${icon('chevron',16)}</summary>
+      <p class="add-stock-hint">${e(t('addStockHint'))}</p>
+      <div class="mf-grid opening-grid">
+        ${input('add_quantity',t('quantity'),'','number')}
+        <label class="mf-field"><span>${e(t('expiry'))}</span><input name="add_expiry" type="date" min="${e(today())}" value=""></label>
+        ${input('add_cost',t('purchasePrice'),'','number')}
+        ${input('add_price',t('sellingPrice'),'','number')}
+      </div></details>`:`<details class="opening-stock" ${record.openingOpen?'open':''}><summary><span class="opening-stock-icon">${icon('box',17)}</span><span>${e(t('openingStock'))}</span>${icon('chevron',16)}</summary>
       <div class="mf-grid opening-grid">
         ${input('opening_quantity',t('quantity'),'','number')}
         <label class="mf-field"><span>${e(t('expiry'))}</span><input name="opening_expiry" type="date" min="${e(today())}" value=""></label>
@@ -73,11 +80,22 @@ function readForm(form){
     reorder_level:numeric('reorder_level'),reorder_qty:numeric('reorder_qty'),storage:value('storage')
   };
   if(opening&&opening.quantity>0)record.opening_stock={quantity:opening.quantity,expiry:opening.expiry,cost:opening.cost};
+  // The edit form can also book extra stock: a positive quantity becomes a new
+  // batch with its own expiry, stored as a stock adjustment.
+  const addition=form.querySelector('[name=add_quantity]')?{
+    quantity:numeric('add_quantity'),expiry:value('add_expiry'),
+    cost:value('add_cost')===''?undefined:numeric('add_cost'),
+    price:value('add_price')===''?undefined:numeric('add_price')
+  }:null;
+  if(addition&&addition.quantity>0)record.add_stock=addition;
   return record;
 }
 
 export function openMedicineForm(record={},done){
   const editing=Boolean(record.id);
+  // The form is a plain set of inputs, so the id it edits is kept here: without
+  // it the save would look like a brand-new medicine and hit the unique barcode.
+  const editingId=editing?Number(record.id):null;
   const m=modal(t(editing?'editMedicine':'newMedicine'),medicineForm(record,editing));
   m.root.querySelector('.modal').classList.add('modal-medicine');
   const form=m.root.querySelector('form');
@@ -91,7 +109,7 @@ export function openMedicineForm(record={},done){
     form.querySelector('[name=unit]').value='piece';
     form.querySelector('[name=reorder_level]').value='0';
     form.querySelector('[name=reorder_qty]').value='0';
-    for(const name of ['opening_quantity','opening_expiry','opening_cost','opening_price'])form.querySelector(`[name=${name}]`).value='';
+    for(const name of ['opening_quantity','opening_expiry','opening_cost','opening_price','add_quantity','add_expiry','add_cost','add_price'])if(form.querySelector(`[name=${name}]`))form.querySelector(`[name=${name}]`).value='';
     form.querySelector('.opening-stock')?.removeAttribute('open');
     form.querySelector('[name=name]').focus();
   };
@@ -99,9 +117,14 @@ export function openMedicineForm(record={},done){
     if(busy)return;busy=true;submit.disabled=true;error.textContent='';
     try{
       const record=readForm(form);
+      if(editingId)record.id=editingId;
       if(!record.name){error.textContent=t('nameRequired');return;}
       if(!editing&&!(record.price>0)){error.textContent=t('priceRequired');form.querySelector('.opening-stock').open=true;form.querySelector('[name=opening_price]').focus();return;}
       if(record.opening_stock&&!record.opening_stock.expiry){form.querySelector('.opening-stock').open=true;error.textContent=t('openingExpiryRequired');return;}
+      if(record.add_stock&&!record.add_stock.expiry){
+        const stockSection=form.querySelector('.add-stock');
+        stockSection.open=true;error.textContent=t('addStockExpiryRequired');stockSection.querySelector('[name=add_expiry]').focus();return;
+      }
       await api('saveMedicine',{record});
       toast(t('recordSaved'));
       await done?.();

@@ -1,6 +1,49 @@
-/* Returns page: two buttons (sales returns / purchase returns), a shared date
-   filter and the list for the selected kind. Shared styles come from base.css. */
-.returns-tabs{margin-bottom:16px}
-.returns-tabs .tab{min-width:150px;font-weight:550}
-#returns-total{font-size:11px;font-weight:600;color:var(--text)}
-@media(max-width:650px){.returns-tabs{width:100%}.returns-tabs .tab{flex:1;min-width:0}}
+/* Returns & Refunds: two type buttons, one toolbar row of search + From + To +
+   New return, then the table. Built to the approved screen; the shared tokens
+   come from base.css so both themes follow. */
+.returns-page{display:grid;gap:14px}
+.returns-types{margin-bottom:0}
+.returns-types .tab{min-width:126px;font-weight:550;font-size:12px;padding:8px 16px}
+.returns-toolbar{padding:14px 18px}
+.returns-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.returns-search{display:flex;align-items:center;gap:10px;flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 13px;color:var(--muted);transition:border-color .15s,box-shadow .15s}
+.returns-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+.returns-search input{border:0;background:none;box-shadow:none;width:100%;min-width:0;font-size:12.5px;color:var(--text);padding:0}
+.returns-search input:focus{outline:0}
+.returns-date{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:0 10px 0 12px;min-height:41px;color:var(--muted)}
+.returns-date span{font-size:12px;color:var(--muted);white-space:nowrap}
+.returns-date input{border:0;background:none;box-shadow:none;font-size:12px;color:var(--text);padding:10px 0;min-width:118px}
+.returns-date input:focus{outline:0}
+.returns-date:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 12%,transparent)}
+.returns-new{flex:0 0 auto;min-height:41px}
+.returns-table-card{padding:0}
+.returns-table-scroll{overflow:auto}
+.returns-table{width:100%;border-collapse:collapse;font-size:12px}
+.returns-table th{font-size:11px;font-weight:550;color:var(--muted);text-transform:none;letter-spacing:0;background:var(--surface2);padding:11px 18px;text-align:start;white-space:nowrap;border-bottom:1px solid var(--border)}
+.returns-table th.num{text-align:end}
+.returns-table td{padding:12px 18px;border-bottom:1px solid var(--border);white-space:nowrap}
+.returns-table td.num{text-align:end;font-variant-numeric:tabular-nums}
+.returns-table td.negative{color:var(--red);font-weight:600}
+.returns-table tbody tr{cursor:pointer}
+.returns-table tbody tr:hover{background:color-mix(in srgb,var(--surface2) 60%,transparent)}
+.returns-table tbody tr:last-child td{border-bottom:0}
+.returns-table .reason-cell{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.returns-table .party-cell{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.returns-table td.num svg{color:var(--muted);vertical-align:middle}
+.returns-table-card #returns-empty{padding:40px 20px 48px}
+.return-reason{font-size:12px;color:var(--muted);padding:12px 22px;margin:0;border-bottom:1px solid var(--border)}
+.return-reason strong{color:var(--text);font-weight:600;margin-inline-end:6px}
+/* The invoice picker behind "New Sale Return" / "New Purchase Return". */
+.return-invoice-list{display:grid;gap:4px;max-height:320px;overflow:auto;margin:10px 0 16px;border:1px solid var(--border);border-radius:9px;padding:4px}
+.return-invoice{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr) auto;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:7px;background:none;color:var(--text);font-size:12px;text-align:start}
+.return-invoice:hover,.return-invoice:focus-visible{background:var(--surface2);outline:0}
+.return-invoice strong{font-weight:600}
+.return-invoice-empty{padding:18px 12px;font-size:12px;text-align:center}
+@media(max-width:820px){
+  .returns-date,.returns-search{flex:1 1 100%;min-width:0}
+  .returns-new{width:100%;justify-content:center}
+  .returns-table th,.returns-table td{padding:10px 12px}
+  .return-invoice{grid-template-columns:minmax(0,1fr) auto}
+  .return-invoice span:nth-child(3){display:none}
+}
+@media(max-width:650px){.returns-types{width:100%}.returns-types .tab{flex:1;min-width:0}}

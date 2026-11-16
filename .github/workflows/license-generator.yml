@@ -1,0 +1,333 @@
+name: Build Windows License Generator
+
+# Builds the separate Top In Tech License Generator that lives in
+# TopInTech-LicenseGenerator/. It is a completely independent application, so
+# this workflow never runs for Pharmacy changes and the Pharmacy workflow never
+# runs for generator changes. The two products keep separate installers, and the
+# Pharmacy application, its package.json and its installer config stay untouched.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['arena/**']
+    paths:
+      - 'TopInTech-LicenseGenerator/**'
+      # Documentation edits do not need a new installer.
+      - '!TopInTech-LicenseGenerator/**.md'
+      - '!TopInTech-LicenseGenerator/docs/**'
+      - '.github/workflows/license-generator.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: license-generator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: TopInTech-LicenseGenerator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: TopInTech-LicenseGenerator/package-lock.json
+
+      - name: Install the generator's own dependencies
+        run: npm ci
+
+      - name: Test signing, keys, database, wiring and renderer
+        run: npm test
+
+      - name: Check the installer script is present
+        shell: bash
+        run: |
+          test -f buildResources/installer.nsh || { echo "::error title=Missing NSIS include::buildResources/installer.nsh is required for the desktop icon"; exit 1; }
+          grep -q 'SetShellVarContext current' buildResources/installer.nsh || { echo "::error title=NSIS include::the shortcut must be created in the current user context"; exit 1; }
+          echo "NSIS include checked"
+
+      - name: Build the Windows setup wizard
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run dist:win 2>&1 | tee build.log
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # When the NSIS compiler rejects the script, its own message is the only
+      # thing that explains why. The step log is not readable from the runner,
+      # so the last compiler lines are surfaced as annotations.
+      - name: Show the installer compiler error
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::The Windows setup build failed. The last compiler lines follow."
+          if [ ! -f build.log ]; then
+            echo "::error::build.log was not written"
+            exit 0
+          fi
+          grep -n -i -E "error|warning|could not|invalid|not found|plugin" build.log | tail -n 8 | while IFS= read -r line; do
+            echo "::error::${line:0:600}"
+          done
+          exit 0
+
+      # The installer body is compressed inside setup.exe, so the compiled page
+      # cannot be found by scanning the exe bytes. Instead the real NSIS compiler
+      # used by the build preprocesses a wizard script that includes this
+      # repository's installer.nsh, and the page is asserted in that output.
+      # (The build itself runs makensis with -WX, so a warning about an
+      # unreferenced page callback already fails it - a green build also proves
+      # the page is wired into the wizard.)
+      - name: Check the activation page compiles into the wizard
+        shell: pwsh
+        run: |
+          $nsis = Get-ChildItem "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Filter 'makensis.exe' |
+            Where-Object { $_.FullName -like '*nsis-3.0.4.1*' } | Select-Object -First 1
+          if (-not $nsis) { Write-Error 'makensis.exe was not found in the electron-builder cache'; exit 1 }
+          # The compiler sits in a Bin folder and the includes are above it, but the
+          # cache nests the bundle an extra level deep: walk up until Stubs is there.
+          $root = $nsis.Directory.FullName
+          while ($root -and -not (Test-Path (Join-Path $root 'Stubs'))) { $root = Split-Path $root -Parent }
+          if (-not $root) { Write-Error 'the NSIS bundle root (Stubs folder) was not found'; exit 1 }
+          $env:NSISDIR = $root
+          Write-Host "makensis: $($nsis.FullName)"
+          Write-Host "NSISDIR : $env:NSISDIR"
+
+          $include = (Resolve-Path 'buildResources\installer.nsh').Path
+          $harness = Join-Path $env:RUNNER_TEMP 'activation-check.nsi'
+          $harnessText = @"
+          !include "$include"
+          Name "Activation check"
+          OutFile "$env:RUNNER_TEMP\activation-check.exe"
+          InstallDir "`$PROGRAMFILES64\Top In Tech License Generator"
+          !include "MUI2.nsh"
+          !insertmacro customWelcomePage
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_LANGUAGE "English"
+          !define APP_EXECUTABLE_FILENAME "Top In Tech License Generator.exe"
+          Section
+          SectionEnd
+          Function .onInit
+            !insertmacro customInit
+          FunctionEnd
+          "@
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($harness, $harnessText, $utf8)
+
+          $output = & $nsis.FullName -V2 -INPUTCHARSET UTF8 -PPO $harness 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::error::makensis rejected the installer script'
+            foreach ($line in ($output -split "`n" | Select-Object -Last 8)) { Write-Host "::error::$line" }
+            exit 1
+          }
+
+          $checks = [ordered]@{
+            'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
+            'page title'                    = $output.Contains('Software Activation')
+            'key label'                     = $output.Contains('Enter Your Key')
+            'Continue button'               = $output.Contains('STR:Continue')
+            'Cancel button'                 = $output.Contains('STR:Cancel')
+            'case-sensitive comparison'     = $output.Contains('StrCmpS $0 "mynewpharmacy1221"')
+            'empty key message'             = $output.Contains('Please enter your license key')
+            'invalid key message'           = $output.Contains('The key you entered is not valid')
+            'silent guard'                  = $output.Contains('StrCmpS $R0 "mynewpharmacy1221"')
+          }
+          $failed = 0
+          foreach ($key in $checks.Keys) {
+            $ok = $checks[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=wizard-contains-$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed wizard content check(s) failed"; exit 1 }
+
+      - name: A silent install must be refused without the activation key
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
+          $appName = 'Top In Tech License Generator'
+          $exe = Join-Path $env:ProgramFiles "$appName\$appName.exe"
+
+          # /S would skip the page, so the guard must stop it. No key is passed here.
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $process.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $refused = -not (Test-Path $exe)
+          Write-Host "exit code: $($process.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=silent-install-without-key-refused=$refused::the installer stopped instead of installing"
+          if (-not $refused) {
+            Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles $appName) -ErrorAction SilentlyContinue
+            Write-Error 'A silent install without the activation key was allowed'
+            exit 1
+          }
+
+          # The key is case-sensitive: an upper-case copy must be refused too.
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          $env:TIT_SETUP_KEY = 'MYNEWPHARMACY1221'
+          $upper = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $upper.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $caseRefused = -not (Test-Path $exe)
+          Write-Host "upper-case key exit code: $($upper.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=upper-case-key-refused=$caseRefused::an upper-case copy of the key is rejected"
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          if (-not $caseRefused) {
+            Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles $appName) -ErrorAction SilentlyContinue
+            Write-Error 'An upper-case copy of the activation key was accepted'
+            exit 1
+          }
+
+      - name: Install the built setup and verify Program Files, shortcuts and uninstall
+        shell: pwsh
+        env:
+          # Only for unattended installs: the wizard asks the operator interactively.
+          TIT_SETUP_KEY: 'mynewpharmacy1221'
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No Setup.exe was produced'; exit 1 }
+          Write-Host "Setup file: $($setup.FullName) ($($setup.Length) bytes)"
+
+          $appName = 'Top In Tech License Generator'
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $exited = $process.WaitForExit(180000)
+          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
+          Write-Host "installer exit code: $($process.ExitCode) (exited: $exited)"
+          Start-Sleep -Seconds 8
+
+          $exe = Join-Path $env:ProgramFiles "$appName\$appName.exe"
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $link = Join-Path $desktop "$appName.lnk"
+          $startLink = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
+          $startLinkUser = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
+          $uninstaller = Join-Path $env:ProgramFiles "$appName\Uninstall $appName.exe"
+          $activated = (Get-ItemProperty -Path "HKLM:\Software\Top In Tech\License Generator" -Name Activated -ErrorAction SilentlyContinue).Activated
+
+          $required = [ordered]@{
+            'installed in Program Files' = (Test-Path $exe)
+            'desktop shortcut'           = (Test-Path $link)
+            'start menu shortcut'        = ((Test-Path $startLink) -or (Test-Path $startLinkUser))
+            'uninstaller present'        = (Test-Path $uninstaller)
+            'activation remembered'      = ($activated -eq '1')
+          }
+          $failed = 0
+          foreach ($key in $required.Keys) {
+            $ok = $required[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          Write-Host "program file : $exe"
+          Write-Host "desktop link : $link"
+          if (Test-Path $link) {
+            $shell = New-Object -ComObject WScript.Shell
+            $target = $shell.CreateShortcut($link).TargetPath
+            $targetOk = Test-Path $target
+            Write-Host "shortcut target: $target (exists: $targetOk)"
+            Write-Host "::notice title=shortcut-target=$targetOk::$target"
+            if (-not $targetOk) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed installer check(s) failed"; exit 1 }
+          Write-Host 'The setup installs into Program Files, leaves both shortcuts and remembers activation.'
+
+      - name: List the built files
+        shell: bash
+        run: ls -l release/*.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top-in-tech-license-generator
+          path: |
+            TopInTech-LicenseGenerator/release/*.exe
+            TopInTech-LicenseGenerator/build.log
+            TopInTech-LicenseGenerator/artifacts/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish the downloadable installer
+        if: success()
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./TopInTech-LicenseGenerator/package.json').version")
+          setup=$(node -p "require('./TopInTech-LicenseGenerator/package.json').build.nsis.artifactName")
+          tag="generator-v${version}"
+          echo "expected setup: $setup"
+          echo "::notice title=Expected installer::$setup"
+          ls -l TopInTech-LicenseGenerator/release/
+
+          # GitHub rewrites spaces in asset names, so a hyphenated copy is attached
+          # next to the exact file name the owner asked for.
+          built=(TopInTech-LicenseGenerator/release/*Setup.exe)
+          if [ ${#built[@]} -eq 0 ]; then
+            echo "::error title=Nothing to publish::electron-builder produced no Setup.exe"
+            exit 1
+          fi
+          cp "${built[0]}" "TopInTech-LicenseGenerator/release/Top-In-Tech-License-Generator-Setup-${version}.exe"
+
+          notes="Windows setup for the Top In Tech License Generator (Electron + SQLite + HTML/CSS/Vanilla JavaScript).\r\n\r\n**Top In Tech License Generator Setup.exe** is a standard Windows installation wizard: Welcome, Installation location (Program Files by default), Install, Finish. It creates a desktop shortcut and a Start menu entry, and the Finish page can start the app. Uninstalling keeps the licence database and the signing keys.\r\n\r\nThe private signing key is created on the owner's computer on first run and never ships with the app. Unsigned build: Windows SmartScreen will ask once - choose More info, then Run anyway."
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" --title "Top In Tech License Generator ${version} (Windows Setup)" --notes "$notes" --prerelease
+          fi
+          gh release edit "$tag" --notes "$notes"
+          shopt -s nullglob
+          publish=(TopInTech-LicenseGenerator/release/*.exe)
+          for file in "${publish[@]}"; do echo "uploading: $(basename "$file")"; done
+          gh release upload "$tag" "${publish[@]}" --clobber
+          gh release view "$tag" --json assets -q '.assets[] | "\(.name) | \(.size) bytes"' > assets.txt || true
+          cat assets.txt || true
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::notice title=Release asset::$line"
+          done < assets.txt
+          rm -f assets.txt
+          count=$(gh release view "$tag" --json assets -q '.assets | length')
+          if [ "$count" -lt 1 ]; then
+            echo "::error title=Missing installer::the release has no setup file"
+            exit 1
+          fi
+
+      - name: Show build failures in the run summary
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f artifacts/smoke-error.txt ]; then
+            {
+              echo '### Smoke failure'
+              echo '```'
+              tail -c 4000 artifacts/smoke-error.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f build.log ]; then
+            tail -c 6000 build.log > failure-tail.txt
+            {
+              echo '### Generator build failed'
+              echo '```'
+              cat failure-tail.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            message=$(tail -c 20000 build.log)
+            echo "::error title=Generator build failure::${message//$'\n'/%0A}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: top-in-tech-license-generator-build-log
+          path: |
+            TopInTech-LicenseGenerator/build.log
+            TopInTech-LicenseGenerator/failure-tail.txt
+          if-no-files-found: ignore
+          retention-days: 14

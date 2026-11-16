@@ -38,6 +38,25 @@ test('purchase, FEFO sale, exact payment, stock ledger and balanced accounting',
  assert.equal(s.register(admin,'status').expected,1070);assert.equal(s.dashboard(admin).today.sales,70);balanced(s);
  assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:100}],paymentMethod:'cash'}),/Insufficient/);assert.equal(s.get('SELECT SUM(quantity) AS n FROM batches').n,23);
 });
+test('a walk-in sale is paid in full, a named customer may pay part on account',(t)=>{
+ const {s,admin}=fixture(t);const m=stock(s,admin);
+ // Walk-in: a short payment is rejected, the full amount still works.
+ assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:5}),/Walk-in sales require full payment/);
+ assert.throws(()=>s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:99}),/cannot be more than the total/);
+ const cash=s.sale(admin,{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:20});
+ assert.equal(cash.total,20);assert.equal(cash.paid,20);
+ // Named customer: half paid now, the rest becomes a customer balance.
+ const customer=s.saveEntity(admin,'customers',{name:'Part Pay Customer',opening_balance:0,credit_limit:0,active:1}).id;
+ const partial=s.sale(admin,{customerId:customer,items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1,paid:10});
+ assert.equal(partial.total,20);assert.equal(partial.paid,10);
+ assert.equal(s.customerBook(admin).rows.find(row=>row.id===customer).balance,10);
+ const payment=s.partyPayment(admin,{partyType:'customer',partyId:customer,amount:10,method:'cash',accountId:1});
+ assert.ok(payment.id);
+ const after=s.customerBook(admin).rows.find(row=>row.id===customer).balance;
+ assert.ok(Math.abs(after)<0.005,'paying the rest clears the customer balance');
+ assert.equal(s.get('SELECT SUM(paid) AS n FROM sales WHERE id=?',partial.id).n,10,'the sale keeps the amount that was handed over');
+ balanced(s);
+});
 test('purchase book, supplier book and supplier accounts share one ledger',(t)=>{
  const {s,admin}=fixture(t);const m=stock(s,admin,30,10,6);
  const supplierId=s.get('SELECT supplier_id FROM purchases ORDER BY id DESC LIMIT 1').supplier_id;
@@ -104,6 +123,54 @@ test('price list shows shelf quantity, both prices and profit per medicine',(t)=
  assert.throws(()=>s.priceList(cashier),/permission/i);
  assert.throws(()=>s.updateMedicinePrice(cashier,{id:panadol.id,price:11}),/permission/i);
  assert.equal(s.permissions(s.get('SELECT * FROM users WHERE id=?',admin.id)).includes('pricelist'),true);
+});
+test('editing a medicine updates the same row and never collides on its barcode',(t)=>{
+ const {s,admin}=fixture(t);
+ const first=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',unit:'tablet',cost:6,price:12,reorder_level:5,active:1,opening_stock:{quantity:20,expiry:'2031-05-31'}});
+ const second=s.saveMedicine(admin,{name:'Brufen',unit:'tablet',cost:4,price:9,reorder_level:5,active:1,opening_stock:{quantity:7,expiry:'2031-06-30'}});
+ // The edit form always posts the id, so the save is an update, not an insert.
+ const edited=s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',first.id),id:first.id,name:'Panadol Extra',generic_name:'Paracetamol',price:14,cost:7});
+ assert.equal(edited.id,first.id,'the same row is updated');
+ assert.equal(s.get('SELECT COUNT(*) AS n FROM medicines').n,2,'editing never creates a second medicine');
+ const row=s.get('SELECT * FROM medicines WHERE id=?',first.id);
+ assert.equal(row.name,'Panadol Extra');assert.equal(row.price,14);assert.equal(row.barcode,'2040798152855','the barcode is kept');
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===first.id).stock,20,'editing keeps the stock');
+ // A barcode already used by another medicine is refused with the column named.
+ assert.throws(()=>s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',second.id),id:second.id,barcode:'2040798152855'}),/UNIQUE constraint failed: medicines\.barcode/);
+ // Clearing the barcode stores NULL, and two medicines without a barcode coexist.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',second.id),id:second.id,barcode:''});
+ assert.equal(s.get('SELECT barcode FROM medicines WHERE id=?',second.id).barcode,null,'an empty barcode is stored as NULL');
+ const third=s.saveMedicine(admin,{name:'No Code',unit:'tablet',cost:1,price:2,active:1});
+ assert.equal(s.get('SELECT barcode FROM medicines WHERE id=?',third.id).barcode,null);
+ assert.equal(s.get('SELECT COUNT(*) AS n FROM medicines WHERE barcode IS NULL').n,2,'several medicines may have no barcode');
+ balanced(s);
+});
+test('the edit form can add stock through a new batch, booked as an adjustment',(t)=>{
+ const {s,admin}=fixture(t);
+ const saved=s.saveMedicine(admin,{name:'Panadol',barcode:'2040798152855',unit:'tablet',cost:6,price:12,reorder_level:5,active:1,opening_stock:{quantity:10,expiry:'2031-05-31'}});
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,10);
+ // Adding 25 more from the edit form keeps the medicine row and adds a batch.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,name:'Panadol',cost:6.5,price:13,
+   add_stock:{quantity:25,expiry:'2032-04-30',cost:6.5,price:13}});
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,35,'the new stock is on top of the old stock');
+ const batches=s.all('SELECT * FROM batches WHERE medicine_id=? ORDER BY id',saved.id);
+ assert.equal(batches.length,2,'a second batch is created');
+ assert.equal(batches[1].quantity,25);assert.equal(batches[1].expiry,'2032-04-30');assert.equal(batches[1].cost,6.5);assert.match(batches[1].batch_no,/^ADD-/);
+ assert.equal(s.get('SELECT price FROM medicines WHERE id=?',saved.id).price,13,'the selling price follows the form');
+ assert.equal(s.get('SELECT cost FROM medicines WHERE id=?',saved.id).cost,6.5);
+ const movement=s.get("SELECT quantity,reason FROM stock_movements WHERE batch_id=? AND reason='adjustment'",batches[1].id);
+ assert.equal(movement.quantity,25);
+ assert.equal(s.get('SELECT quantity FROM adjustments WHERE batch_id=?',batches[1].id).quantity,25,'the addition is stored as an adjustment');
+ const gain=s.all("SELECT l.debit,l.credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE j.description='Stock adjustment'");
+ assert.equal(gain.length,2);assert.equal(gain.find(l=>l.debit>0).debit,162.5);assert.equal(gain.find(l=>l.credit>0).credit,162.5);
+ balanced(s);
+ // Everything the form can get wrong is refused with a clear message.
+ assert.throws(()=>s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,add_stock:{quantity:5,expiry:'2020-01-01'}}),/future/);
+ // A zero quantity simply means "no stock to add", so the form saves quietly.
+ s.saveMedicine(admin,{...s.get('SELECT * FROM medicines WHERE id=?',saved.id),id:saved.id,add_stock:{quantity:0,expiry:'2032-01-01'}});
+ assert.equal(s.all('SELECT id FROM batches WHERE medicine_id=?',saved.id).length,2,'a zero quantity creates no batch');
+ assert.throws(()=>s.addStock(admin,saved.id,{quantity:5,expiry:'2032-01-01',batch_no:batches[1].batch_no}),/already exists/);
+ assert.equal(s.medicineBook(admin).rows.find(r=>r.id===saved.id).stock,35,'refused additions never move stock');
 });
 test('new medicine form saves the catalogue entry with its opening stock',(t)=>{
  const {s,admin}=fixture(t);
@@ -410,6 +477,15 @@ test('settings: profile, password and notification preferences',(t)=>{
  assert.equal(prefs.receipt_template,'classic');assert.equal(prefs.receipt_paper,'80mm');assert.equal(prefs.receipt_copies,'1');
  s.settings(admin,{receipt_template:'boxed',receipt_paper:'58mm',receipt_copies:3});
  assert.equal(s.preferences(admin).receipt_template,'boxed');assert.equal(s.preferences(admin).receipt_paper,'58mm');assert.equal(s.preferences(admin).receipt_copies,'3');
+ s.settings(admin,{theme:'system'});assert.equal(s.preferences(admin).theme,'system');s.settings(admin,{theme:'dark'});assert.equal(s.preferences(admin).theme,'dark');
+ s.settings(admin,{auto_backup:0,backup_on_close:0,backup_copies:7});
+ assert.equal(s.preferences(admin).auto_backup,'0');assert.equal(s.preferences(admin).backup_on_close,'0');assert.equal(s.preferences(admin).backup_copies,'7');
+ s.settings(admin,{backup_folder:'C:\\Users\\A\\Documents\\PharmaCare-Backups'});assert.equal(s.preferences(admin).backup_folder,'C:\\Users\\A\\Documents\\PharmaCare-Backups');
+ assert.throws(()=>s.settings(admin,{backup_folder:'relative\\folder'}),/backup folder/);
+ assert.throws(()=>s.settings(admin,{backup_copies:0}),/[Cc]opies/);
+ assert.throws(()=>s.settings(admin,{backup_copies:999}),/[Cc]opies/);
+ assert.throws(()=>s.settings(admin,{theme:'neon'}),/theme/);
+ assert.throws(()=>s.preference(admin,{theme:'neon'}),/theme/);
  assert.throws(()=>s.settings(admin,{receipt_template:'fancy'}),/receipt template/);
  assert.throws(()=>s.settings(admin,{receipt_paper:'A5'}),/paper size/);
  assert.throws(()=>s.settings(admin,{receipt_copies:9}),/copies/);

@@ -1,21 +1,41 @@
+## Build 69 — the delivered pharmacy logo is the application icon
+
+- **Setup**: `Pharmacy-1.0.0-x64.exe` — 102,734,059 B, sha256 `bde39472c6adc9b8e4d37c7928c724f8c67678422b84bbcc317cc542b52104b0`
+- **Portable**: `Pharmacy-1.0.0-Portable.exe` — 94,544,255 B, sha256 `1eefe0702373d2c36bd436033ee82e8257dfd5f961ea2c2298762292f27290ba`
+- **Release**: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.69
+- **CI**: run 43710517158 — check, 40/40 tests, Electron smoke, installer build and release publishing all passed. The follow-up step that copies the installer into `src/pages/` failed to push in that run, so the downloadable files come from the release above.
+
+The icon the owner supplied (leaf, capsule and cross) replaces the old placeholder
+everywhere Windows shows one:
+
+| Place | File |
+| --- | --- |
+| Installer, program file, desktop shortcut, taskbar | `build/icon.ico` (16, 32, 48, 64, 128, 256 px) |
+| Window icon in `main.js` | `build/icon.png` |
+| Page icon | `src/assets/pharmacy-logo.png` + `<link rel="icon">` in `src/pages/index.html` |
+
+No application code, database schema, dependency or installer setting changed:
+`package.json` already pointed `win.icon` at `build/icon.ico`, so the new build
+picks the logo up through that existing setting.
+
 # Pharmacy Management — delivery
 
 ## Windows downloads
 
-Verified release: **v1.0.0-build.58**
+Verified release: **v1.0.0-build.68**
 
 - Setup installer in the project folder: `src/pages/Pharmacy-Setup.exe`
-- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.58
-- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-x64.exe
-- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.58/Pharmacy-1.0.0-Portable.exe
+- Release page: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.68
+- Setup installer: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.68/Pharmacy-1.0.0-x64.exe
+- Portable EXE: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.0-build.68/Pharmacy-1.0.0-Portable.exe
 
 These are Windows x64, unsigned builds. Verify the download source and checksums. The installer creates Desktop and Start Menu shortcuts. Application data is stored outside the installation directory.
 
 ### GitHub release asset SHA-256
 
 ```text
-7db312b478947d62c2b6de8eec1319153e1378a22fdd5d1d1ea9b23c76581b4a  Pharmacy-1.0.0-x64.exe
-32866a713268cf0069d9056c1371656b5ce2c115e1af8cd4b4038c4c9beafbc1  Pharmacy-1.0.0-Portable.exe
+276fa434483cc50dc7b2529ae7e4191634ff8b6a568e63cc76eb699e54a255d5  Pharmacy-1.0.0-x64.exe
+e2e0b7e8e246a5402184ce1a74765b22c4afa11220940f14806edcea0b2f544e  Pharmacy-1.0.0-Portable.exe
 ```
 
 `src/pages/Pharmacy-Setup.exe` is the same Setup installer and has the same SHA-256 as `Pharmacy-1.0.0-x64.exe`.
@@ -73,6 +93,216 @@ The Customers page now has **Total Customers** and **Outstanding Credit** cards,
 
 - **Email** is a real customer field: added to the record form, validated by the server and stored in a new `customers.email` column. Existing databases are migrated automatically on start (`PRAGMA table_info` + `ALTER TABLE … ADD COLUMN`), so no data is lost.
 - Balances come from a new permission-checked `customerBook` call that returns every customer (active and inactive) with the ledger balance (opening balance + unpaid invoices − returns − payments) plus the totals used by the cards.
+
+## Adding stock from the Edit Medicine form (build 68)
+
+The Edit Medicine form now carries an **Add stock** section, so stock can be
+topped up without leaving the catalogue or opening the Purchases page.
+
+```
+Edit medicine
+Name            [ Panadol                    ]
+Barcode         [ 2040798152855        ] [barcode icon]
+…
+Add stock                                                    +
+Use this to add stock that did not come through a purchase. It is
+recorded as a stock adjustment with its own batch and expiry.
+Quantity [ 40 ]   Expiry [ 2032-04-30 ]
+Purchase price [ 6.5 ]   Selling price [ 13 ]
+```
+
+- The four inputs are the same four as Opening Stock: **Quantity**, **Expiry**,
+  **Purchase price** and **Selling price**. A quantity of 0 (the default) saves
+  the medicine without touching stock, so the section can be ignored.
+- A quantity above 0 books a **new batch** with its own `ADD-1`, `ADD-2`… number
+  and expiry, on top of what is already on the shelf.
+- It is a real stock adjustment, not a silent edit: a stock movement, an
+  `adjustments` row and a balanced journal entry (inventory up, stock adjustment
+  gain up) are written and audited.
+- Expiry is required and must be in the future; purchase and selling price are
+  optional and update the medicine when filled in.
+- Every addition shows up in Inventory, the batch list, Reports and the audit
+  log like any other stock movement.
+
+## Edit medicine no longer fails on the barcode (build 67)
+
+**Symptom:** opening a medicine, changing something and pressing Save showed
+`UNIQUE constraint failed: medicines.barcode` and the medicine was not updated.
+
+**Cause:** the New/Edit Medicine form is a plain set of inputs and never posted the
+medicine **id**. The main process therefore treated the save as a brand-new
+medicine, generated a fresh SKU and tried to insert a second row — which the
+unique index on `medicines.barcode` refused because the original row already had
+that barcode.
+
+**Fix:** the form now keeps the id of the medicine it was opened for and sends it
+with the record, so an edit updates that row and keeps its barcode, stock,
+batches and history. Nothing else in the medicine flow changed.
+
+Also in this build:
+
+- A barcode that belongs to another medicine now reads **"That barcode is already
+  used by another medicine. Clear it or enter a different one."** instead of the
+  raw SQLite text. Username, SKU, customer, supplier, category, manufacturer,
+  location, staff and account-code conflicts each have their own message too.
+- An empty barcode is stored as `NULL`, so any number of medicines may have no
+  barcode at all.
+- Database test: editing keeps the same row and its stock, a duplicate barcode is
+  refused, and two medicines may both have no barcode.
+- Smoke test: opens a medicine, renames it and saves, then checks the row count is
+  unchanged, the new name and generic name show, and a duplicate barcode produces
+  the friendly message.
+
+## Medicines table rebuilt to the approved screen (build 66)
+
+```
+Medicines                                                     [+ New Medicine]
+
+[ Search by name, barcode, generic, or brand… ]        [ All categories  v]
+
+Name              Barcode          Category  Stock        Purchase  Selling  Expiry      Recorded by  Actions
+[💊] Panadol      2040798152855    Antacid   [0] Tablet      —         —        —          admin       🏷 ✏ 🗑
+    Paracetamol
+----------------------------------------------------------------------------------
+                                        Showing all 1
+```
+
+- **Name** — a small pill mark, the medicine name and its generic name underneath.
+- **Stock** — the quantity badge beside a pink unit pill (Tablet, Capsule, Syrup…), so the unit is visible without opening the medicine.
+- **Prices** — purchase and selling price print an em dash while they are not set, instead of a misleading 0.00.
+- **Actions** — three quiet icon buttons: **print a label** (runs the Print Labels module for that medicine), **edit** (the medicine form), and **remove** (hides the medicine from the catalogue, the point of sale and the label list). Removing only deactivates the row, so past sales, batches and stock history stay exactly as they were.
+- **Footer** — the centred "Showing all N" line, which becomes "Showing X of N" while a search or a category filter is active.
+- The search box, the category picker and the nine columns are unchanged, so the page still reads like the approved screen at any width.
+
+## Returns & Refunds rebuilt to the approved screen (build 64)
+
+```
+Returns & Refunds
+Process customer and supplier returns with automatic stock adjustment.
+
+[ Sale Returns ] [ Purchase Returns ]
+
+[ Search by return # or invoice # ... ]  [From  ] [To  ]   [New Sale Return]
+
+Return #     Invoice       Date          Subtotal  Refund  Reason       Recorded by  Actions
+RET-0001     INV-1731-482  28/10/2026     40.00    40.00  Damaged box  Administrator    >
+```
+
+- **Heading + hint** — "Process customer and supplier returns with automatic stock adjustment." with the two type buttons underneath.
+- **One toolbar row** — search by return number, invoice, reason or cashier; **From** and **To** dates reload the list; **New Sale Return** / **New Purchase Return** follows the selected type.
+- **Sale Returns columns** — Return #, Invoice, Date, Subtotal, **Refund**, Reason, Recorded by, Actions. Refund shows only the money actually handed back; the rest of a return is credited against the customer balance, so the two figures are honest.
+- **Purchase Returns columns (build 65)** — Return #, Invoice, **Supplier Name**, Date, Subtotal, **Credit**, Recorded by, Actions, exactly as designed. Credit is the amount posted to the supplier's account by the return. Switching the type also swaps the search hint ("… invoice # or supplier"), the **New Purchase Return** button and the empty state ("No purchase returns yet / Process a return from a purchase to see it here.").
+- **New return** — the button opens an invoice picker (searchable), and choosing an invoice opens the familiar return form; the list refreshes when it is saved.
+- **Row detail** — clicking a return shows the original invoice, the amounts and the returned lines, and can start another return from the same invoice.
+- **Empty state** — "No sale returns yet / Process a return from an invoice to see it here." inside the card, with a clear-filters hint while searching.
+
+## Sales history rebuilt to the approved screen (build 63)
+
+```
+Sales History
+
+[ Search by invoice # ... ]                          [ Last 30 days  v]
+Sales: 12      Total: 4,250.00
+---------------------------------------------------------------------------
+Invoice #        Date         Subtotal  Discount  Total  Paid  Balance  Recorded by  Actions
+INV-1731-482     28/10/2026      40.00      0.00   40.00  40.00  Settled  Administrator    >
+```
+
+- **Filters** — a search field for the invoice number (it also matches the customer and the cashier) and a period picker: Today, Last 7 days, **Last 30 days** (default), Last 90 days and All time. The count and the total under the row follow both filters.
+- **Columns** — Invoice #, Date, Subtotal, Discount, Total, Paid, **Balance**, Recorded by and Actions, exactly as the design. The balance is computed from the total minus what was paid and minus any returned amount, and a fully paid invoice reads **Settled**.
+- **Actions** — the whole row opens the invoice preview, where the return and the PDF live, so the table keeps the nine compact columns of the design.
+- **Empty state** — the card shows "No sales yet / Completed sales will appear here." when there is nothing to list, and a no-match message while searching.
+- Coming from a dashboard box with an invoice shortcut still highlights that row and opens the invoice.
+
+## Point of sale rebuilt to the approved screen (build 62)
+
+**Sales / POS** now matches the design: one search field over a cart table, and a single Total card on the right.
+
+```
+Sales / POS                                                    [Shortcuts]
+
+[ search a medicine or scan a barcode ]
+
+ Cart (0)                                    Total
+ Item            Qty   Price   Total         Subtotal          AFN 0
+                                             Discount   [ 0        ]
+ Cart is empty. Scan or search a             Customer   [ Walk-in  v]
+ medicine to begin.                          Paid Amount [ 0       ]
+                                             Walk-in sales require full payment.
+                                             Select a customer to allow credit.
+                                             ----------------------------
+                                             Total            AFN 0
+                                             [      Complete Sale      ]
+```
+
+- **Search** — typing shows the matching medicines in a drop-down (name, generic or SKU, price and remaining stock). Clicking a result adds it to the cart. A barcode scanner still works: the exact barcode (or SKU) typed into the field and followed by Enter drops the medicine straight into the cart.
+- **Cart** — a four-column table (Item, Qty, Price, Total) with the quantity stepper on each line and a remove button; the badge next to "Cart" counts the units.
+- **Total card** — subtotal, discount, customer, paid amount, the payment hint, the grand total and **Complete Sale**, in the order of the design.
+- **Paid amount works now.** A walk-in sale must be paid in full; choosing a customer allows a part payment and the remainder is posted as that customer's balance. The service used to reject anything that was not the exact total — it now records the part payment and the outstanding amount on the customer account, keeping the books balanced.
+- **More details** (collapsed) holds the payment method, cash/bank account, patient, prescription and offer, so the everyday screen stays clean. A cart with prescription-only medicines opens it automatically and asks for the patient and the prescription before the sale can be completed.
+- **Shortcuts** — `F2` jumps to the search, `Enter` adds the first result, `F4` completes the sale, `Esc` closes the drop-down. The Shortcuts button lists them.
+
+## Data tab rebuilt as automatic local backups (build 61)
+
+**Settings → Data** is now the designed card, and the backups it promises are real:
+
+```
+Automatic local backups
+A silent copy of your database is saved to this computer once a day and again when you close the app. Works with no internet.
+
+Enable automatic backups                          [on]
+Daily snapshot, plus one every time the app closes.
+
+Backup on app close                                [on]
+Takes a few seconds before the app exits.
+
+Backup folder
+C:\Users\<you>\Documents\PharmaCare-Backups        [Change] [Open]
+
+Copies to keep
+[14]   Older copies are deleted automatically (default 14 days).
+--------------------------------------------------------------
+[Back up now] [Refresh]
+Last backup: 10/28/2026, 12:28:26 PM (daily)
+```
+
+- **What actually happens** — the main process writes `pharmacy-YYYY-MM-DD.sqlite` once per calendar day (checked on launch and every hour), `pharmacy-close-YYYY-MM-DD_HH-mm-ss.sqlite` as the app exits, and `pharmacy-manual-…` when **Back up now** is pressed. Each copy is a consistent SQLite snapshot made through `node:sqlite`'s backup API and passes an integrity check before it is kept.
+- **Retention** — copies older than the chosen number (default **14**) are deleted automatically. Files the app did not create are never touched.
+- **Backup folder** — defaults to `Documents\PharmaCare-Backups`. **Change** opens a folder picker and stores the choice; **Open** shows the folder in Explorer.
+- **Switches** — both are stored in the database, so they survive updates. With automatic backups off, no timed copy runs at all.
+- **Last backup** — shows the newest copy on disk with its date, time and kind (daily / on close / manual), so the card never claims a backup that is not there.
+- A failed silent backup is logged and never interrupts work; **Back up now** reports its own error.
+- **Restore** keeps its own card underneath: it validates the file, keeps a safety copy and restarts the app.
+
+## Appearance rebuilt as theme cards and language rows (build 60)
+
+**Settings → Appearance** is now two cards side by side, exactly as designed:
+
+```
+Theme                              Language
+Choose how the app looks.          Interface language and text direction.
+
+[☀ Light]  [☾ Dark]  [🖥 System]    [ English            English ]  <- solid teal
+                                    [ پښتو                Pashto ]
+                                    [ دری                 Dari   ]
+```
+
+- **Theme** — three tiles: **Light**, **Dark** and **System**. The active tile gets a teal border, a pale teal fill and a teal icon. **System** follows the Windows light/dark preference through `prefers-color-scheme` and re-applies live when Windows changes, so the app can follow the desktop without a restart.
+- **Language** — three full-width rows showing the native name on the left and the English name on the right. The active row is a solid teal bar with white text, like the design.
+- **No Save button** — choosing a theme or language saves it, applies it to the whole window at once and re-translates the shell (including RTL for Pashto and Dari).
+- The top-bar moon/sun button now respects the resolved system theme, and the service accepts `light`, `dark` and `system` (older databases simply keep their stored value).
+
+## Desktop notifications switch works (build 59)
+
+The switch in **Settings → Notifications → Desktop notifications** refused to turn on. The cause was in the app itself, not in Windows: the window session answers every browser permission request with “no” (`setPermissionRequestHandler(() => false)`), so the page's `Notification` API could never reach `granted`, and the row reverted the switch.
+
+The fix moves notifications to where they belong — the Electron main process:
+
+- New `notify` IPC call raises the notification with Electron's `Notification` class, focuses the window when the toast is clicked and records a `notify_desktop` audit row. A companion `notificationSupport` call reports whether the OS supports it.
+- The page still owns the preference: nothing is sent when the switch is off.
+- `src/scripts/alerts.js` now reports `granted` whenever the secure bridge is present, so flipping the switch saves immediately; the browser permission path remains only for a plain-browser preview.
+- Turning the switch on sends one confirmation notification, and the row has a **bell** button to send a test notification at any time.
+- If Windows itself blocks notifications (Focus assist or a disabled app entry), the app now says so instead of failing silently.
 
 ## The printed bill follows the pharmacy's own paper (build 58)
 
@@ -504,7 +734,7 @@ Build 19 places the four boxes side by side in one row of four equal columns (tw
 | A medicine in Low stock | Medicines & inventory | The inventory table opens filtered to that medicine |
 | A batch in Expiring soon | Reports | The near-expiry report opens with the batch row highlighted |
 
-The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.58` = `build.53` shown in the app).
+The footer of each box still opens the module itself. Release tags now follow the in-app build label (`v1.0.0-build.68` = `build.53` shown in the app).
 
 The four boxes follow the same card, spacing, hover and focus styling, work in light/dark themes and in LTR/RTL, and degrade gracefully by role: pharmacists see three boxes (no finance), cashiers see the recent-sales box only. The sales-trend chart remains below the boxes.
 

@@ -1,0 +1,74 @@
+{
+  "name": "top-in-tech-license-generator",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Offline serial-key generator for Top In Tech desktop applications",
+  "author": "Top In Tech",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "keys": "node tools/cli.js keys",
+    "new-license": "node tools/cli.js new",
+    "verify": "node tools/cli.js verify",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "smoke": "electron tests/electron-smoke.js",
+    "dist:portable": "electron-builder --win portable --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.topintech.licensegenerator",
+    "productName": "Top In Tech License Generator",
+    "artifactName": "TopInTech-LicenseGenerator-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "buildResources"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "src/**/*",
+      "buildResources/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "buildResources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "menuCategory": false,
+      "shortcutName": "Top In Tech License Generator",
+      "runAfterFinish": true,
+      "artifactName": "Top In Tech License Generator Setup.exe",
+      "installerIcon": "buildResources/icon.ico",
+      "uninstallerIcon": "buildResources/icon.ico",
+      "uninstallDisplayName": "Top In Tech License Generator",
+      "deleteAppDataOnUninstall": false,
+      "include": "buildResources/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Top-In-Tech-License-Generator-${version}-Portable.exe",
+      "unpackDirName": "TopInTechLicenseGenerator"
+    }
+  }
+}

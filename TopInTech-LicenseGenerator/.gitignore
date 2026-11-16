@@ -1,0 +1,16 @@
+# Dependencies and build output are never committed
+node_modules/
+release/
+dist/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Keys and license data live in the app data folder, never in the project.
+# These lines are a safety net in case someone copies them here by mistake.
+keys/
+*.pem
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

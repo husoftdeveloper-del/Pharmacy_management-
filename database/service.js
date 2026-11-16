@@ -662,9 +662,14 @@ class PharmacyService {
     const opening = record.opening_stock;
     const quantity = opening ? Number(opening.quantity) : 0;
     if (quantity > 0 && record.id) fail('Opening stock is only entered when the medicine is created. Use purchases or stock adjustments to add stock.');
+    // Extra stock from the edit form arrives as add_stock and becomes a batch.
+    const addition = record.add_stock;
+    const addedQuantity = addition ? Number(addition.quantity) : 0;
+    if (addedQuantity > 0 && !record.id) fail('Use Opening Stock when the medicine is created.');
     return transaction(this.db, () => {
       const saved = this.saveEntity(user, 'medicines', record);
       if (quantity > 0) this.openingStock(user, saved.id, opening);
+      if (addedQuantity > 0) this.addStock(user, saved.id, addition);
       return saved;
     });
   }
@@ -695,6 +700,43 @@ class PharmacyService {
       if (value > 0) this.journal(user, 'Opening stock', [[4, value], [8, 0, value]], `MED-${medicine.id}`);
       audit(this.db, user, 'opening_stock', 'batches', r.lastInsertRowid, { quantity, value });
       return { id: Number(r.lastInsertRowid), quantity, value };
+    });
+  }
+  // Extra stock booked from the medicine form: a new batch with its own expiry,
+  // counted as a stock adjustment (inventory up, stock adjustment gain up) so the
+  // books stay balanced and the movement is auditable.
+  addStock(user, medicineId, input) {
+    this.require(user, 'inventory', true);
+    const medicine = this.get('SELECT * FROM medicines WHERE id=?', id(medicineId, 'medicine'));
+    if (!medicine) fail('Medicine not found.');
+    const quantity = integer(input.quantity, 'quantity');
+    if (quantity < 1) fail('Enter the quantity you want to add.');
+    if (quantity > 1000000) fail('Quantity is too large.');
+    const expiry = date(input.expiry);
+    if (expiry <= new Date().toISOString().slice(0, 10)) fail('Expiry must be a future date.');
+    const location = id(input.location_id || 1, 'location');
+    if (!this.get('SELECT id FROM locations WHERE id=?', location)) fail('Stock location not found.');
+    // Prices are optional on the form: the medicine's own prices are the default.
+    const cost = input.cost === undefined || input.cost === '' ? Number(medicine.cost) : round(number(input.cost, 'purchase price', 0));
+    const price = input.price === undefined || input.price === '' ? Number(medicine.price) : round(number(input.price, 'selling price', 0));
+    const value = round(quantity * cost);
+    return transaction(this.db, () => {
+      // A unique batch number per addition keeps the batch list readable.
+      let batchNo = text(input.batch_no, 'batch number', false, 80);
+      if (!batchNo) {
+        const used = this.get("SELECT COUNT(*) AS n FROM batches WHERE medicine_id=? AND batch_no LIKE 'ADD-%'", medicine.id).n;
+        batchNo = `ADD-${used + 1}`;
+      }
+      if (this.get('SELECT id FROM batches WHERE medicine_id=? AND batch_no=?', medicine.id, batchNo)) fail('That batch number already exists for this medicine.');
+      if (price > 0 && Number(medicine.price) !== price) this.run('UPDATE medicines SET price=? WHERE id=?', price, medicine.id);
+      if (cost > 0 && Number(medicine.cost) !== cost) this.run('UPDATE medicines SET cost=? WHERE id=?', cost, medicine.id);
+      const r = this.run('INSERT INTO batches(medicine_id,location_id,batch_no,expiry,cost,quantity) VALUES(?,?,?,?,?,?)', medicine.id, location, batchNo, expiry, cost, quantity);
+      const batchId = Number(r.lastInsertRowid);
+      this.run("INSERT INTO stock_movements(batch_id,quantity,reason,reference,user_id) VALUES(?,?,'adjustment',?,?)", batchId, quantity, `ADJ-MED-${medicine.id}`, user.id);
+      this.run('INSERT INTO adjustments(batch_id,quantity,reason,user_id) VALUES(?,?,?,?)', batchId, quantity, 'Stock added from the medicine form', user.id);
+      if (value > 0) this.journal(user, 'Stock adjustment', [[4, value], [16, 0, value]], `ADJ-MED-${medicine.id}`);
+      audit(this.db, user, 'add_stock', 'batches', batchId, { quantity, expiry, value, batchNo });
+      return { id: batchId, quantity, value, batchNo };
     });
   }
   catalog(user, search = '') {
@@ -741,9 +783,11 @@ class PharmacyService {
       const tax = round((subtotal-discount)*number(this.setting('tax_percent'),'tax',0,100)/100);
       const total = round(subtotal-discount+tax);
       const paid = payment === 'credit' ? 0 : round(number(input.paid ?? total,'paid'));
-      if (paid > total || (payment !== 'credit' && paid !== total)) fail('Enter the exact non-cash total, or the full cash amount. Split tender is not supported.');
+      if (paid > total) fail('The paid amount cannot be more than the total.');
       const due = round(total-paid);
-      if (due > 0 && !customer) fail('Credit sales require a customer.');
+      // A part payment is allowed, but only against a named customer: the
+      // remainder becomes a balance on that customer's account.
+      if (due > 0 && !customer) fail('Walk-in sales require full payment. Select a customer to allow credit.');
       if (due > 0 && customer.credit_limit > 0 && customer.balance+due > customer.credit_limit) fail('Customer credit limit would be exceeded.');
       const account = payment === 'credit' ? null : this.paymentAccount(input.accountId,payment);
       const invoice = 'INV-' + Date.now() + '-' + Math.floor(Math.random()*1000);
@@ -1174,10 +1218,12 @@ class PharmacyService {
     return transaction(this.db,()=>{let userIdFinal;if(old){this.run('UPDATE users SET username=?,name=?,role=?,active=?,permissions=? WHERE id=?',username,text(input.name,'name',true,100),role,active,JSON.stringify(permissions),old.id);if(password)this.run('UPDATE users SET password_hash=? WHERE id=?',hashPassword(password),old.id);userIdFinal=old.id;}else{const r=this.run('INSERT INTO users(username,name,password_hash,role,active,permissions) VALUES(?,?,?,?,?,?)',username,text(input.name,'name',true,100),hashPassword(password),role,active,JSON.stringify(permissions));userIdFinal=Number(r.lastInsertRowid);}audit(this.db,user,old?'update_user':'create_user','users',userIdFinal,{role,active,permissions});return {id:userIdFinal};});
   }
   settings(user,input) {
-    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','receipt_template','receipt_paper','receipt_copies','language','theme','notify_low_stock','notify_out_of_stock','notify_expiry','notify_daily_summary','notify_sound','notify_desktop','notify_register'];
-    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='receipt_template'&&!['classic','compact','boxed'].includes(value))fail('Unsupported receipt template.');if(key==='receipt_paper'&&!['80mm','58mm','A4'].includes(value))fail('Unsupported paper size.');if(key==='receipt_copies'){const copies=integer(value,'receipt copies',1);if(copies>5)fail('Receipt copies must be between 1 and 5.');value=String(copies);}if(key==='theme'&&!['light','dark'].includes(value))fail('Unsupported theme.');if(key.startsWith('notify_'))value=input[key]===true||input[key]===1||input[key]==='1'||input[key]==='true'?'1':'0';this.run('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,value);}audit(this.db,user,'update','settings');return {ok:true};});
+    this.require(user,'settings',true);const allowed=['pharmacy_name','currency','address','phone','tax_percent','low_stock_days','receipt_footer','receipt_template','receipt_paper','receipt_copies','language','theme','notify_low_stock','notify_out_of_stock','notify_expiry','notify_daily_summary','notify_sound','notify_desktop','notify_register','auto_backup','backup_on_close','backup_folder','backup_copies'];
+    return transaction(this.db,()=>{for(const key of allowed)if(input[key]!==undefined){let value=text(input[key],key,key==='pharmacy_name',500);if(key==='tax_percent')value=String(number(value,'tax',0,100));if(key==='low_stock_days')value=String(integer(value,'expiry warning days',1,3650));if(key==='currency'&&!/^[A-Z]{3}$/.test(value))fail('Use a three-letter currency code.');if(key==='language'&&!['en','ps','fa-AF'].includes(value))fail('Unsupported language.');if(key==='receipt_template'&&!['classic','compact','boxed'].includes(value))fail('Unsupported receipt template.');if(key==='receipt_paper'&&!['80mm','58mm','A4'].includes(value))fail('Unsupported paper size.');if(key==='receipt_copies'){const copies=integer(value,'receipt copies',1);if(copies>5)fail('Receipt copies must be between 1 and 5.');value=String(copies);}if(key==='theme'&&!['light','dark','system'].includes(value))fail('Unsupported theme.');
+        if(key==='backup_folder'){if(!/^(?:[A-Za-z]:[\\/]|\/)/.test(value))fail('Choose an absolute backup folder.');if(value.length>400)fail('The backup folder path is too long.');}
+        if(key==='backup_copies'){const keep=integer(value,'copies to keep',1);if(keep>365)fail('Copies to keep must be between 1 and 365.');value=String(keep);}if(key==='auto_backup'||key==='backup_on_close'||key.startsWith('notify_'))value=input[key]===true||input[key]===1||input[key]==='1'||input[key]==='true'?'1':'0';this.run('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,value);}audit(this.db,user,'update','settings');return {ok:true};});
   }
-  preference(user,input) { const data={}; if(input.language!==undefined){if(!['en','ps','fa-AF'].includes(input.language))fail('Unsupported language.');data.language=input.language;}if(input.theme!==undefined){if(!['light','dark'].includes(input.theme))fail('Unsupported theme.');data.theme=input.theme;}for(const [key,value] of Object.entries(data))this.run('UPDATE settings SET value=? WHERE key=?',value,key);return data; }
+  preference(user,input) { const data={}; if(input.language!==undefined){if(!['en','ps','fa-AF'].includes(input.language))fail('Unsupported language.');data.language=input.language;}if(input.theme!==undefined){if(!['light','dark','system'].includes(input.theme))fail('Unsupported theme.');data.theme=input.theme;}for(const [key,value] of Object.entries(data))this.run('UPDATE settings SET value=? WHERE key=?',value,key);return data; }
   preferences(user) {this.requireSession(user);return Object.fromEntries(this.all('SELECT key,value FROM settings').map(r=>[r.key,r.value]));}
   dashboard(user) {
     this.require(user,'dashboard');const p=this.permissions(user);const result={pharmacyName:this.setting('pharmacy_name'),currency:this.setting('currency')};

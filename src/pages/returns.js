@@ -1,36 +1,181 @@
 import {api,money,escapeHTML as e,dateTime} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
-import {pageHeader,table,empty,run,dateFilters,bindDates} from '../components/ui.js';
+import {pageHeader,icon,empty,run,modal,table} from '../components/ui.js';
 import {showDocument,openReturn} from '../components/documents.js';
-/* Returns: two lists behind two buttons — sales returns and purchase returns.
-   Both are created from their document (Sales history / Purchases) and show the
-   original invoice, the negative amount, the refund method and the reason. */
+
+/* Returns & Refunds, rebuilt to the approved screens: a heading with the hint
+   "Process customer and supplier returns with automatic stock adjustment.",
+   two type buttons, one row of search + From + To + New return, and then the
+   table for the selected type. The two lists carry different money columns
+   because they answer different questions: a sale return shows what the
+   customer got back (Refund) plus the reason, while a purchase return shows
+   which supplier it came from and how much was credited (Credit).
+   A return is always created from its invoice, so "New ... Return" first asks
+   which invoice the goods came from. */
+const COLUMNS={
+  sale:['returnNo','invoice','date','subtotal','refund','reason','recordedBy','actions'],
+  purchase:['returnNo','invoice','party','date','subtotal','credit','recordedBy','actions']
+};
+
 export async function render(root,params={}){
-  root.innerHTML=pageHeader(t('returns'),`${t('saleReturn')} · ${t('purchaseReturn')}`)+
-    `<div class="tabs returns-tabs" role="tablist">
-      <button class="tab active" role="tab" aria-selected="true" data-kind="sale">${e(t('saleReturn'))}</button>
-      <button class="tab" role="tab" aria-selected="false" data-kind="purchase">${e(t('purchaseReturn'))}</button>
-    </div>
-    <section class="card"><div class="filter-bar">${dateFilters()}</div><div id="returns-rows"></div><footer class="table-footer"><span id="returns-total"></span><span class="muted" id="returns-note">${e(t('saleReturn'))}</span></footer></section>`;
-  const range={from:'',to:''};
-  let kind='sale',rows=[];
-  const load=async()=>{
-    rows=await api('documents',{type:kind==='sale'?'salereturns':'purchasereturns',...range});
-    const party=kind==='sale'?'customer':'supplier',docType=kind==='sale'?'sale':'purchase',docId=kind==='sale'?'sale_id':'purchase_id';
-    root.querySelector('#returns-rows').innerHTML=rows.length?table(['returnedOn','invoice',party,'items','total','method','returnReason','actions'],rows,r=>`<tr><td class="nowrap muted">${e(dateTime(r.date))}</td><td class="mono">${e(r.invoice_no)}</td><td>${e(r[party])}</td><td>${r.items}</td><td class="negative">−${money(r.total)}</td><td>${e(t(r.method))}</td><td class="muted">${e(r.reason)}</td><td><div class="inline"><button class="btn btn-ghost btn-sm" data-open="${r[docId]}">${e(t('view'))}</button><button class="btn btn-ghost btn-sm" data-again="${r[docId]}">${e(t('return'))}</button></div></td></tr>`)
-      :empty(kind==='sale'?t('returns'):t('purchaseReturn'),t('emptyHint'),'transfer');
-    root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>run(()=>showDocument(docType,Number(b.dataset.open))));
-    root.querySelectorAll('[data-again]').forEach(b=>b.onclick=()=>run(()=>openReturn(docType,Number(b.dataset.again),load)));
-    root.querySelector('#returns-total').innerHTML=`${rows.length} ${e(kind==='sale'?t('returns'):t('purchaseReturn'))} · −${money(rows.reduce((sum,r)=>sum+Number(r.total||0),0))}`;
-    root.querySelector('#returns-note').textContent=kind==='sale'?t('saleReturn'):t('purchaseReturn');
+  let kind='sale',rows=[],search='',from='',to='';
+  const docType=()=>kind==='sale'?'sale':'purchase';
+  const docIdKey=()=>kind==='sale'?'sale_id':'purchase_id';
+  const listType=()=>kind==='sale'?'salereturns':'purchasereturns';
+  const returnNumber=row=>`RET-${String(row.id).padStart(4,'0')}`;
+  // What the customer actually got back: the return value minus the part that
+  // was only credited against their outstanding balance.
+  const refundOf=row=>Math.max(0,Number(row.total||0)-Number(row.credit_amount||0));
+  // What the supplier's account was credited with by this return.
+  const creditOf=row=>Math.min(Number(row.total||0),Math.max(0,Number(row.credit_amount||0)));
+  const searchHint=()=>kind==='sale'?t('searchReturnOrInvoice'):t('searchPurchaseReturn');
+  const emptyHint=()=>kind==='sale'?t('processSaleReturnHint'):t('processPurchaseReturnHint');
+
+  root.innerHTML=pageHeader(t('returnsRefunds'),t('returnsHint'))+`<div class="returns-page">
+      <div class="tabs returns-types" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" data-kind="sale">${e(t('saleReturn'))}</button>
+        <button class="tab" role="tab" aria-selected="false" data-kind="purchase">${e(t('purchaseReturn'))}</button>
+      </div>
+      <section class="card returns-toolbar">
+        <div class="returns-filters">
+          <label class="returns-search">${icon('search',18)}<input id="returns-search" type="search" placeholder="${e(searchHint())}" autocomplete="off" aria-label="${e(searchHint())}"></label>
+          <label class="returns-date"><span>${e(t('from'))}</span><input id="returns-from" type="date" aria-label="${e(t('from'))}"></label>
+          <label class="returns-date"><span>${e(t('to'))}</span><input id="returns-to" type="date" aria-label="${e(t('to'))}"></label>
+          <button type="button" class="btn btn-primary returns-new" id="new-return">${icon('transfer',16)}<span id="new-return-label">${e(t('newSaleReturn'))}</span></button>
+        </div>
+      </section>
+      <section class="card returns-table-card">
+        <div class="returns-table-scroll">
+          <table class="returns-table">
+            <thead><tr id="returns-head"></tr></thead>
+            <tbody id="returns-rows"></tbody>
+          </table>
+        </div>
+        <div id="returns-empty" hidden></div>
+      </section>
+    </div>`;
+
+  const $=selector=>root.querySelector(selector);
+
+  const matches=row=>{
+    const query=search.trim().toLowerCase();
+    if(!query)return true;
+    return [returnNumber(row),row.invoice_no,row.reason,row.user,row.customer,row.supplier]
+      .filter(Boolean).some(value=>String(value).toLowerCase().includes(query));
   };
-  root.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{
-    if(b.dataset.kind===kind)return;
-    kind=b.dataset.kind;
-    root.querySelectorAll('[data-kind]').forEach(x=>{const active=x===b;x.classList.toggle('active',active);x.setAttribute('aria-selected',String(active));});
+
+  const labels={returnNo:t('returnNo'),invoice:t('invoice'),party:t('supplierName'),date:t('date'),subtotal:t('subtotal'),refund:t('refund'),credit:t('credit'),reason:t('reason'),recordedBy:t('recordedBy'),actions:t('actions')};
+  const drawHead=()=>{
+    $('#returns-head').innerHTML=COLUMNS[kind].map(key=>`<th class="${['subtotal','refund','credit','actions'].includes(key)?'num':''}">${e(labels[key])}</th>`).join('');
+  };
+
+  const draw=()=>{
+    const visible=rows.filter(matches);
+    $('#returns-rows').innerHTML=visible.map(row=>{
+      const moneyCell=kind==='sale'
+        ? `<td class="num negative">− ${money(refundOf(row))}</td><td class="muted reason-cell">${e(row.reason||'')}</td>`
+        : `<td class="num positive">${money(creditOf(row))}</td>`;
+      const partyCell=kind==='sale'?'':`<td class="party-cell">${e(row.supplier||'—')}</td>`;
+      return `<tr data-return="${row.id}">
+        <td class="mono positive">${e(returnNumber(row))}</td>
+        <td class="mono">${e(row.invoice_no||'')}</td>
+        ${partyCell}
+        <td class="nowrap">${e(dateTime(row.date))}</td>
+        <td class="num">${money(row.total)}</td>
+        ${moneyCell}
+        <td class="nowrap">${e(row.user||'—')}</td>
+        <td class="num">${icon('chevron',15)}</td>
+      </tr>`;
+    }).join('');
+    const filtered=Boolean(search||from||to);
+    $('#returns-empty').hidden=visible.length>0;
+    if(!visible.length){
+      $('#returns-empty').innerHTML=empty(
+        kind==='sale'?t('noSaleReturns'):t('noPurchaseReturns'),
+        filtered?t('clearFiltersHint'):emptyHint(),
+        'transfer'
+      );
+    }
+    root.querySelectorAll('#returns-rows tr[data-return]').forEach(node=>{
+      const row=rows.find(item=>String(item.id)===node.dataset.return);
+      node.onclick=()=>run(()=>openRow(row));
+    });
+  };
+
+  // The dialog shows the original invoice, what came back, and what was refunded.
+  const openRow=async row=>{
+    const document=await api('document',{type:docType(),id:Number(row[docIdKey()])});
+    const moneyLabel=kind==='sale'?t('refund'):t('credit');
+    const moneyValue=kind==='sale'?`− ${money(refundOf(row))}`:money(creditOf(row));
+    const sheet=modal(`${returnNumber(row)} · ${document.invoice_no}`,
+      `<div class="summary-strip">
+         <div><small>${e(t('invoice'))}</small><strong>${e(document.invoice_no)}</strong></div>
+         <div><small>${e(kind==='sale'?t('customer'):t('supplier'))}</small><strong>${e(document.party?.name||t('walkIn'))}</strong></div>
+         <div><small>${e(t('date'))}</small><strong>${e(dateTime(row.date))}</strong></div>
+         <div><small>${e(t('subtotal'))}</small><strong>${money(row.total)}</strong></div>
+         <div><small>${e(moneyLabel)}</small><strong>${moneyValue}</strong></div>
+       </div>
+       <p class="return-reason"><strong>${e(t('reason'))}:</strong> ${e(row.reason||'')}</p>
+       <div class="document-table">${table(['name','quantity','price'],document.items,item=>`<tr><td>${e(item.name)}</td><td>${item.quantity}</td><td>${money(kind==='sale'?item.price:item.cost)}</td></tr>`)}</div>
+       <div class="form-footer">
+         <button type="button" class="btn btn-secondary" id="return-again"><span>${e(t('return'))}</span></button>
+         <button type="button" class="btn btn-primary" data-close><span>${e(t('close'))}</span></button>
+       </div>`);
+    sheet.root.querySelector('#return-again').onclick=()=>{sheet.close();run(()=>openReturn(docType(),Number(row[docIdKey()]),load));};
+  };
+
+  const load=async()=>{
+    const input=$('#returns-search');
+    input.placeholder=searchHint();
+    input.setAttribute('aria-label',searchHint());
+    rows=await api('documents',{type:listType(),from,to});
+    $('#new-return-label').textContent=kind==='sale'?t('newSaleReturn'):t('newPurchaseReturn');
+    drawHead();
+    draw();
+  };
+
+  // New return: pick the invoice the goods came from, then the usual return form.
+  const pickInvoice=async()=>{
+    const invoices=await api('documents',{type:kind==='sale'?'sales':'purchases',limit:200});
+    const options=invoices.filter(invoice=>invoice.status!=='cancelled');
+    const sheet=modal(kind==='sale'?t('newSaleReturn'):t('newPurchaseReturn'),
+      `<label class="field"><span>${e(t('invoice'))}</span><input id="return-invoice-search" type="search" placeholder="${e(t('searchInvoice'))}" autocomplete="off"></label>
+       <div class="return-invoice-list" id="return-invoice-list"></div>
+       <div class="form-footer"><button type="button" class="btn btn-secondary" data-close><span>${e(t('cancel'))}</span></button></div>`);
+    const list=sheet.root.querySelector('#return-invoice-list');
+    const paint=query=>{
+      const matched=options.filter(invoice=>!query
+        ||String(invoice.invoice_no).toLowerCase().includes(query.toLowerCase())
+        ||String(invoice.customer||invoice.supplier||'').toLowerCase().includes(query.toLowerCase()));
+      list.innerHTML=matched.length?matched.slice(0,60).map(invoice=>`<button type="button" class="return-invoice" data-invoice="${invoice.id}">
+          <span class="mono">${e(invoice.invoice_no)}</span>
+          <span>${e(invoice.customer||invoice.supplier||t('walkIn'))}</span>
+          <span class="nowrap muted">${e(dateTime(invoice.date))}</span>
+          <strong>${money(invoice.total)}</strong>
+        </button>`).join(''):`<p class="muted return-invoice-empty">${e(t('noInvoicesToReturn'))}</p>`;
+      list.querySelectorAll('[data-invoice]').forEach(node=>node.onclick=()=>{
+        sheet.close();
+        run(()=>openReturn(docType(),Number(node.dataset.invoice),load));
+      });
+    };
+    paint('');
+    sheet.root.querySelector('#return-invoice-search').oninput=event=>paint(event.target.value.trim());
+  };
+
+  // Wiring -------------------------------------------------------------------
+  root.querySelectorAll('[data-kind]').forEach(button=>button.onclick=()=>{
+    if(button.dataset.kind===kind)return;
+    kind=button.dataset.kind;
+    root.querySelectorAll('[data-kind]').forEach(node=>{const active=node===button;node.classList.toggle('active',active);node.setAttribute('aria-selected',String(active));});
     return run(load);
   });
-    bindDates(root,query=>{range.from=query.from;range.to=query.to;return load();});
+  let timer=null;
+  $('#returns-search').oninput=()=>{search=$('#returns-search').value;clearTimeout(timer);timer=setTimeout(draw,120);};
+  $('#returns-from').onchange=()=>{from=$('#returns-from').value;run(load);};
+  $('#returns-to').onchange=()=>{to=$('#returns-to').value;run(load);};
+  $('#new-return').onclick=()=>run(pickInvoice);
+
   await run(load);
   if(params.id)await run(()=>showDocument('sale',Number(params.id)));
+  return ()=>clearTimeout(timer);
 }

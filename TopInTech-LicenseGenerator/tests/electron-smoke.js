@@ -1,0 +1,101 @@
+'use strict';
+/* Real-window smoke test, run with Electron on a Windows runner:
+ *
+ *   npx electron tests/electron-smoke.js
+ *
+ * It starts the actual application in smoke mode (temporary profile and
+ * temporary desktop folder), waits for the window to render, then checks:
+ *   - the window title and version are shown;
+ *   - the key badge is filled and the public key is displayed;
+ *   - a serial can be generated, stored and verified again;
+ *   - the desktop shortcut file is really written to disk.
+ * Every check is printed, and a non-zero exit code fails the build.
+ */
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const electron = require('electron');
+const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 90000);
+
+function fail(message, output) {
+  console.error(`\nFAILED: ${message}`);
+  if (output) console.error(output.split('\n').slice(-40).join('\n'));
+  fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), `${message}\n\n${output || ''}`);
+  process.exit(1);
+}
+
+const child = spawn(electron, ['.'], {
+  cwd: root,
+  env: {
+    ...process.env,
+    TIT_SMOKE: '1',
+    ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+    ELECTRON_ENABLE_LOGGING: '1'
+  },
+  stdio: ['ignore', 'pipe', 'pipe']
+});
+
+let stdout = '';
+let stderr = '';
+child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+
+const timer = setTimeout(() => {
+  child.kill();
+  fail(`the app did not finish its smoke run in ${timeoutMs} ms`, `${stdout}\n${stderr}`);
+}, timeoutMs);
+
+child.on('error', error => {
+  clearTimeout(timer);
+  fail(`could not start Electron: ${error.message}`, stderr);
+});
+
+child.on('close', code => {
+  clearTimeout(timer);
+  const output = `${stdout}\n${stderr}`;
+  if (stdout.includes('SMOKE_ERROR')) fail('the app reported an error while starting', output);
+
+  const line = stdout.split('\n').find(text => text.startsWith('SMOKE_RESULT '));
+  if (!line) fail('the app did not print a smoke result', output);
+
+  let result;
+  try {
+    result = JSON.parse(line.slice('SMOKE_RESULT '.length));
+  } catch (error) {
+    fail(`the smoke result was not valid JSON: ${error.message}`, output);
+  }
+
+  const checks = [
+    ['the window loaded the page', result.page && result.page.title === 'Top In Tech License Generator'],
+    ['the form is rendered', result.page && result.page.product === true],
+    ['the version badge shows 1.1.0', result.page && /^\d+\.\d+\.\d+$/.test(result.page.version)],
+    ['the key id is shown', result.page && result.page.keyId.length >= 6],
+    ['the public key is displayed', result.page && result.page.publicKey === true],
+    ['a serial was generated', Boolean(result.generated && result.generated.serial)],
+    ['the serial records a 1 year plan', result.generated && result.generated.plan === '1 Year'],
+    ['the serial verifies again', result.verified && result.verified.valid === true],
+    ['the serial names the product', result.verified && result.verified.product === 'Pharmacy Management'],
+    ['one license row is stored', result.counts && result.counts.total === 1],
+    ['the desktop shortcut was created', result.shortcut && result.shortcut.created === true],
+    ['the shortcut file exists on disk', result.linkExists === true],
+    ['the shortcut went to the Windows desktop folder', result.shortcut && Array.isArray(result.shortcut.paths) && result.shortcut.paths.length >= 1]
+  ];
+
+  let failed = 0;
+  for (const [name, ok] of checks) {
+    console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`);
+    if (!ok) failed += 1;
+  }
+  console.log(`\nDesktop folders checked: ${(result.shortcut.checked || []).join(', ')}`);
+  console.log(`Shortcut written to    : ${(result.shortcut.paths || []).join(', ')}`);
+  console.log(`Renderer version       : ${result.page.version}`);
+
+  if (failed || code !== 0) {
+    fail(`${failed} smoke check(s) failed (exit code ${code})`, output);
+  }
+  console.log('\nElectron smoke test passed.');
+  process.exit(0);
+});

@@ -1,5 +1,10 @@
 'use strict';
-const {app,BrowserWindow}=require('electron');
+const {app,BrowserWindow,dialog}=require('electron');
+// Native file dialogs would block an unattended test runner, so every dialog
+// in this run answers immediately: save/open cancel, message boxes confirm.
+dialog.showSaveDialog=async()=>({canceled:true,filePath:undefined});
+dialog.showOpenDialog=async()=>({canceled:true,filePaths:[]});
+dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});
 const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
@@ -17,7 +22,7 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.58')"),'visible build label');
+  assert.ok(await run("return document.body.innerText.includes('build.69')"),'visible build label');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -86,12 +91,61 @@ app.whenReady().then(async()=>{
   await run("const f=document.querySelector('#password-form');f.querySelector('[name=currentPassword]').value='SmokeTestPassword123!';f.querySelector('[name=newPassword]').value='AnotherPassword123';f.querySelector('[name=confirmPassword]').value='MismatchPassword123';f.requestSubmit();return true;");
   await until(()=>run("return document.querySelector('#password-form .form-error').textContent.length>0"),'password mismatch message');
   assert.ok(await run("return /do not match/i.test(document.querySelector('#password-form .form-error').textContent)"),'mismatched passwords are rejected');
-  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Appearance'],['users','Users'],['data','Back up database'],['license','Registered to']]){
+  for(const [tabKey,needle] of [['pharmacy','Pharmacy details'],['receipt','Receipt Template'],['notifications','Alerts & Notifications'],['appearance','Theme'],['users','Users'],['data','Automatic local backups'],['license','Registered to']]){
     await run(`document.querySelector('[data-tab=${tabKey}]').click();return true;`);
     await pause(200);
     const tabText=await run("return document.querySelector('#settings-body').innerText");
     assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
+  // Appearance tab: three theme cards and three language rows.
+  await run("document.querySelector('[data-tab=appearance]').click();return true;");
+  await pause(220);
+  assert.equal(await run("return document.querySelectorAll('.theme-card').length"),3,'three theme cards');
+  assert.equal(await run("return [...document.querySelectorAll('.theme-card strong')].map(x=>x.textContent.trim()).join('|')"),'Light|Dark|System','theme names');
+  assert.ok(await run("return document.querySelector('[data-theme-choice=light]').classList.contains('active')"),'light is selected');
+  assert.equal(await run("return document.querySelectorAll('.language-row').length"),3,'three language rows');
+  assert.equal(await run("return [...document.querySelectorAll('.language-row .language-native')].map(x=>x.textContent.trim()).join('|')"),'English|پښتو|دری','language rows show native names');
+  assert.equal(await run("return [...document.querySelectorAll('.language-row .language-english')].map(x=>x.textContent.trim()).join('|')"),'English|Pashto|Dari','language rows show English names');
+  assert.ok(await run("return document.querySelector('[data-language-choice=en]').classList.contains('active')"),'English is selected');
+  await run("document.querySelector('[data-theme-choice=dark]').click();return true;");
+  await until(()=>run("return document.documentElement.dataset.theme==='dark'"),'dark theme applies');
+  await until(()=>run("return document.querySelector('[data-theme-choice=dark]').classList.contains('active')"),'dark card selected');
+  await run("document.querySelector('[data-theme-choice=system]').click();return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.theme==='system')"),'system theme stored');
+  await run("document.querySelector('[data-language-choice=ps]').click();return true;");
+  await until(()=>run("return document.documentElement.lang==='ps'&&document.documentElement.dir==='rtl'"),'Pashto applies right to left');
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.language==='ps')"),'language stored');
+  await run("document.querySelector('[data-language-choice=en]').click();return true;");
+  await until(()=>run("return document.documentElement.lang==='en'"),'English restores');
+  await run("const api=window.pharmacy.invoke;await api('preference',{theme:'light'});return true;");
+  await until(()=>run("return document.documentElement.dataset.theme==='light'"),'light restores');
+  // Data tab: the automatic backup card, with real copies written to disk.
+  await run("document.querySelector('[data-tab=data]').click();return true;");
+  await pause(320);
+  assert.ok(await run("return !!document.querySelector('.data-card')"),'automatic backup card renders');
+  assert.equal(await run("return document.querySelectorAll('.data-card .data-row .switch').length"),2,'two backup switches');
+  assert.equal(await run("return [...document.querySelectorAll('.data-card .data-copy strong')].map(x=>x.textContent.trim()).join('|')"),'Enable automatic backups|Backup on app close','backup switch labels');
+  assert.ok(await run("return document.querySelector('#backup-folder').value.includes('PharmaCare-Backups')"),'default backup folder is shown');
+  assert.equal(await run("return document.querySelector('#backup-copies').value"),'14','default copies to keep');
+  assert.equal(await run("return document.querySelector('[data-alert=auto_backup]').checked"),true,'automatic backups start on');
+  assert.equal(await run("return document.querySelector('[data-alert=backup_on_close]').checked"),true,'backup on close starts on');
+  const smokeFolder = path.join(directory, 'smoke-backups');
+  await run(`const api=window.pharmacy.invoke;await api('settings',{backup_folder:${JSON.stringify(smokeFolder)}});return true;`);
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run(`return document.querySelector('#backup-folder').value===${JSON.stringify(smokeFolder)}`),'chosen backup folder shows');
+  const beforeCount = await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");
+  await run("document.querySelector('#backup-now').click();return true;");
+  await until(async()=>{const count=await run("const api=window.pharmacy.invoke;const s=await api('backupStatus');return s.count");return count===beforeCount+1;},'backup now writes one copy');
+  await until(()=>run("return document.querySelector('.backup-last').innerText.includes('Last backup')"),'last backup line shows the new copy');
+  await run("const api=window.pharmacy.invoke;await api('settings',{backup_copies:7});return true;");
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run("return document.querySelector('#backup-copies').value==='7'"),'copies to keep reloads from the database');
+  assert.equal(fs.readdirSync(smokeFolder).filter(name=>name.endsWith('.sqlite')).length,1,'exactly one copy on disk');
+  await run("const api=window.pharmacy.invoke;await api('settings',{auto_backup:0,backup_copies:14});return true;");
+  await run("document.querySelector('#backup-refresh').click();return true;");
+  await until(()=>run("return document.querySelector('[data-alert=auto_backup]').checked===false"),'switching automatic backups off is stored');
+  await run("const api=window.pharmacy.invoke;await api('settings',{auto_backup:1});return true;");
+  assert.ok(await run("return !!document.querySelector('#restore-now')"),'restore stays available for an administrator');
   // Notifications tab: one switch row per alert, saving on the spot.
   await run("document.querySelector('[data-tab=notifications]').click();return true;");
   await pause(220);
@@ -107,6 +161,15 @@ app.whenReady().then(async()=>{
   await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_sound==='1')"),'sound saved');
   assert.ok(await run("return !!document.querySelector('#sound-preview')"),'sound row has a test button');
   assert.ok(await run("return document.querySelector('.permission-badge').textContent.length>0"),'desktop permission badge');
+  assert.equal(await run("return document.querySelector('.permission-badge').dataset.permission"),'granted','desktop notifications report granted through the main process');
+  await run("const box=document.querySelector('[data-alert=notify_desktop]');box.checked=true;box.dispatchEvent(new Event('change'));return true;");
+  await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.notify_desktop==='1')"),'desktop notifications switch on');
+  assert.ok(await run("return document.querySelector('[data-alert=notify_desktop]').checked"),'desktop switch stays on');
+  const support=await run("const api=window.pharmacy.invoke;return api('notificationSupport')");
+  assert.equal(typeof support.supported,'boolean','desktop notification support is reported');
+  const sent=await run("const api=window.pharmacy.invoke;return api('notify',{title:'Smoke test',body:'Desktop notifications work'})");
+  assert.equal(typeof sent.shown,'boolean','desktop notification call is answered');
+  assert.ok(await run("return !!document.querySelector('#notify-test')"),'desktop row has a test button');
   const threshold=await run("const f=document.querySelector('.notifications-thresholds');f.querySelector('[name=low_stock_days]').value='30';document.querySelector('#threshold-save').click();return true;");
   await until(()=>run("const api=window.pharmacy.invoke;return api('preferences').then(p=>p.low_stock_days==='30')"),'threshold saved');
   assert.ok(await run("return document.querySelector('[data-alert=notify_low_stock]').checked"),'switches survive repaint');
@@ -214,10 +277,25 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('#generate-barcode').click();return true;");
   await until(()=>run("return /^MED-/.test(document.querySelector('[name=barcode]').value) && !!document.querySelector('#barcode-preview svg') && !document.querySelector('#print').disabled"),'automatic barcode preview');
   const barcodeShot=await win.webContents.capturePage();fs.writeFileSync(path.join(artifacts,'electron-barcode-generator.png'),barcodeShot.toPNG());
-  await run("document.querySelector('[data-page=pos]').click();return true;");await until(()=>run("return !!document.querySelector('[data-product]')"),'POS products');
-  await run("document.querySelector('[data-product]').click();return true;");
-  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1);
-  await run("await window.pharmacy.invoke('sale',{items:[{medicineId:1,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
+  await run("document.querySelector('[data-page=pos]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#product-search')"),'POS search');
+  assert.ok(await run("return document.body.innerText.includes('Cart is empty')"),'empty cart message');
+  await run("const input=document.querySelector('#product-search');input.value='Paracetamol';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run("return !!document.querySelector('#pos-results [data-product]')"),'POS search results');
+  await run("document.querySelector('#pos-results [data-product]').click();return true;");
+  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1,'one cart line');
+  assert.equal(await run("return document.querySelector('#cart-count').textContent"),'1','cart badge counts the line');
+  assert.ok(await run("return /^AFN/.test(document.querySelector('#pos-subtotal').innerText.trim())"),'subtotal shows the currency');
+  assert.equal(await run("return document.querySelector('#checkout').disabled"),false,'complete sale unlocks with a line');
+  // A walk-in with a short payment is refused by the main process, then the full amount goes through.
+  await run("const paid=document.querySelector('#pos-paid');paid.value='1';paid.dispatchEvent(new Event('input'));document.querySelector('#checkout').click();return true;");
+  await pause(400);
+  assert.ok(await run("return document.querySelector('#toasts').innerText.includes('Walk-in')"),'walk-in short payment is blocked');
+  assert.equal(await run("return document.querySelectorAll('.cart-item').length"),1,'the cart survives a refused payment');
+  const salesBefore=await run("const rows=await window.pharmacy.invoke('documents',{type:'sales'});return rows.length");
+  await run("const input=document.querySelector('#pos-paid');input.value=document.querySelector('#pos-total').innerText.replace(/[^0-9.]/g,'');input.dispatchEvent(new Event('input'));document.querySelector('#checkout').click();return true;");
+  await until(()=>run("return document.querySelectorAll('.cart-item').length===0"),'sale completes from the POS screen');
+  await until(async()=>{const rows=await run("const rows=await window.pharmacy.invoke('documents',{type:'sales'});return rows.length");return rows===salesBefore+1;},'the sale is stored');
   const {renderPDF}=require('../database/pdf');
   const pdf=await renderPDF('printBarcode',{value:'PAR50001',svg:require('../database/barcode').code128('PAR50001')},{pharmacy_name:'Kabul Care Pharmacy'});
   assert.equal(pdf.subarray(0,5).toString(),'%PDF-');fs.writeFileSync(path.join(artifacts,'electron-barcode.pdf'),pdf);
@@ -228,7 +306,7 @@ app.whenReady().then(async()=>{
   const boxLabels=await run("return [...document.querySelectorAll('.insight-card')].map(x=>x.dataset.go).join(',')");
   assert.equal(boxLabels,'finance,inventory,reports,sales');
   await run("document.querySelector('.insight-card[data-go=sales]').click();return true;");
-  await until(()=>run("return !!document.querySelector('#sales-rows table') && document.querySelectorAll('[data-page=\"sales\"]').length>=0"),'sales page from dashboard box');
+  await until(()=>run("return !!document.querySelector('.sales-table') && document.querySelectorAll('[data-page=\"sales\"]').length>=0"),'sales page from dashboard box');
   await run("document.querySelector('[data-page=dashboard]').click();return true;");
   await until(()=>run("return document.querySelectorAll('.insight-card').length===4"),'dashboard again');
   await run("document.querySelector('.insight-card[data-go=reports]').click();return true;");
@@ -237,14 +315,28 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=returns]').click();return true;");
   await until(()=>run("return !!document.querySelector('#returns-rows') && !document.querySelector('.loading-state')"),'returns page from sidebar');
   await run("await window.pharmacy.invoke('return',{type:'sale',documentId:1,items:[{itemId:1,quantity:1,restock:1}],reason:'Smoke return',method:'cash'});return true;");
-  await run("document.querySelector('#filter-apply').click();return true;");
+  await run("document.querySelector('[data-page=returns]').click();return true;");
+  await until(()=>run("return document.querySelectorAll('#returns-rows tr[data-return]').length>0"),'returns reloaded with the new return');
+  // Returns & Refunds layout: type buttons, then search + From + To + New return.
+  assert.equal(await run("return [...document.querySelectorAll('.returns-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Return #|Invoice|Date|Subtotal|Refund|Reason|Recorded by|Actions','returns columns');
+  assert.ok(await run("return !!document.querySelector('#returns-search') && !!document.querySelector('#returns-from') && !!document.querySelector('#returns-to') && !!document.querySelector('#new-return')"),'returns toolbar renders');
+  assert.ok(await run("return document.querySelector('#new-return').innerText.includes('New Sale Return')"),'new sale return button label');
+  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Process customer and supplier returns with automatic stock adjustment.')"),'returns hint text');
+  await run("const input=document.querySelector('#returns-search');input.value='Smoke return';input.dispatchEvent(new Event('input'));return true;");
   await until(()=>run("return document.querySelector('#returns-rows').innerText.includes('Smoke return')"),'return listed on the returns page');
-  assert.ok(await run("const rows=document.querySelectorAll('#returns-rows tbody tr').length;return rows>0 && document.querySelector('#returns-total').innerText.startsWith(String(rows))"),'returns total matches the rows');
+  assert.ok(await run("return /^RET-\\d{4}$/.test(document.querySelector('#returns-rows tr[data-return] .mono').textContent.trim())"),'return numbers are shown');
+  await run("const input=document.querySelector('#returns-search');input.value='';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run("return document.querySelectorAll('#returns-rows tr[data-return]').length>0"),'clearing the search restores the rows');
   assert.ok((await run("return document.querySelector('#page-content').innerText")).includes('INV-'),'returns page shows the original invoice number');
-  await run("document.querySelector('[data-open]').click();return true;");
-  await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'invoice detail from the returns page');
+  // The picker behind New Sale Return lists invoices; a row opens the return detail.
+  await run("document.querySelector('#new-return').click();return true;");
+  await until(()=>run("return !!document.querySelector('#return-invoice-list .return-invoice')"),'invoice picker opens');
   await run("document.querySelector('#modal-root [data-close]').click();return true;");
-  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'invoice detail closed');
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'invoice picker closed');
+  await run("document.querySelector('#returns-rows tr[data-return]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'return detail from the returns page');
+  await run("document.querySelector('#modal-root [data-close]').click();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'return detail closed');
   // Customers page: two totals, search and the customer table.
   await run("document.querySelector('[data-page=customers]').click();return true;");
   await until(()=>run("return !!document.querySelector('#new-customer') && !!document.querySelector('#customer-rows')"),'customers page');
@@ -283,6 +375,11 @@ app.whenReady().then(async()=>{
   assert.ok(await run("return document.querySelector('#medicine-rows').innerText.includes('PAR50001')"),'catalogue shows the barcode');
   assert.ok(await run("return document.querySelector('#medicine-rows').innerText.includes('2030-12-31')"),'catalogue shows the nearest expiry');
   assert.ok(await run("return document.querySelectorAll('#medicine-rows [data-edit]').length>=1"),'every row has an edit action');
+  // The row follows the approved screen: pill mark, unit pill, three actions.
+  assert.ok(await run("return !!document.querySelector('#medicine-rows .medicine-mark') && !!document.querySelector('#medicine-rows .table-sub')"),'rows carry the pill mark and the generic name');
+  assert.ok(await run("return document.querySelectorAll('#medicine-rows tr:first-child .row-icon').length===3"),'three row actions');
+  assert.equal(await run("return [...document.querySelectorAll('#medicine-rows tr:first-child .row-icon')].map(b=>b.dataset.label?'label':b.dataset.edit?'edit':'archive').join(',')"),'label,edit,archive','row action order');
+  assert.ok(await run("return /^Showing all \\d+$/.test(document.querySelector('#medicine-count').textContent.trim())"),'the footer counts the catalogue');
   assert.ok(!(await run("return document.querySelector('#medicine-rows').innerText.includes('B-1001')")),'catalogue does not list batch numbers');
   await run("document.querySelector('#medicine-search').value='nothing-matches';document.querySelector('#medicine-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
@@ -319,13 +416,45 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('#modal-root [data-cancel]').click();return true;");
   await pause(200);
   assert.ok(!(await run("return !!document.querySelector('#modal-root form.medicine-form')")),'cancel closes the form');
-  await run("document.querySelector('#medicine-rows [data-edit]').click();return true;");
+  const rowsBeforeEdit=await run("return document.querySelectorAll('#medicine-rows tr').length");
+  await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine'));row.querySelector('[data-edit]').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form.medicine-form')"),'edit medicine form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=name]').value"),'edit form is prefilled');
-  assert.ok(!(await run("return !!document.querySelector('#modal-root .opening-stock')")),'opening stock is only offered for new medicines');
+  assert.ok(!(await run("return !!document.querySelector('#modal-root .opening-stock:not(.add-stock)')")),'opening stock is only offered for new medicines');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=price]') && document.querySelector('#modal-root [name=price]').value!==''"),'editing keeps the selling price editable in the form');
+  // The edit form also carries an Add stock section: a quantity with its expiry
+  // turns into a new batch on top of the existing stock.
+  assert.ok(await run("return !!document.querySelector('#modal-root .add-stock [name=add_quantity]') && !!document.querySelector('#modal-root .add-stock [name=add_expiry]')"),'edit form offers the stock input');
+  assert.equal(await run("return document.querySelectorAll('#modal-root .add-stock .mf-field').length"),4,'stock section has quantity, expiry and both prices');
+  const stockBeforeAdd=await run("const rows=await window.pharmacy.invoke('medicineBook');return Number(rows.rows.find(r=>r.name.startsWith('Form Medicine')).stock)");
+  await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=add_quantity]').value='12';f.querySelector('[name=add_expiry]').value='2033-06-30';f.querySelector('[name=add_cost]').value='4';f.querySelector('[name=add_price]').value='8';return true;");
+  // Saving the edit must update that medicine, not insert a copy that collides on its barcode.
+  await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=name]').value='Form Medicine Edited';f.querySelector('[name=generic_name]').value='Ibuprofen 400';f.requestSubmit();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .medicine-form')"),'edit form closes after saving');
+  await until(()=>run("return document.querySelector('#medicine-rows').innerText.includes('Form Medicine Edited')"),'edited name shows in the catalogue');
+  assert.ok(await run(`return document.querySelectorAll('#medicine-rows tr').length===${rowsBeforeEdit}`),'editing never adds a row');
+  assert.ok(!(await run("return document.querySelector('#medicine-rows').innerText.includes('UNIQUE')")),'no unique-constraint error after editing');
+  assert.ok(await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine Edited'));return row.innerText.includes('Ibuprofen 400')"),'the generic name follows the edit');
+  const stockAfterAdd=await run("const rows=await window.pharmacy.invoke('medicineBook');return Number(rows.rows.find(r=>r.name.startsWith('Form Medicine')).stock)");
+  assert.equal(stockAfterAdd,stockBeforeAdd+12,'the stock input adds the quantity to the medicine');
+  assert.ok(await run("const rows=await window.pharmacy.invoke('medicineBook');const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine Edited'));return Number(rows.rows.find(r=>r.name.startsWith('Form Medicine')).stock)==="+stockAfterAdd),'the catalogue shows the new stock');
+  // A barcode that another medicine already uses is refused with a clear message.
+  await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine Edited'));row.querySelector('[data-edit]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root form.medicine-form')"),'edit form again');
+  await run("const f=document.querySelector('#modal-root form.medicine-form');f.querySelector('[name=barcode]').value='PAR50001';f.requestSubmit();return true;");
+  await until(()=>run("return document.querySelector('#modal-root .form-error').textContent.length>0"),'duplicate barcode is reported');
+  assert.ok(await run("return /barcode is already used/i.test(document.querySelector('#modal-root .form-error').textContent)"),'the duplicate barcode message names the barcode');
   await run("document.querySelector('#modal-root [data-cancel]').click();return true;");
   await pause(150);
+  // Removing a medicine hides it from the catalogue without touching history.
+  const catalogueBefore=await run("return document.querySelectorAll('#medicine-rows tr').length");
+  await run("document.querySelector('[data-page=medicines]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#medicine-rows [data-archive]')"),'medicines page again');
+  await run("const row=[...document.querySelectorAll('#medicine-rows tr')].find(r=>r.innerText.includes('Form Medicine Edited'));row.querySelector('[data-archive]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root #confirm-yes')"),'remove confirmation');
+  await run("document.querySelector('#modal-root #confirm-yes').click();return true;");
+  await until(()=>run("return ![...document.querySelectorAll('#medicine-rows tr')].some(r=>r.innerText.includes('Form Medicine Edited'))"),'removed medicine leaves the catalogue');
+  assert.ok(await run(`return document.querySelectorAll('#medicine-rows tr').length===${catalogueBefore-1}`),'only that row is gone');
   await run("document.querySelector('[data-page=inventory]').click();return true;");
   await until(()=>run("return !!document.querySelector('#inventory-rows') && !!document.querySelector('#inventory-search')"),'inventory page');
   assert.ok(await run("return document.querySelector('#page-content h1').textContent==='Inventory'"),'page titled inventory');
@@ -377,7 +506,8 @@ app.whenReady().then(async()=>{
   assert.match(await run("return document.querySelector('#labels-rows').innerText"),/\d+ tablet/i,'labels show the stock badge');
   await run("document.querySelector('#copies-stock').click();return true;");
   await pause(200);
-  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),'105','copies from stock fills the quantity');
+  const paracetamolStock=await run("const rows=await window.pharmacy.invoke('catalog',{search:'PAR-500'});return String(rows[0].stock)");
+  assert.equal(await run("const row=[...document.querySelectorAll('#labels-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));return row.querySelector('.copies-input').value"),paracetamolStock,'copies from stock fills the current quantity');
   assert.ok(await run("return !document.querySelector('#print-labels').disabled"),'print is enabled once copies exist');
   assert.match(await run("return document.querySelector('#labels-total').textContent"),/\d+ labels/,'the bar counts the labels');
   const visibleCount=await run("return document.querySelectorAll('#labels-rows tr[data-row]').length");
@@ -554,12 +684,38 @@ app.whenReady().then(async()=>{
   await pause(250);
   assert.ok(await run("return document.querySelector('[data-kind=purchase]').classList.contains('active')"),'purchase returns selected');
   assert.ok(!(await run("return document.querySelector('#page-content').innerText")).includes('Something went wrong'),'purchase returns list renders');
-  assert.ok(await run("return document.querySelector('#returns-note').innerText.toLowerCase().includes('purchase')"),'footer names the purchase list');
+  assert.ok(await run("return document.querySelector('#new-return').innerText.includes('New Purchase Return')"),'the new-return button follows the selected list');
+  assert.equal(await run("return [...document.querySelectorAll('.returns-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Return #|Invoice|Supplier Name|Date|Subtotal|Credit|Recorded by|Actions','purchase return columns');
+  assert.ok(await run("return document.querySelector('#returns-search').placeholder.startsWith('Search by return #, invoice # or supplier')"),'purchase search mentions the supplier');
+  assert.ok(await run("return document.querySelector('#returns-empty').innerText.toLowerCase().includes('purchase')"),'empty state names the purchase list');
+  assert.ok(await run("return document.querySelector('#returns-empty').innerText.includes('Process a return from a purchase to see it here.')"),'purchase empty hint mentions a purchase');
   await run("document.querySelector('[data-kind=sale]').click();return true;");
-  await pause(200);
+  await pause(250);
+  assert.equal(await run("return [...document.querySelectorAll('.returns-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Return #|Invoice|Date|Subtotal|Refund|Reason|Recorded by|Actions','sale return columns come back');
+  assert.ok(await run("return document.querySelector('#new-return').innerText.includes('New Sale Return')"),'the button follows the list again');
   await run("document.querySelector('[data-page=sales]').click();return true;");
-  await until(()=>run("return !!document.querySelector('#sales-rows table')"),'sales history table');
-  assert.equal(await run("return document.querySelectorAll('#returns-rows, #returns-total').length"),0,'sales page must not contain the returns list');
+  await until(()=>run("return !!document.querySelector('.sales-table')"),'sales history table');
+  // Sales history layout: search and period on one row, count and total under
+  // them, and the nine columns of the design.
+  assert.equal(await run("return [...document.querySelectorAll('.sales-table thead th')].map(x=>x.textContent.trim()).join('|')"),'Invoice #|Date|Subtotal|Discount|Total|Paid|Balance|Recorded by|Actions','sales history columns');
+  assert.ok(await run("return !!document.querySelector('#sales-search') && !!document.querySelector('#sales-period')"),'sales filters render');
+  assert.equal(await run("return document.querySelector('#sales-period').value"),'30','last 30 days by default');
+  assert.ok(await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length>0"),'completed sales are listed');
+  assert.equal(await run("return document.querySelector('#sales-count').textContent"),String(await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length")),'the count matches the rows');
+  assert.ok(await run("return document.querySelector('#sales-sum').textContent!=='0.00'"),'the total follows the rows');
+  const allSalesRows=await run("return document.querySelectorAll('#sales-rows tr[data-sale]').length");
+  await run("const input=document.querySelector('#sales-search');input.value='INV-0000-nothing';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run("return document.querySelectorAll('#sales-rows tr[data-sale]').length===0"),'search filters the table');
+  assert.ok(await run("return !document.querySelector('#sales-empty').hidden && document.querySelector('#sales-empty').innerText.length>0"),'empty state shows for no matches');
+  assert.equal(await run("return document.querySelector('#sales-count').textContent"),'0','the count follows the filter');
+  await run("const input=document.querySelector('#sales-search');input.value='';input.dispatchEvent(new Event('input'));return true;");
+  await until(()=>run(`return document.querySelectorAll('#sales-rows tr[data-sale]').length===${allSalesRows}`),'clearing the search restores the rows');
+  // A row opens the invoice preview.
+  await run("document.querySelector('#sales-rows tr[data-sale]').click();return true;");
+  await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'row opens the invoice');
+  await run("document.querySelector('#modal-root [data-close]').click();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'invoice closed');
+  assert.equal(await run("return document.querySelectorAll('#returns-rows, #new-return').length"),0,'sales page must not contain the returns list');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Sales history')"),'sales page titled as sales history');
   // Finance: Expenses totals and filters, the Ledger statement and the Reports KPIs.
   await run("document.querySelector('[data-page=expenses]').click();return true;");
@@ -699,8 +855,8 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('.app-shell')"),'login after reload');
   assert.equal(await run('return document.documentElement.dir'),'rtl');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.58'},null,2));
+  fs.writeFileSync(path.join(artifacts,'electron-smoke-result.json'),JSON.stringify({status:'passed',pages:pages.length,database:directory,pdfBytes:pdf.length,rendererNodeAccess:false,rtl:true,oneClickBarcode:true,purchaseFormCredit:true,purchaseFormCash:true,purchaseFormBank:true,visibleBuild:'build.69',autoBackup:true},null,2));
   console.log('ELECTRON_SMOKE_PASSED',pages.length,'pages; PDF bytes',pdf.length);
   app.exit(0);
 }).catch(error=>{console.error('ELECTRON_SMOKE_FAILED',error);fs.writeFileSync(path.join(artifacts,'electron-smoke-error.txt'),error.stack);app.exit(1);});
-setTimeout(()=>{console.error('Electron smoke timeout');app.exit(1);},90000).unref();
+setTimeout(()=>{console.error('Electron smoke timeout');app.exit(1);},130000).unref();

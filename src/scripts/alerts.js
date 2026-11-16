@@ -49,20 +49,32 @@ export function playSaleSound(){
   }catch{return false;}
 }
 
+/* Desktop notifications run in the Electron main process, because this window
+   denies every browser permission on purpose. The page therefore reports
+   "granted" whenever the secure bridge is present and falls back to the
+   browser API only in a plain browser preview. */
+function bridge(){return typeof window!=='undefined'&&window.pharmacy&&typeof window.pharmacy.invoke==='function'?window.pharmacy:null;}
+
 export function desktopPermission(){
+  if(bridge())return 'granted';
   if(typeof Notification==='undefined')return 'unsupported';
   return Notification.permission;
 }
 
 export async function requestDesktopPermission(){
+  if(bridge())return 'granted';
   if(typeof Notification==='undefined')return 'unsupported';
   if(Notification.permission==='granted')return 'granted';
   try{return await Notification.requestPermission();}catch{return Notification.permission;}
 }
 
-export function notifyDesktop(title,body){
+export async function notifyDesktop(title,body){
   if(!alertEnabled('notify_desktop'))return false;
-  if(desktopPermission()!=='granted')return false;
+  const secure=bridge();
+  if(secure){
+    try{const result=await secure.invoke('notify',{title,body});return Boolean(result?.shown);}catch{return false;}
+  }
+  if(typeof Notification==='undefined'||Notification.permission!=='granted')return false;
   try{new Notification(title,{body});return true;}catch{return false;}
 }
 
@@ -89,7 +101,7 @@ export async function dailySummary(){
     if(!row)return null;
     const message=`${t('yesterdaySales')}: ${Number(row.orders)||0} ${t('invoice')} · ${money(row.total||0)} ${state.preferences?.currency||''}`.trim();
     toast(message);
-    notifyDesktop(t('dailySalesSummary'),message);
+    await notifyDesktop(t('dailySalesSummary'),message);
     return message;
   }catch{return null;}
 }
