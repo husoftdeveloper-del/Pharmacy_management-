@@ -23,7 +23,7 @@ TopInTech-LicenseGenerator/
 │  └─ scripts/app.js    renderer (talks only through window.generator)
 ├─ tools/cli.js         issue and check keys from a terminal
 ├─ build-windows.ps1    install + test + build the Windows EXEs
-└─ buildResources/installer.nsh  pins the desktop icon to the current user
+└─ buildResources/installer.nsh  activation page + current-user shortcuts
 ├─ tests/               node --test suites (no Electron needed)
 └─ docs/                how the customer app verifies a serial
 ```
@@ -52,10 +52,21 @@ file is written to:
 TopInTech-LicenseGenerator\release\Top In Tech License Generator Setup.exe
 ```
 
-Double-clicking it shows the standard Windows wizard — Welcome → Installation
-Location (`C:\Program Files\Top In Tech License Generator` by default) → Install
-→ Finish — and leaves a desktop shortcut and a Start menu entry. Uninstalling
-keeps the licence database and the keys.
+Double-clicking it shows the standard Windows wizard:
+
+**Welcome → Software Activation → Installation Location → Install → Finish**
+
+The **Software Activation** page asks for **Enter Your Key** and has `Continue`
+and `Cancel` buttons. Only the serial key supplied with the purchase is
+accepted, and it is compared case-sensitively. A wrong or empty key keeps the
+user on the page with an error and the install never starts. The key itself is
+never displayed anywhere in the installer. Once a machine is activated the
+answer is stored under `HKEY_LOCAL_MACHINE\Software\Top In Tech\License
+Generator`, so repairs, reinstalls and updates never ask again.
+
+The install directory defaults to `C:\Program Files\Top In Tech License
+Generator`, and the wizard leaves a desktop shortcut and a Start menu entry.
+Uninstalling keeps the licence database and the keys.
 
 A portable build is still possible, but only when asked for explicitly:
 
@@ -69,13 +80,13 @@ Or run the helper, which installs, tests and builds in one step:
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
 ```
 
-### Download the ready-built setup (version 2.0.0, built and installed on a Windows runner)
+### Download the ready-built setup (version 2.1.0, built and installed on a Windows runner)
 
-<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v2.0.0>
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v2.1.0>
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-Setup-2.0.0.exe` | 102,687,461 B | `7e423241be376e05a127d7b27a3aa3e5de40c2ff2b59992999235515c3dae8f5` |
+| `Top-In-Tech-License-Generator-Setup-2.1.0.exe` | 102,692,026 B | `5c97bd5a0405b13aa4f68dd6531a7a2797fb1adb215b97f28b3859963d5312cd` |
 
 The release also carries `Top.In.Tech.License.Generator.Setup.exe`, the same
 file: GitHub rewrites spaces in asset names, so the hyphenated copy is the one
@@ -83,9 +94,12 @@ with a clean download name. Rename your download to
 `Top In Tech License Generator Setup.exe` if you prefer the exact title.
 
 Every change inside `TopInTech-LicenseGenerator/` is built on a Windows runner by
-`.github/workflows/license-generator.yml`, which **installs the setup it just
-built** and checks Program Files, the desktop shortcut, the Start menu entry and
-the uninstaller before publishing. The Pharmacy application has its own separate
+`.github/workflows/license-generator.yml`, which **compiles the activation page
+with the real NSIS compiler**, **installs the setup it just built** and checks
+Program Files, the desktop shortcut, the Start menu entry, the uninstaller and
+the remembered activation before publishing. It also proves that a silent
+install is refused without the key and that an upper-case copy of the key is
+rejected. The Pharmacy application has its own separate
 release and installer; the two never mix.
 
 ## Where the files live
