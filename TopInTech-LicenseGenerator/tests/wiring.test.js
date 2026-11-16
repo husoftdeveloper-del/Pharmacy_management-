@@ -282,6 +282,23 @@ test('the installer asks for the serial key before anything is installed', () =>
   assert.match(nsh, /ReadRegStr \$0 HKLM/, 'an activated machine skips the page');
 });
 
+test('the activation page is left out of the uninstaller pass', () => {
+  // electron-builder compiles the script twice: once with BUILD_UNINSTALLER to
+  // extract the uninstaller (no pages there) and once for the real installer.
+  // A page callback that nothing references in the first pass raises
+  // "warning 6010", and electron-builder passes -WX, so the build would fail.
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  const start = nsh.indexOf('!ifndef BUILD_UNINSTALLER');
+  assert.ok(start > 0, 'the activation block is guarded');
+  const end = nsh.indexOf('!endif', start);
+  assert.ok(end > start, 'the guard is closed');
+  const guarded = nsh.slice(start, end);
+  assert.match(guarded, /Function ActivationPageShow/);
+  assert.match(guarded, /Function ActivationPageLeave/);
+  assert.match(guarded, /!macro customWelcomePage/);
+  assert.match(guarded, /Var ActivationField/);
+});
+
 test('a silent install cannot skip the activation check', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
   assert.match(nsh, /!macro customInit/);

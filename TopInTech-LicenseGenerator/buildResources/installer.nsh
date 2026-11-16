@@ -31,6 +31,12 @@
 !define ACTIVATION_REG_KEY "Software\Top In Tech\License Generator"
 !define ACTIVATION_REG_VALUE "Activated"
 
+; electron-builder compiles the script twice. The first pass has
+; BUILD_UNINSTALLER defined and contains no pages at all, so the page and its
+; callbacks must not be compiled there: an install function that nothing
+; references raises "warning 6010", and the build uses -WX (warnings as errors).
+!ifndef BUILD_UNINSTALLER
+
 Var ActivationDialog
 Var ActivationField
 Var ActivationError
@@ -102,6 +108,8 @@ FunctionEnd
 
   Page custom ActivationPageShow ActivationPageLeave
 !macroend
+
+!endif ; !ifndef BUILD_UNINSTALLER
 
 ; ------------------------------------------------------------- unattended guard
 ; A silent install (/S) never draws the page, so it could otherwise skip the key
