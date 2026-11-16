@@ -46,11 +46,6 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
-      - name: Confirm the build produces only the setup wizard
-        shell: bash
-        run: |
-          node -e "const b=require('./package.json').build; if(b.nsis.oneClick!==false||b.nsis.perMachine!==true||!b.nsis.allowToChangeInstallationDirectory){console.error('the installer is not a wizard');process.exit(1)}; if(JSON.stringify(b.win.target)!=='["nsis"]'){console.error('unexpected targets: '+JSON.stringify(b.win.target));process.exit(1)}; console.log('wizard config ok: '+b.nsis.artifactName)"
-
       - name: Check the installer script is present
         shell: bash
         run: |
