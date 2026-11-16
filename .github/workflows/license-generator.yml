@@ -68,9 +68,13 @@ jobs:
           if (-not $setup) { Write-Error 'No setup file was produced'; exit 1 }
           Write-Host "Installing $($setup.Name) ($($setup.Length) bytes)"
           $target = 'C:\tit-install'
-          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -PassThru -Wait
-          Write-Host "installer exit code: $($process.ExitCode)"
-          Start-Sleep -Seconds 8
+          # Wait for the installer itself only: it starts the app, and -Wait would
+          # keep waiting for that child process until the job timed out.
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -PassThru
+          $exited = $process.WaitForExit(180000)
+          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes'; $process.Kill() }
+          Write-Host "installer exit code: $($process.ExitCode) (exited: $exited)"
+          Start-Sleep -Seconds 10
 
           $appName = 'Top In Tech License Generator'
 
