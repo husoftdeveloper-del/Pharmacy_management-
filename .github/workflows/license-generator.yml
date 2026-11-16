@@ -52,10 +52,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          page=TopInTech-LicenseGenerator/src/index.html
-          renderer=TopInTech-LicenseGenerator/src/scripts/app.js
-          bridge=TopInTech-LicenseGenerator/preload.js
-          main=TopInTech-LicenseGenerator/main.js
+          # This job already runs inside TopInTech-LicenseGenerator.
+          page=src/index.html
+          renderer=src/scripts/app.js
+          bridge=preload.js
+          main=main.js
           grep -q 'id="login-screen"' "$page"
           grep -q 'id="login-password"' "$page"
           grep -q 'id="app-main" hidden' "$page"
