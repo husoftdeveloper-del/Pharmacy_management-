@@ -91,8 +91,12 @@ jobs:
           $nsis = Get-ChildItem "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Filter 'makensis.exe' |
             Where-Object { $_.FullName -like '*nsis-3.0.4.1*' } | Select-Object -First 1
           if (-not $nsis) { Write-Error 'makensis.exe was not found in the electron-builder cache'; exit 1 }
-          # The compiler sits in Bin, the includes one level up: NSISDIR has to say so.
-          $env:NSISDIR = Split-Path (Split-Path $nsis.FullName -Parent) -Parent
+          # The compiler sits in a Bin folder and the includes are above it, but the
+          # cache nests the bundle an extra level deep: walk up until Stubs is there.
+          $root = $nsis.Directory.FullName
+          while ($root -and -not (Test-Path (Join-Path $root 'Stubs'))) { $root = Split-Path $root -Parent }
+          if (-not $root) { Write-Error 'the NSIS bundle root (Stubs folder) was not found'; exit 1 }
+          $env:NSISDIR = $root
           Write-Host "makensis: $($nsis.FullName)"
           Write-Host "NSISDIR : $env:NSISDIR"
 
