@@ -72,9 +72,14 @@ jobs:
           Write-Host "installer exit code: $($process.ExitCode)"
           Start-Sleep -Seconds 8
 
-          # The app may have been started by the installer (runAfterFinish).
           $appName = 'Top In Tech License Generator'
-          Get-Process -Name $appName -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          # runAfterFinish: the app should have started by itself after installing.
+          $running = @(Get-Process -Name $appName -ErrorAction SilentlyContinue)
+          $appStarted = $running.Count -gt 0
+          Write-Host "$(if ($appStarted) { 'ok  ' } else { 'FAIL' }) app started after install"
+          Write-Host "::notice title=installer-app-started=$appStarted::the app opened by itself after the install"
+          $running | Stop-Process -Force -ErrorAction SilentlyContinue
 
           $exe = Join-Path $target "$appName.exe"
           $desktop = [Environment]::GetFolderPath('Desktop')
@@ -87,6 +92,7 @@ jobs:
           $required = [ordered]@{
             'program installed' = (Test-Path $exe)
             'desktop icon'      = (Test-Path $link)
+            'app started'       = $appStarted
           }
           $optional = [ordered]@{
             'desktop folder exists'  = (Test-Path $desktop)
