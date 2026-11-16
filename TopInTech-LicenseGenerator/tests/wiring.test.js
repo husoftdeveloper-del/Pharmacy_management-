@@ -263,9 +263,10 @@ test('the installer asks for the serial key before anything is installed', () =>
 
   // The key is compared case-sensitively with StrCmpS semantics.
   assert.match(nsh, /!define ACTIVATION_KEY "mynewpharmacy1221"/);
-  assert.match(nsh, /\$\{If\} \$0 != "\$\{ACTIVATION_KEY\}"/, 'an exact, case-sensitive comparison');
+  assert.match(nsh, /StrCmpS \$0 "\$\{ACTIVATION_KEY\}" ActivationAccepted/, 'an exact, case-sensitive comparison');
   assert.doesNotMatch(nsh, /StrCmp [^\n]*ACTIVATION_KEY/, 'StrCmp is case-insensitive, so it must not be used');
   assert.doesNotMatch(nsh, /StrCmp /, 'no case-insensitive comparison at all');
+  assert.match(nsh, /StrCmpS \$R0 "\$\{ACTIVATION_KEY\}"/, 'the silent guard is case-sensitive too');
 
   // A wrong or empty key keeps the user on the page: Abort, and the install never starts.
   assert.match(nsh, /Please enter your license key/);

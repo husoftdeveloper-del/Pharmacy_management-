@@ -61,6 +61,23 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      # When the NSIS compiler rejects the script, its own message is the only
+      # thing that explains why. The step log is not readable from the runner,
+      # so the last compiler lines are surfaced as annotations.
+      - name: Show the installer compiler error
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::The Windows setup build failed. The last compiler lines follow."
+          if [ ! -f build.log ]; then
+            echo "::error::build.log was not written"
+            exit 0
+          fi
+          grep -n -i -E "error|warning|could not|invalid|not found|plugin" build.log | tail -n 8 | while IFS= read -r line; do
+            echo "::error::${line:0:600}"
+          done
+          exit 0
+
       - name: Check the activation form is compiled into the setup file
         shell: pwsh
         run: |
