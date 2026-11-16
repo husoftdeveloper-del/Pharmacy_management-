@@ -1,3 +1,36 @@
+## Build 70 — the owner's uploaded logo is the icon everywhere
+
+- **Setup**: `Pharmacy-1.0.0-x64.exe` — 103,020,649 B, sha256 `de6ca4e80a47b2a6bc2d81447eef4a7b8335cc5009a49ac8e52bb5005f984b2c`
+- **Portable**: `Pharmacy-1.0.0-Portable.exe` — 94,750,375 B, sha256 `2ffec1d86d57f5eb97dfb4a6e24598c1a863be9d9c81bfafd37ba77444ee45c5`
+- **Release**: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.0-build.70
+- **CI**: run 43826673514 — check, 43/43 tests, Electron smoke, installer build and release publishing all passed.
+
+The icon set was rebuilt from the logo image the owner uploaded
+(`image-2.jpeg`, 736x736). Only the white margin was cropped to the artwork's
+own bounding box and 4 % breathing space was added; the drawing, colours and
+proportions are untouched.
+
+| Place | File |
+| --- | --- |
+| Setup.exe, uninstaller, setup header | `build/icon.ico` (`nsis.installerIcon`, `nsis.uninstallerIcon`, `nsis.installerHeaderIcon`) |
+| Program file (installed exe), desktop/Start-menu shortcuts, taskbar button | `build/icon.ico` (`win.icon`, stamped into the exe) |
+| Window and taskbar icon at runtime | `build/icon.png` (512 px, now shipped inside the app) |
+
+Icon frames: 16, 24, 32, 48, 64, 128, 256 px, 32-bit.
+
+What was wrong in build 69: `win.signAndEditExecutable` was `false`, so
+electron-builder skipped resource editing ("executable resource editing and code
+signing skipped") and the exe kept the **default Electron icon**; `build/icon.png`
+had also been replaced by an 11 KB placeholder. Build 70 removes that flag (code
+signing is still skipped with `signExecutable: false`, which needs no
+certificate), regenerates the PNG from the logo, points the NSIS installer,
+uninstaller and header at the same ICO, and ships `build/icon.png` in the package
+so the window icon resolves after installation. `tests/icon.test.js` now fails the
+build if any of that regresses.
+
+Application pages, UI, database, IPC and features were not touched; the only
+code change is the visible build label (`build.70`).
+
 ## Build 69 — the delivered pharmacy logo is the application icon
 
 - **Setup**: `Pharmacy-1.0.0-x64.exe` — 102,734,059 B, sha256 `bde39472c6adc9b8e4d37c7928c724f8c67678422b84bbcc317cc542b52104b0`
