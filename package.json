@@ -1,6 +1,6 @@
 {
   "name": "pharmacy-management-system",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Offline pharmacy management with Electron and SQLite",
   "main": "main.js",
   "private": true,

@@ -72,13 +72,15 @@ jobs:
           # The release tag follows the build label shown inside the application.
           build=$(sed -n "s/.*APP_BUILD='\(build\.[0-9]*\)'.*/\1/p" src/scripts/version.js)
           if [ -z "$build" ]; then echo "Cannot read APP_BUILD"; exit 1; fi
-          tag="v1.0.0-$build"
-          gh release create "$tag" release/*.exe release/*.blockmap release/latest.yml --target "$GITHUB_SHA" --title "Pharmacy Management 1.0.0 — ${build} Windows" --notes "Windows x64 installer and portable application. Electron + HTML/CSS/Vanilla JavaScript + SQLite. Unsigned build: verify the source commit and checksums. See README.md for setup and operational limitations." --prerelease
+          version=$(node -p "require('./package.json').version")
+          tag="v$version-$build"
+          gh release create "$tag" release/*.exe release/*.blockmap release/latest.yml --target "$GITHUB_SHA" --title "Pharmacy Management $version — ${build} Windows" --notes "Windows x64 installer and portable application. Electron + HTML/CSS/Vanilla JavaScript + SQLite. Unsigned build: verify the source commit and checksums. See README.md for setup and operational limitations." --prerelease
       - name: Update installer in pages folder
         if: success()
         shell: bash
         run: |
-          cp release/Pharmacy-1.0.0-x64.exe src/pages/Pharmacy-Setup.exe
+          version=$(node -p "require('./package.json').version")
+          cp "release/Pharmacy-$version-x64.exe" src/pages/Pharmacy-Setup.exe
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/pages/Pharmacy-Setup.exe

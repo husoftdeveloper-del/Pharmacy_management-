@@ -1,3 +1,24 @@
+## Build 71 — version 1.0.1 so the icon build cannot be confused with the old one
+
+Build 70 shipped as `Pharmacy-1.0.0-x64.exe`, the same file name as build 69, so
+an old download (or a cached Explorer icon for the same path) could still be
+installed and keep showing the previous icon. The version is now 1.0.1 and the
+build label build.71: the files, the release tag and the shortcut target are all
+unmistakably new.
+
+- **Setup**: `Pharmacy-1.0.1-x64.exe`
+- **Portable**: `Pharmacy-1.0.1-Portable.exe`
+- **Release**: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/v1.0.1-build.71
+
+Icon wiring is unchanged from build 70 (`build/icon.ico` from the uploaded logo
+for the setup, uninstaller, setup header, installed exe, desktop and Start-menu
+shortcuts and the taskbar; `build/icon.png` for the window). Application pages,
+UI, database, IPC and features are untouched.
+
+If Windows still paints an old icon after installing, it is the icon cache, not
+the build: close the app, delete the old shortcuts and reinstall, then run
+`ie4uinit.exe -show`, or restart Explorer.
+
 ## Build 70 — the owner's uploaded logo is the icon everywhere
 
 - **Setup**: `Pharmacy-1.0.0-x64.exe` — 103,020,649 B, sha256 `de6ca4e80a47b2a6bc2d81447eef4a7b8335cc5009a49ac8e52bb5005f984b2c`
