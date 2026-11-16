@@ -61,16 +61,16 @@ Output in `release\`:
 The installer never deletes your data on uninstall
 (`deleteAppDataOnUninstall: false`), so keys and licenses survive upgrades.
 
-### Download the ready-built installer (version 1.4.0, built on Windows)
+### Download the ready-built installer (version 1.5.0, built on Windows)
 
-<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.4.0>
+<https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/tag/generator-v1.5.0>
 
 Two files, both double-clickable:
 
 | Download | What happens when you double-click |
 | --- | --- |
-| **`Top-In-Tech-License-Generator-1.4.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
-| **`Top-In-Tech-License-Generator-1.4.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
+| **`Top-In-Tech-License-Generator-1.5.0-Setup.exe`** | Installs in a few seconds — no wizard, no questions — creates a **desktop icon** and a Start menu entry, then **opens the app by itself**. |
+| **`Top-In-Tech-License-Generator-1.5.0-Portable.exe`** | Opens the app immediately without installing anything. It does not add a desktop icon. |
 
 The version number is part of the file name, so an older download in your
 Downloads folder can be told apart at a glance. The app shows the same version at
@@ -80,12 +80,12 @@ the bottom-right of its window.
 
 | File | Size | SHA-256 |
 | --- | --- | --- |
-| `Top-In-Tech-License-Generator-1.4.0-Setup.exe` | 102,597,818 B | `c0eadd5cc36419e36b5adfee02efc05748bbc2b7f280a49dbb2deee8fb2e53f2` |
-| `Top-In-Tech-License-Generator-1.4.0-Portable.exe` | 94,310,466 B | `be47f5fdbac5632777f5cbdfa693ab6c19e40e8d3b615a2445e81d514b8a56f0` |
+| `Top-In-Tech-License-Generator-1.5.0-Setup.exe` | 102,597,818 B | `c0eadd5cc36419e36b5adfee02efc05748bbc2b7f280a49dbb2deee8fb2e53f2` |
+| `Top-In-Tech-License-Generator-1.5.0-Portable.exe` | 94,310,466 B | `be47f5fdbac5632777f5cbdfa693ab6c19e40e8d3b615a2445e81d514b8a56f0` |
 
 Installing on the owner's laptop:
 
-1. Open the link above and download `Top-In-Tech-License-Generator-1.4.0-Setup.exe`.
+1. Open the link above and download `Top-In-Tech-License-Generator-1.5.0-Setup.exe`.
 2. Double-click it. Windows SmartScreen shows *Windows protected your PC* because
    the build is unsigned → **More info → Run anyway**. (If the file came from a
    browser and still refuses to start: right-click → **Properties → Unblock**.)
@@ -114,7 +114,7 @@ result, so this is measured, not assumed:
 | App opened by the installer | ✅ |
 | Start menu icon, shortcut target exists | ✅ |
 
-Version 1.4.0 ships the pharmacy logo as the application icon, opens the app from
+Version 1.5.0 writes the shortcut into the current user's desktop, the profile desktop and the OneDrive desktop straight from the installer, ships the pharmacy logo as the application icon, opens the app from
 the installer itself (`Exec` in `installer.nsh`), and fixes the icon cause first: the installer no longer requests
 elevation (`allowElevation: false`) and pins the shortcut to the current user with
 `SetShellVarContext current` in `buildResources/installer.nsh`, so Windows cannot
