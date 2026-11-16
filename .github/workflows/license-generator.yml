@@ -205,8 +205,16 @@ jobs:
           Start-Sleep -Seconds 8
 
           $exe = Join-Path $env:ProgramFiles "$appName\$appName.exe"
-          $desktop = [Environment]::GetFolderPath('Desktop')
-          $link = Join-Path $desktop "$appName.lnk"
+          # Windows merges the all-users desktop with the signed-in user's desktop
+          # (which OneDrive may redirect), so count every place a shortcut could be.
+          $desktops = @(
+            (Join-Path $env:PUBLIC 'Desktop'),
+            [Environment]::GetFolderPath('Desktop'),
+            (Join-Path $env:USERPROFILE 'Desktop'),
+            (Join-Path $env:USERPROFILE 'OneDrive\Desktop')
+          ) | Where-Object { $_ } | Select-Object -Unique
+          $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
+          $link = $links | Select-Object -First 1
           $startLink = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
           $startLinkUser = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
           $uninstaller = Join-Path $env:ProgramFiles "$appName\Uninstall $appName.exe"
@@ -214,7 +222,10 @@ jobs:
 
           $required = [ordered]@{
             'installed in Program Files' = (Test-Path $exe)
-            'desktop shortcut'           = (Test-Path $link)
+            'desktop shortcut'           = ($links.Count -ge 1)
+            # One icon only: the wizard makes the all-users shortcut, and nothing
+            # else may add a private copy next to it.
+            'single desktop shortcut'    = ($links.Count -eq 1)
             'start menu shortcut'        = ((Test-Path $startLink) -or (Test-Path $startLinkUser))
             'uninstaller present'        = (Test-Path $uninstaller)
             'activation remembered'      = ($activated -eq '1')
@@ -227,7 +238,7 @@ jobs:
             if (-not $ok) { $failed += 1 }
           }
           Write-Host "program file : $exe"
-          Write-Host "desktop link : $link"
+          Write-Host ("desktop link(s): " + (($links | ForEach-Object { $_ }) -join ' | '))
           if (Test-Path $link) {
             $shell = New-Object -ComObject WScript.Shell
             $target = $shell.CreateShortcut($link).TargetPath

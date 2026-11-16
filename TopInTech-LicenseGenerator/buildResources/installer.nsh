@@ -129,32 +129,29 @@ ActivationSilentAccepted:
 !macroend
 
 ; -------------------------------------------------------------------- install
+; The wizard itself already creates the Desktop shortcut (in the all-users
+; Desktop, so every account sees it) and the Start-menu entry. Creating another
+; one here is what put TWO identical icons on the Desktop in 2.0.0/2.1.0, so
+; this macro only cleans up the duplicates those versions left behind for the
+; account that runs setup, then records the activation.
 !macro customInstall
   ; The key was accepted by this run, so this machine is activated from now on.
   SetShellVarContext all
   WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
 
+  ; Switch to the account that started setup and drop its private copies: the
+  ; all-users Desktop / Start-menu entries made by the wizard stay untouched.
   SetShellVarContext current
-
-  StrCpy $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
-
-  ; 1. The desktop Windows gives this user.
-  CreateShortcut "$DESKTOP\Top In Tech License Generator.lnk" "$0" "" "$0" 0
-
-  ; 2. The profile desktop, when it exists.
-  IfFileExists "$PROFILE\Desktop\*.*" 0 +2
-    CreateShortcut "$PROFILE\Desktop\Top In Tech License Generator.lnk" "$0" "" "$0" 0
-
-  ; 3. The OneDrive desktop, when OneDrive redirected it.
-  IfFileExists "$PROFILE\OneDrive\Desktop\*.*" 0 +2
-    CreateShortcut "$PROFILE\OneDrive\Desktop\Top In Tech License Generator.lnk" "$0" "" "$0" 0
-
-  ; 4. Start menu entry for this user (the all-users entry is made by the wizard).
-  CreateDirectory "$SMPROGRAMS\Top In Tech License Generator"
-  CreateShortcut "$SMPROGRAMS\Top In Tech License Generator\Top In Tech License Generator.lnk" "$0" "" "$0" 0
+  Delete "$DESKTOP\Top In Tech License Generator.lnk"
+  Delete "$PROFILE\Desktop\Top In Tech License Generator.lnk"
+  Delete "$PROFILE\OneDrive\Desktop\Top In Tech License Generator.lnk"
+  Delete "$SMPROGRAMS\Top In Tech License Generator\Top In Tech License Generator.lnk"
+  RMDir "$SMPROGRAMS\Top In Tech License Generator"
 !macroend
 
 !macro customUnInstall
+  ; The wizard removes its own all-users shortcuts; these are the per-user
+  ; copies older versions created.
   SetShellVarContext current
   Delete "$DESKTOP\Top In Tech License Generator.lnk"
   Delete "$PROFILE\Desktop\Top In Tech License Generator.lnk"

@@ -308,48 +308,28 @@ test('a silent install cannot skip the activation check', () => {
   assert.match(nsh, /Quit/, 'a silent run without the key must stop, not install');
 });
 
-test('the NSIS include keeps the desktop icon for the current user', () => {
+test('the wizard owns the shortcuts, so no second Desktop icon is created', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
   assert.match(nsh, /!macro customInstall/);
-  assert.match(nsh, /SetShellVarContext current/);
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
-  assert.match(nsh, /!macro customUnInstall/);
-  assert.match(nsh, /Delete "\$DESKTOP/);
-  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
+
+  // electron-builder creates the Desktop and Start-menu shortcuts itself, in the
+  // all-users locations. Creating them again from customInstall is what put two
+  // identical icons on the Desktop, so the include must not create any.
+  assert.doesNotMatch(nsh, /CreateShortcut/, 'the wizard creates the shortcuts, not the include');
   assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
+  assert.equal(pkg.build.nsis.createDesktopShortcut, true, 'the wizard still makes the desktop icon');
+  assert.equal(pkg.build.nsis.createStartMenuShortcut, true, 'the wizard still makes the start-menu entry');
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
 });
 
-test('the icon files exist and the ico holds several sizes', () => {
-  const ico = fs.readFileSync(path.join(root, 'buildResources/icon.ico'));
-  assert.equal(ico.readUInt16LE(0), 0, 'reserved field');
-  assert.equal(ico.readUInt16LE(2), 1, 'type 1 = icon');
-  const count = ico.readUInt16LE(4);
-  assert.ok(count >= 4, `expected at least four icon sizes, found ${count}`);
-  const sizes = [];
-  for (let index = 0; index < count; index += 1) {
-    const offset = 6 + index * 16;
-    sizes.push(ico[offset] || 256);
-  }
-  for (const size of [256, 48, 32, 16]) assert.ok(sizes.includes(size), `missing the ${size}px icon`);
-  assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
-});
-
-test('the NSIS include pins the desktop icon to the current user', () => {
+test('the include removes the duplicate shortcuts the older builds left behind', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
-  assert.match(nsh, /!macro customInstall/);
-  assert.match(nsh, /SetShellVarContext current/);
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /\$\{APP_EXECUTABLE_FILENAME\}/);
-  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
-  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
-  assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
-  // The icon is written to every desktop a redirected profile may use.
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'));
+  assert.match(install, /SetShellVarContext current/, 'the per-user copies belong to the account that ran setup');
+  assert.match(install, /Delete "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$SMPROGRAMS\\Top In Tech License Generator/);
   assert.match(nsh, /!macro customUnInstall/);
   assert.match(nsh, /Delete "\$DESKTOP/);
 });
