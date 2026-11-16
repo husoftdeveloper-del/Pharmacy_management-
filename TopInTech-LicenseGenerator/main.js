@@ -13,6 +13,7 @@ const keys = require('./lib/keys');
 const serial = require('./lib/serial');
 const store = require('./lib/database');
 const shortcuts = require('./lib/shortcut');
+const account = require('./lib/account');
 
 const APP_NAME = 'Top In Tech License Generator';
 
@@ -21,6 +22,9 @@ const APP_NAME = 'Top In Tech License Generator';
 // inspect them without touching the machine it runs on.
 const SMOKE = process.env.TIT_SMOKE === '1';
 const SMOKE_ROOT = SMOKE ? fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'tit-smoke-')) : '';
+// A throwaway owner account for the unattended smoke run only.
+const SMOKE_USER = 'smoke-owner';
+const SMOKE_PASSWORD = 'smoke-Passw0rd';
 
 app.setName(APP_NAME);
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -142,8 +146,20 @@ function ensureDesktopShortcut() {
   });
 }
 
+/* ---- Owner sign-in ------------------------------------------------------ */
+// The window starts locked. Only these three operations work before the owner
+// signs in; everything else is refused here, in the main process, so a script
+// in the page cannot reach the private key or the license database.
+let session = { signedIn: false, username: '' };
+const PUBLIC_CHANNELS = new Set(['authState', 'signIn', 'register']);
+let failedAuthDelay = 0;
+
+function requireSignIn() {
+  if (!session.signedIn) throw new Error('Sign in to continue.');
+}
+
 /* ---- Channels ---------------------------------------------------------- */
-const channels = {
+const inner = {
   status: () => status(),
 
   licenses: payload => ({
@@ -252,8 +268,48 @@ const channels = {
 
   copyPublicKey: () => ({ publicKey: keys.readPublic(keyFolder), keyId: keys.describe(keyFolder).keyId }),
 
-  backupKeys: async () => backupKeys()
+  backupKeys: async () => backupKeys(),
+
+  /* --- owner sign-in --------------------------------------------------- */
+  authState: () => ({ ...account.state(store, db), signedIn: session.signedIn, signedInAs: session.username, locked: account.state(store, db).locked }),
+
+  register: async payload => {
+    const created = await account.register(store, db, payload || {});
+    session = { signedIn: true, username: created.username };
+    return { ...account.state(store, db), signedIn: true, signedInAs: created.username };
+  },
+
+  signIn: async payload => {
+    try {
+      const result = await account.signIn(store, db, payload || {});
+      session = { signedIn: true, username: result.username };
+      return { ...account.state(store, db), signedIn: true, signedInAs: result.username };
+    } catch (error) {
+      // A small delay blunts scripted guessing without annoying a real owner.
+      failedAuthDelay = Math.min(failedAuthDelay + 150, 900);
+      await new Promise(resolve => setTimeout(resolve, failedAuthDelay));
+      throw error;
+    }
+  },
+
+  signOut: () => {
+    session = { signedIn: false, username: '' };
+    return { signedIn: false };
+  }
 };
+
+// Every other operation goes through this guard.
+const channels = new Proxy(inner, {
+  get(target, name) {
+    if (name === 'then') return undefined;
+    const handler = target[name];
+    if (typeof handler !== 'function') return handler;
+    return payload => {
+      if (!PUBLIC_CHANNELS.has(name)) requireSignIn();
+      return handler(payload);
+    };
+  }
+});
 
 function csvCell(value) {
   let text = String(value ?? '');
@@ -353,6 +409,9 @@ async function runSmokeTest() {
   try {
     const page = await mainWindow.webContents.executeJavaScript(`({
       title: document.title,
+      // The tool must be open (signed in) and the sign-in form gone.
+      signedIn: document.querySelector('#app-main').hidden === false,
+      loginHidden: document.querySelector('#login-screen').hidden === true,
       product: Boolean(document.querySelector('#product')),
       version: document.querySelector('#app-version').textContent,
       keyId: document.querySelector('#key-id').textContent,
@@ -410,7 +469,7 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (SMOKE) {
     app.setPath('userData', path.join(SMOKE_ROOT, 'profile'));
     app.setPath('desktop', path.join(SMOKE_ROOT, 'Desktop'));
@@ -421,6 +480,20 @@ app.whenReady().then(() => {
   const opened = store.openDatabase(dataFolder);
   db = opened.db;
   dbFile = opened.file;
+
+  // An unattended smoke run signs in with the throwaway account it created, so
+  // the window it drives is the real, signed-in tool.
+  if (SMOKE) {
+    try {
+      if (!account.state(store, db).configured) {
+        await account.register(store, db, { username: SMOKE_USER, password: SMOKE_PASSWORD, confirm: SMOKE_PASSWORD });
+      }
+      await account.signIn(store, db, { username: SMOKE_USER, password: SMOKE_PASSWORD });
+      session = { signedIn: true, username: SMOKE_USER };
+    } catch (error) {
+      console.error('[generator] smoke sign-in failed:', error.message);
+    }
+  }
 
   ipcMain.handle('generator:call', async (event, request) => {
     try {

@@ -9,7 +9,8 @@ const state = {
   stats: { total: 0, unused: 0, assigned: 0, used: 0 },
   search: '',
   status: '',
-  busy: false
+  busy: false,
+  lockTimer: 0
 };
 
 let toastTimer = 0;
@@ -394,8 +395,62 @@ function wire() {
   });
 }
 
-async function boot() {
-  wire();
+/* ---- Owner sign-in ------------------------------------------------------
+   The window opens locked. Until signIn/register succeeds the main process
+   refuses every other operation, so hiding the tool here is only the visible
+   half of the lock.                                                        */
+let auth = { configured: false, signedIn: false, locked: false, retryInSeconds: 0 };
+
+function showLogin(options = {}) {
+  auth = { ...auth, ...options };
+  $('#app-main').hidden = true;
+  $('#login-screen').hidden = false;
+  const firstRun = !auth.configured;
+  $('#login-title').textContent = 'Top In Tech License Generator';
+  $('#login-lead').textContent = firstRun
+    ? 'First run · create the owner account for this computer'
+    : `Owner sign-in${auth.username ? ` · ${auth.username}` : ''}`;
+  $('#login-confirm-field').hidden = !firstRun;
+  $('#login-hint').hidden = !firstRun;
+  $('#login-submit-label').textContent = firstRun ? 'Create owner account' : 'Sign in';
+  $('#login-error').textContent = '';
+  $('#login-password').value = '';
+  $('#login-confirm').value = '';
+  if (!firstRun) $('#login-username').value = auth.username || '';
+  if (auth.locked) {
+    lockSubmit(`Too many attempts. Try again in ${auth.retryInSeconds || 60} seconds.`);
+  } else {
+    unlockSubmit();
+  }
+  ($('#login-username').value ? $('#login-password') : $('#login-username')).focus();
+}
+
+function lockSubmit(message) {
+  const button = $('#login-submit');
+  button.disabled = true;
+  $('#login-error').textContent = message;
+  const until = Date.now() + Math.max(1000, (auth.retryInSeconds || 60) * 1000);
+  clearTimeout(state.lockTimer);
+  const tick = () => {
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left <= 0) {
+      $('#login-error').textContent = '';
+      unlockSubmit();
+      return;
+    }
+    $('#login-error').textContent = `Too many attempts. Try again in ${left} seconds.`;
+    state.lockTimer = setTimeout(tick, 1000);
+  };
+  state.lockTimer = setTimeout(tick, 1000);
+}
+
+function unlockSubmit() {
+  $('#login-submit').disabled = false;
+}
+
+async function enterTool() {
+  $('#login-screen').hidden = true;
+  $('#app-main').hidden = false;
   try {
     await loadStatus();
     await refresh();
@@ -410,6 +465,63 @@ async function boot() {
     toast(error.message, 'error');
   }
   $('#product').focus();
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  const username = $('#login-username').value.trim();
+  const password = $('#login-password').value;
+  const confirm = $('#login-confirm').value;
+  unlockSubmit();
+  $('#login-error').textContent = '';
+  if (!username) { $('#login-error').textContent = 'Enter a username.'; $('#login-username').focus(); return; }
+  if (!password) { $('#login-error').textContent = 'Enter your password.'; $('#login-password').focus(); return; }
+  const firstRun = !auth.configured;
+  if (firstRun && password !== confirm) {
+    $('#login-error').textContent = 'The two passwords do not match.';
+    $('#login-confirm').focus();
+    return;
+  }
+  $('#login-submit').disabled = true;
+  try {
+    const result = firstRun
+      ? await call('register', { username, password, confirm })
+      : await call('signIn', { username, password });
+    auth = { ...auth, ...result, configured: true, signedIn: true };
+    await enterTool();
+  } catch (error) {
+    $('#login-error').textContent = error.message;
+    $('#login-password').value = '';
+    if (/Too many attempts/i.test(error.message)) {
+      const seconds = Number((error.message.match(/(\d+) seconds/) || [])[1] || 60);
+      auth.retryInSeconds = seconds;
+      lockSubmit(error.message);
+    } else {
+      unlockSubmit();
+    }
+    $('#login-password').focus();
+  }
+}
+
+function wireLogin() {
+  $('#login-form').addEventListener('submit', submitLogin);
+}
+
+async function boot() {
+  wire();
+  wireLogin();
+  let stateInfo = { configured: true, signedIn: false };
+  try {
+    stateInfo = await call('authState', {});
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+  if (stateInfo.signedIn) {
+    auth = { ...auth, ...stateInfo };
+    await enterTool();
+  } else {
+    showLogin(stateInfo);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', boot);

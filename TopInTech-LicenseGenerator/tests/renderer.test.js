@@ -108,6 +108,13 @@ function createApp() {
       calls.push({ channel, payload });
       const respond = value => Promise.resolve(value);
       switch (channel) {
+        case 'authState':
+          return respond({ configured: this.configured !== false, username: 'mynewpharmacy', signedIn: this.signedIn !== false, locked: false, retryInSeconds: 0 });
+        case 'signIn':
+          if (this.rejectSignIn) return Promise.reject(new Error(this.rejectSignIn));
+          return respond({ configured: true, signedIn: true, signedInAs: payload.username, locked: false });
+        case 'register':
+          return respond({ configured: true, signedIn: true, signedInAs: payload.username, locked: false });
         case 'status':
           return respond({
             keyId: 'KID1234567',
@@ -168,8 +175,73 @@ function createApp() {
     for (let i = 0; i < 6; i += 1) await new Promise(resolve => setImmediate(resolve));
   };
 
-  return { document, elements, calls, clipboard, timers, sandbox, settle, shortcut };
+  return { document, elements, calls, clipboard, timers, sandbox, settle, shortcut, bridge };
 }
+
+test('the window opens on the sign-in form, not on the tool', async () => {
+  const app = createApp();
+  app.bridge.signedIn = false;
+  app.document.dispatch('DOMContentLoaded');
+  await app.settle();
+  assert.equal(app.elements.get('login-screen').hidden, false, 'the form is visible');
+  assert.equal(app.elements.get('app-main').hidden, true, 'the tool stays behind it');
+  assert.match(app.elements.get('login-lead').textContent, /Owner sign-in/);
+  assert.equal(app.elements.get('login-submit-label').textContent, 'Sign in');
+  // Nothing sensitive is fetched before sign-in.
+  assert.equal(app.calls.some(call => call.channel === 'status'), false);
+  assert.equal(app.calls.some(call => call.channel === 'licenses'), false);
+});
+
+test('a wrong password keeps the window locked and shows the reason', async () => {
+  const app = createApp();
+  app.bridge.signedIn = false;
+  app.bridge.rejectSignIn = 'Wrong username or password. 4 attempts left.';
+  app.document.dispatch('DOMContentLoaded');
+  await app.settle();
+  app.elements.get('login-username').value = 'mynewpharmacy';
+  app.elements.get('login-password').value = 'wrong-pass';
+  app.elements.get('login-form').dispatch('submit');
+  await app.settle();
+  assert.match(app.elements.get('login-error').textContent, /4 attempts left/);
+  assert.equal(app.elements.get('app-main').hidden, true, 'still locked');
+  assert.equal(app.calls.some(call => call.channel === 'licenses'), false);
+});
+
+test('the right password opens the tool', async () => {
+  const app = createApp();
+  app.bridge.signedIn = false;
+  app.document.dispatch('DOMContentLoaded');
+  await app.settle();
+  app.elements.get('login-username').value = 'mynewpharmacy';
+  app.elements.get('login-password').value = 'HKDEVELOPER2';
+  app.elements.get('login-form').dispatch('submit');
+  await app.settle();
+  assert.equal(app.elements.get('login-screen').hidden, true);
+  assert.equal(app.elements.get('app-main').hidden, false);
+  assert.equal(app.elements.get('key-id').textContent, 'KID1234567');
+});
+
+test('the first run asks to create the owner account instead of signing in', async () => {
+  const app = createApp();
+  app.bridge.configured = false;
+  app.bridge.signedIn = false;
+  app.document.dispatch('DOMContentLoaded');
+  await app.settle();
+  assert.equal(app.elements.get('login-confirm-field').hidden, false, 'confirm password is shown');
+  assert.equal(app.elements.get('login-submit-label').textContent, 'Create owner account');
+  app.elements.get('login-username').value = 'mynewpharmacy';
+  app.elements.get('login-password').value = 'HKDEVELOPER2';
+  app.elements.get('login-confirm').value = 'HKDEVELOPER3';
+  app.elements.get('login-form').dispatch('submit');
+  await app.settle();
+  assert.match(app.elements.get('login-error').textContent, /do not match/);
+  assert.equal(app.elements.get('app-main').hidden, true);
+
+  app.elements.get('login-confirm').value = 'HKDEVELOPER2';
+  app.elements.get('login-form').dispatch('submit');
+  await app.settle();
+  assert.equal(app.elements.get('app-main').hidden, false, 'the account is created and the tool opens');
+});
 
 test('the renderer boots, fills the key badge, paths and statistics', async () => {
   const app = createApp();

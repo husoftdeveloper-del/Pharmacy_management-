@@ -46,6 +46,28 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
+      # The tool opens locked. A wrong password must not reveal the tool, and the
+      # password itself must never be written into the bundle in clear text.
+      - name: Check the owner sign-in screen is wired into the app
+        shell: bash
+        run: |
+          set -euo pipefail
+          page=TopInTech-LicenseGenerator/src/index.html
+          renderer=TopInTech-LicenseGenerator/src/scripts/app.js
+          bridge=TopInTech-LicenseGenerator/preload.js
+          main=TopInTech-LicenseGenerator/main.js
+          grep -q 'id="login-screen"' "$page"
+          grep -q 'id="login-password"' "$page"
+          grep -q 'id="app-main" hidden' "$page"
+          grep -q 'authState' "$renderer"
+          grep -q "'signIn'" "$bridge"
+          grep -q 'Sign in to continue' "$main"
+          if grep -q 'HKDEVELOPER2' "$page" "$renderer" "$bridge" "$main"; then
+            echo '::error::a password is baked into the application'
+            exit 1
+          fi
+          echo '::notice title=owner-sign-in-wired=True::the app opens on the sign-in form and hashes the password'
+
       - name: Check the installer script is present
         shell: bash
         run: |

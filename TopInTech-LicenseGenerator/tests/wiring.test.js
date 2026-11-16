@@ -23,7 +23,9 @@ function allowedChannels() {
 }
 
 function mainChannels() {
-  const start = main.indexOf('const channels = {');
+  // The handlers live in `inner`; `channels` is the sign-in-guarded wrapper
+  // around them (a Proxy, so it has no literal channel list).
+  const start = main.indexOf('const inner = {');
   const block = main.slice(start, main.indexOf('\n};', start));
   return new Set([...block.matchAll(/^ {2}([a-zA-Z]+):/gm)].map(match => match[1]));
 }
@@ -47,6 +49,30 @@ test('the preload allow-list and the main handlers are the same set', () => {
   const allowed = [...allowedChannels()].sort();
   const handled = [...mainChannels()].sort();
   assert.deepEqual(allowed, handled);
+});
+
+test('the tool is locked until the owner signs in', () => {
+  // The window shows a sign-in form; the main process is the real lock, so a
+  // script in the page cannot reach the private key or the license database.
+  assert.match(html, /id="login-screen"/);
+  assert.match(html, /id="login-form"/);
+  assert.match(html, /id="login-username"/);
+  assert.match(html, /id="login-password"[^>]*type="password"/);
+  assert.match(html, /id="login-confirm"[^>]*type="password"/);
+  assert.match(html, /id="app-main" hidden/, 'the tool starts hidden behind the form');
+
+  assert.match(main, /let session = \{ signedIn: false/, 'the app starts signed out');
+  assert.match(main, /const PUBLIC_CHANNELS = new Set\(\['authState', 'signIn', 'register'\]\)/);
+  assert.match(main, /if \(!session\.signedIn\) throw new Error\('Sign in to continue\.'\)/, 'every other operation is refused');
+  assert.match(main, /new Proxy\(inner/, 'the guard wraps every handler');
+
+  // The password is hashed, never kept in clear text or written to a log.
+  assert.match(main, /require\('\.\/lib\/account'\)/);
+  const lib = fs.readFileSync(path.join(root, 'lib/account.js'), 'utf8');
+  assert.match(lib, /crypto\.scrypt\(/);
+  assert.match(lib, /timingSafeEqual/);
+  assert.equal(/console\.(log|error|warn)\([^)]*password/i.test(lib + main), false, 'the password is never logged');
+  assert.equal((html.match(/HKDEVELOPER2/g) || []).length, 0, 'no password is baked into the page');
 });
 
 test('the preload exposes only the call() function and no raw ipcRenderer', () => {
