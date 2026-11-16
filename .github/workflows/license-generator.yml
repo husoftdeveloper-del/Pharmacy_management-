@@ -215,8 +215,15 @@ jobs:
           ) | Where-Object { $_ } | Select-Object -Unique
           $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
           $link = $links | Select-Object -First 1
-          $startLink = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
-          $startLinkUser = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
+          # The wizard puts the entry directly under Programs (or in its own
+          # folder when a menu category is configured), for all users.
+          $startCandidates = @(
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"),
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName.lnk"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName.lnk")
+          )
+          $startLinks = @($startCandidates | Where-Object { Test-Path $_ })
           $uninstaller = Join-Path $env:ProgramFiles "$appName\Uninstall $appName.exe"
           $activated = (Get-ItemProperty -Path "HKLM:\Software\Top In Tech\License Generator" -Name Activated -ErrorAction SilentlyContinue).Activated
 
@@ -226,7 +233,8 @@ jobs:
             # One icon only: the wizard makes the all-users shortcut, and nothing
             # else may add a private copy next to it.
             'single desktop shortcut'    = ($links.Count -eq 1)
-            'start menu shortcut'        = ((Test-Path $startLink) -or (Test-Path $startLinkUser))
+            'start menu shortcut'        = ($startLinks.Count -ge 1)
+            'single start menu entry'    = ($startLinks.Count -eq 1)
             'uninstaller present'        = (Test-Path $uninstaller)
             'activation remembered'      = ($activated -eq '1')
           }
