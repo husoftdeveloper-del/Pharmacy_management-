@@ -246,6 +246,10 @@ test('the NSIS include pins the desktop icon to the current user', () => {
   assert.match(nsh, /\$\{APP_EXECUTABLE_FILENAME\}/);
   assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
   assert.ok(nsh.includes('Exec \'"$INSTDIR\\${APP_EXECUTABLE_FILENAME}"\''), 'the installer must open the app after installing');
+  // The icon is written to every desktop a redirected profile may use.
+  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
   assert.match(nsh, /!macro customUnInstall/);
   assert.match(nsh, /Delete "\$DESKTOP/);
 });

@@ -98,8 +98,12 @@ jobs:
             'desktop icon'      = (Test-Path $link)
             'app started'       = $appStarted
           }
+          $profileDesktop = Join-Path $env:USERPROFILE 'Desktop\Top In Tech License Generator.lnk'
+          $oneDriveDesktop = Join-Path $env:USERPROFILE 'OneDrive\Desktop\Top In Tech License Generator.lnk'
           $optional = [ordered]@{
             'desktop folder exists'  = (Test-Path $desktop)
+            'profile desktop icon'   = (Test-Path $profileDesktop)
+            'onedrive desktop icon'  = (Test-Path $oneDriveDesktop)
             'public desktop icon'    = (Test-Path $publicLink)
             'start menu folder icon' = (Test-Path $startFolderLink)
             'start menu icon'        = (Test-Path $startLink)
