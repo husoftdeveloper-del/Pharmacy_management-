@@ -1,17 +1,131 @@
-; Custom NSIS steps for the License Generator setup wizard.
+; Custom NSIS steps for the Top In Tech License Generator setup wizard.
 ;
-; The installer itself is a classic Windows wizard (nsis.oneClick = false):
-; Welcome -> Installation location (Program Files by default) -> Install ->
-; Finish with "Run Top In Tech License Generator". The Finish page launches the
-; app through runAfterFinish, so nothing is started from an elevated context.
+; Two things live here, and nothing else:
 ;
-; What is added here is only the shortcut work. A per-machine install runs
-; elevated, and Windows then resolves $DESKTOP/$SMPROGRAMS to the administrator's
-; profile. "SetShellVarContext current" switches them back to the account that
-; started setup, so the desktop icon appears for the person who installed it.
-; The shortcut is also copied into the profile and OneDrive desktops when those
-; folders exist, because OneDrive redirects the desktop on many laptops.
+; 1. The activation page — "Software Activation" with an "Enter Your Key" field,
+;    a Continue and a Cancel button, shown before anything is installed. The key
+;    is compared case-sensitively (StrCmpS). A wrong or empty key keeps the user
+;    on the page with an error and blocks the install. The key itself is never
+;    written into a label, header, log or error string; it exists only in the
+;    comparison below. Once a machine is activated the flag is stored in the
+;    registry, so setup never asks again (repair, reinstall or update).
+;
+; 2. The shortcuts. A per-machine install runs elevated, and Windows then
+;    resolves $DESKTOP/$SMPROGRAMS to the administrator's profile, so
+;    "SetShellVarContext current" switches them back to the account that started
+;    setup. The icon is also copied into the profile and OneDrive desktops when
+;    those folders exist, because OneDrive redirects the desktop on many laptops.
+;
+; The application itself is untouched: this file only changes the installer.
 
+!include "LogicLib.nsh"
+!include "nsDialogs.nsh"
+!include "WinMessages.nsh"
+
+; The one accepted activation key. It is compiled into setup.exe and is only
+; ever used by the comparison; no page, header, button or message shows it.
+!define ACTIVATION_KEY "mynewpharmacy1221"
+!define ACTIVATION_REG_KEY "Software\Top In Tech\License Generator"
+!define ACTIVATION_REG_VALUE "Activated"
+
+Var ActivationDialog
+Var ActivationField
+Var ActivationError
+Var ActivationHeading
+
+; ---------------------------------------------------------------- activation
+; Runs before the page is drawn. A machine that is already activated (or an
+; update/repair of an activated install) skips the page entirely.
+Function ActivationPagePre
+  ReadRegStr $0 HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+  ${If} $0 == "1"
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function ActivationPageShow
+  !insertmacro MUI_HEADER_TEXT "Software Activation" "Enter the serial key supplied with your purchase."
+
+  nsDialogs::Create 1018
+  Pop $ActivationDialog
+  ${If} $ActivationDialog == error
+    Abort
+  ${EndIf}
+
+  ; Bold heading inside the page.
+  CreateFont $0 "Segoe UI" 12 700
+  ${NSD_CreateLabel} 0 0 100% 22u "Software Activation"
+  Pop $ActivationHeading
+  SendMessage $ActivationHeading ${WM_SETFONT} $0 1
+  SetCtlColors $ActivationHeading 0x1F2A44 transparent
+
+  ${NSD_CreateLabel} 0 30u 100% 14u "Enter Your Key"
+  Pop $0
+
+  ${NSD_CreateText} 0 46u 100% 14u ""
+  Pop $ActivationField
+  ${NSD_SetFocus} $ActivationField
+
+  ${NSD_CreateLabel} 0 66u 100% 28u ""
+  Pop $ActivationError
+  SetCtlColors $ActivationError 0xB00020 transparent
+
+  ; The wizard's Next/Cancel buttons are this form's Continue/Cancel.
+  GetDlgItem $0 $HWNDPARENT 1
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:Continue"
+  GetDlgItem $0 $HWNDPARENT 2
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:Cancel"
+
+  nsDialogs::Show
+FunctionEnd
+
+; Runs when Continue is pressed. Leaving the page is what allows the install to
+; start, so refusing to leave is exactly how an invalid key is blocked.
+Function ActivationPageLeave
+  ${NSD_GetText} $ActivationField $0
+
+  ${If} $0 == ""
+    ${NSD_SetText} $ActivationError "Please enter your license key to continue."
+    Abort
+  ${EndIf}
+
+  ; Case-sensitive on purpose: an upper-case copy of the key is not accepted.
+  ${If} $0 != "${ACTIVATION_KEY}"
+    ${NSD_SetText} $ActivationError "The key you entered is not valid. Check it and try again."
+    Abort
+  ${EndIf}
+
+  ; Remember the activation so the key is never requested on this machine again.
+  SetShellVarContext all
+  WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+FunctionEnd
+
+!macro customWelcomePage
+  ; Welcome page first, then the activation form, then the installation steps:
+  ; Welcome -> Software Activation -> Installation Location -> Install -> Finish.
+  !insertmacro MUI_PAGE_WELCOME
+
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE ActivationPagePre
+  Page custom ActivationPageShow ActivationPageLeave
+!macroend
+
+; ------------------------------------------------------------- unattended guard
+; A silent install (/S) never draws the page, so it could otherwise skip the key
+; check. Silent runs must therefore prove the key through the environment, and
+; are refused outright when they cannot.
+!macro customInit
+  ${If} ${Silent}
+    ReadEnvStr $R0 "TIT_SETUP_KEY"
+    ${If} $R0 != "${ACTIVATION_KEY}"
+      SetErrorLevel 2
+      Quit
+    ${EndIf}
+    SetShellVarContext all
+    WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  ${EndIf}
+!macroend
+
+; -------------------------------------------------------------------- install
 !macro customInstall
   SetShellVarContext current
 

@@ -245,6 +245,80 @@ test('the icon files exist and the ico holds several sizes', () => {
   assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
 });
 
+test('the installer asks for the serial key before anything is installed', () => {
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+
+  // The page itself.
+  assert.match(nsh, /!macro customWelcomePage/);
+  assert.match(nsh, /!insertmacro MUI_PAGE_WELCOME/);
+  assert.match(nsh, /Page custom ActivationPageShow ActivationPageLeave/);
+
+  // The form the owner asked for: title, label, input, Continue, Cancel.
+  assert.match(nsh, /"Software Activation"/);
+  assert.match(nsh, /"Enter Your Key"/);
+  assert.match(nsh, /\$\{NSD_CreateText\}/, 'the serial key input field');
+  assert.match(nsh, /STR:Continue/);
+  assert.match(nsh, /STR:Cancel/);
+  assert.match(nsh, /\$\{NSD_CreateLabel\}[^\n]*ActivationError|NSD_CreateLabel\} 0 66u 100% 28u ""/);
+
+  // The key is compared case-sensitively with StrCmpS semantics.
+  assert.match(nsh, /!define ACTIVATION_KEY "mynewpharmacy1221"/);
+  assert.match(nsh, /\$\{If\} \$0 != "\$\{ACTIVATION_KEY\}"/, 'an exact, case-sensitive comparison');
+  assert.doesNotMatch(nsh, /StrCmp [^\n]*ACTIVATION_KEY/, 'StrCmp is case-insensitive, so it must not be used');
+  assert.doesNotMatch(nsh, /StrCmp /, 'no case-insensitive comparison at all');
+
+  // A wrong or empty key keeps the user on the page: Abort, and the install never starts.
+  assert.match(nsh, /Please enter your license key/);
+  assert.match(nsh, /The key you entered is not valid/);
+  assert.equal((nsh.match(/Abort/g) || []).length >= 2, true);
+
+  // Never shown in the UI, and never asked twice.
+  const uiLines = nsh.split('\n').filter(line => !line.trim().startsWith(';'));
+  const keyMentions = uiLines.filter(line => line.includes('mynewpharmacy1221'));
+  assert.equal(keyMentions.length, 1, 'the key appears only in its !define, never in a label or message');
+  assert.match(keyMentions[0], /!define ACTIVATION_KEY/);
+  assert.match(nsh, /WriteRegStr HKLM "\$\{ACTIVATION_REG_KEY\}"/);
+  assert.match(nsh, /ReadRegStr \$0 HKLM/, 'an activated machine skips the page');
+});
+
+test('a silent install cannot skip the activation check', () => {
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro customInit/);
+  assert.match(nsh, /\$\{Silent\}/);
+  assert.match(nsh, /ReadEnvStr \$R0 "TIT_SETUP_KEY"/);
+  assert.match(nsh, /SetErrorLevel 2/);
+  assert.match(nsh, /Quit/, 'a silent run without the key must stop, not install');
+});
+
+test('the NSIS include keeps the desktop icon for the current user', () => {
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro customInstall/);
+  assert.match(nsh, /SetShellVarContext current/);
+  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
+  assert.match(nsh, /!macro customUnInstall/);
+  assert.match(nsh, /Delete "\$DESKTOP/);
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
+  assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
+});
+
+test('the icon files exist and the ico holds several sizes', () => {
+  const ico = fs.readFileSync(path.join(root, 'buildResources/icon.ico'));
+  assert.equal(ico.readUInt16LE(0), 0, 'reserved field');
+  assert.equal(ico.readUInt16LE(2), 1, 'type 1 = icon');
+  const count = ico.readUInt16LE(4);
+  assert.ok(count >= 4, `expected at least four icon sizes, found ${count}`);
+  const sizes = [];
+  for (let index = 0; index < count; index += 1) {
+    const offset = 6 + index * 16;
+    sizes.push(ico[offset] || 256);
+  }
+  for (const size of [256, 48, 32, 16]) assert.ok(sizes.includes(size), `missing the ${size}px icon`);
+  assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
+});
+
 test('the NSIS include pins the desktop icon to the current user', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
   assert.match(nsh, /!macro customInstall/);

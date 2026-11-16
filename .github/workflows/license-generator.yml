@@ -61,21 +61,63 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Check the activation form is compiled into the setup file
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No Setup.exe was produced'; exit 1 }
+          $bytes = [System.IO.File]::ReadAllBytes($setup.FullName)
+          $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
+          $unicode = [System.Text.Encoding]::Unicode.GetString($bytes)
+
+          $checks = [ordered]@{
+            'NSIS installer'          = ($ascii.Contains('Nullsoft') -or $ascii.Contains('NSIS'))
+            'Software Activation form' = $unicode.Contains('Software Activation')
+            'Enter Your Key label'     = $unicode.Contains('Enter Your Key')
+            'Continue button'          = $unicode.Contains('Continue')
+            'invalid key message'      = $unicode.Contains('The key you entered is not valid')
+            'empty key message'        = $unicode.Contains('Please enter your license key')
+          }
+          $failed = 0
+          foreach ($key in $checks.Keys) {
+            $ok = $checks[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=setup-contains-$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed installer content check(s) failed"; exit 1 }
+
+      - name: A silent install must be refused without the activation key
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
+          $appName = 'Top In Tech License Generator'
+          $exe = Join-Path $env:ProgramFiles "$appName\$appName.exe"
+
+          # /S would skip the page, so the guard must stop it. No key is passed here.
+          Remove-Item Env:TIT_SETUP_KEY -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $process.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $refused = -not (Test-Path $exe)
+          Write-Host "exit code: $($process.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=silent-install-without-key-refused=$refused::the installer stopped instead of installing"
+          if (-not $refused) {
+            Remove-Item -Recurse -Force (Join-Path $env:ProgramFiles $appName) -ErrorAction SilentlyContinue
+            Write-Error 'A silent install without the activation key was allowed'
+            exit 1
+          }
+
       - name: Install the built setup and verify Program Files, shortcuts and uninstall
         shell: pwsh
+        env:
+          # Only for unattended installs: the wizard asks the operator interactively.
+          TIT_SETUP_KEY: 'mynewpharmacy1221'
         run: |
           $setup = Get-ChildItem -Path 'release' -Filter '*Setup.exe' | Select-Object -First 1
           if (-not $setup) { Write-Error 'No Setup.exe was produced'; exit 1 }
           Write-Host "Setup file: $($setup.FullName) ($($setup.Length) bytes)"
 
-          # The wizard is what the owner sees: prove it contains the NSIS pages.
-          $bytes = [System.IO.File]::ReadAllBytes($setup.FullName)
-          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
-          $isNsis = $text.Contains('Nullsoft') -or $text.Contains('NSIS')
-          Write-Host "::notice title=installer-nsis=$isNsis::the file is an NSIS installer"
-          if (-not $isNsis) { Write-Error 'The setup file is not an NSIS installer'; exit 1 }
-
-          # Silent install with the default location: %ProgramFiles%.
           $appName = 'Top In Tech License Generator'
           $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $process.WaitForExit(180000)
@@ -89,12 +131,14 @@ jobs:
           $startLink = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
           $startLinkUser = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
           $uninstaller = Join-Path $env:ProgramFiles "$appName\Uninstall $appName.exe"
+          $activated = (Get-ItemProperty -Path "HKLM:\Software\Top In Tech\License Generator" -Name Activated -ErrorAction SilentlyContinue).Activated
 
           $required = [ordered]@{
             'installed in Program Files' = (Test-Path $exe)
             'desktop shortcut'           = (Test-Path $link)
             'start menu shortcut'        = ((Test-Path $startLink) -or (Test-Path $startLinkUser))
             'uninstaller present'        = (Test-Path $uninstaller)
+            'activation remembered'      = ($activated -eq '1')
           }
           $failed = 0
           foreach ($key in $required.Keys) {
@@ -105,7 +149,6 @@ jobs:
           }
           Write-Host "program file : $exe"
           Write-Host "desktop link : $link"
-          Write-Host "start menu   : $startLink"
           if (Test-Path $link) {
             $shell = New-Object -ComObject WScript.Shell
             $target = $shell.CreateShortcut($link).TargetPath
@@ -115,7 +158,7 @@ jobs:
             if (-not $targetOk) { $failed += 1 }
           }
           if ($failed -gt 0) { Write-Error "$failed installer check(s) failed"; exit 1 }
-          Write-Host 'The setup installs into Program Files and leaves both shortcuts.'
+          Write-Host 'The setup installs into Program Files, leaves both shortcuts and remembers activation.'
 
       - name: List the built files
         shell: bash
