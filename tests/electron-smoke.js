@@ -346,7 +346,9 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#new-customer') && !!document.querySelector('#customer-rows')"),'customers page');
   assert.equal(await run("return document.querySelectorAll('.customer-stats .stat-value').length"),4,'four customer totals');
   for(const label of ['Total Paid','Total Credit Sales','Total Returned','Total Owed'])assert.ok(await run(`return document.querySelector('#page-content').innerText.includes('${label}')`),`${label} label`);
-  assert.ok(await run("return /\\d+ customers/.test(document.querySelector('#customer-count').innerText)"),'customer count next to the search');
+  // The count is filled in when the ledger arrives, so wait for it instead of
+  // reading the empty placeholder right after the page markup appears.
+  await until(()=>run("return /\\d+ customers/.test(document.querySelector('#customer-count')?.textContent||'')"),'customer count next to the search');
   await run("await window.pharmacy.invoke('save',{entity:'customers',record:{name:'Email Customer',phone:'0700555666',email:'mail@example.com',opening_balance:0,credit_limit:0,active:1}});document.querySelector('#new-customer').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form')"),'new customer form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=email]')"),'email field in the customer form');
