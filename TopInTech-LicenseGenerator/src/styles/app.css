@@ -90,11 +90,11 @@ input::placeholder,textarea::placeholder{color:#6f9298}
 
 /* The short key the customer types into the setup wizard. It sits under the long
    serial because it is the part that changes hands. */
-.install-key{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)}
-.install-key-head h4{font-size:12.5px}
+.install-key{margin-bottom:16px;padding:12px 14px;border:1px solid #1c5a53;border-radius:10px;background:var(--primary-soft)}
+.install-key-head h4{font-size:12.5px;color:var(--primary)}
 .install-key-head p{font-size:11px;color:var(--muted);margin-top:3px}
-.install-key-row{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
-.install-key-row output{font:600 15px var(--mono);letter-spacing:1.5px;color:var(--primary);background:var(--surface-3);border:1px solid var(--border);border-radius:8px;padding:9px 13px}
+.install-key-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.install-key-row output{font:700 22px var(--mono);letter-spacing:4px;color:var(--primary);background:var(--surface-3);border:1px solid var(--border);border-radius:8px;padding:8px 16px}
 
 /* ---- Verify ----------------------------------------------------------- */
 .verify{margin-top:18px;border-top:1px solid var(--border);padding-top:16px}

@@ -5,19 +5,16 @@
 ;   Welcome -> Software Activation -> Installation Location -> Install -> Finish
 ;
 ; The activation page asks for the install key ("Enter your serial key") that the
-; owner generates in Top In Tech License Generator. A key is 16 characters in
-; four groups, WXYZ-1234-5678-9ABC: twelve data characters plus four check
-; characters. The data characters come from the license serial, so every
-; customer gets their own key.
+; owner generates in Top In Tech License Generator. A key is 6 characters in
+; two groups, ABC-123: five data characters plus one check character. The data
+; characters come from the license serial, so every customer gets their own key.
 ;
 ; The check is arithmetic, not cryptography, because NSIS ships no crypto
 ; library. TopInTech-LicenseGenerator/lib/setupkey.js runs exactly the same
 ; lines, and the two files must stay identical:
 ;
 ;     a = (a * 33 + alphabet[data[i]] + alphabet[SALT[i]] + i * 7) mod 100003
-;     b = (a * 37 + 11) mod 100003
-;     check = alphabet[a mod 32] alphabet[(a / 32) mod 32]
-;             alphabet[b mod 32] alphabet[(b / 32) mod 32]
+;     check = alphabet[a mod 32]
 ;
 ; The page is shown on EVERY run of Setup.exe: first installation, reinstall,
 ; repair, upgrade, and an install after an uninstall. Nothing about an earlier
@@ -42,6 +39,9 @@
 ; Must equal SALT in TopInTech-LicenseGenerator/lib/setupkey.js.
 !define SETUP_SALT "7Q2M9K4X1B8T"
 !define SETUP_MODULUS 100003
+; Key shape: five characters of data and one of check, shown as ABC-123.
+!define SETUP_DATA_LENGTH 5
+!define SETUP_KEY_LENGTH 6
 ; The one message a refused key shows, word for word.
 !define SETUP_REFUSED "Invalid Serial Key!$\r$\nApplication Not Installed."
 
@@ -55,9 +55,9 @@
 !macro SetupKeyValidate KEY VALID
   StrCpy ${VALID} "0"
 
-  ; First drop the separators, so WXYZ-1234-5678-9ABC, WXYZ 1234 5678 9ABC and
-  ; WXYZ123456789ABC are all the same key. Written as a loop instead of StrRep
-  ; because that macro lives in an optional include.
+  ; First drop the separators, so ABC-123, ABC 123 and ABC123 are the same key.
+  ; Written as a loop instead of StrRep because that macro lives in an optional
+  ; include.
   StrCpy $R0 ""
   StrCpy $R1 ${KEY}
   StrLen $R3 $R1
@@ -76,11 +76,11 @@
 
   StrCpy $R1 "1"     ; every character so far is in the alphabet
   StrLen $R3 $R0
-  ${If} $R3 == 16
+  ${If} $R3 == ${SETUP_KEY_LENGTH}
     StrCpy $R2 "0"   ; a
     StrCpy $R3 "0"   ; i
     ${Do}
-      ${If} $R3 >= 12
+      ${If} $R3 >= ${SETUP_DATA_LENGTH}
         ${ExitDo}
       ${EndIf}
       StrCpy $R4 $R0 1 $R3          ; the data character
@@ -127,27 +127,11 @@
       IntOp $R3 $R3 + 1
     ${Loop}
     ${If} $R1 == 1
-      ; b = (a * 37 + 11) mod 100003
-      IntOp $R4 $R2 * 37
-      IntOp $R4 $R4 + 11
-      IntOp $R4 $R4 % ${SETUP_MODULUS}
-      ; The four characters the key must end with.
+      ; The one character the key must end with.
       IntOp $R6 $R2 % 32
       StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R8 "$R7"
-      IntOp $R6 $R2 / 32
-      IntOp $R6 $R6 % 32
-      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R8 "$R8$R7"
-      IntOp $R6 $R4 % 32
-      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R8 "$R8$R7"
-      IntOp $R6 $R4 / 32
-      IntOp $R6 $R6 % 32
-      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R8 "$R8$R7"
-      StrCpy $R5 $R0 4 12          ; the check characters the customer typed
-      ${If} $R8 == $R5
+      StrCpy $R5 $R0 1 ${SETUP_DATA_LENGTH}   ; the character the customer typed
+      ${If} $R7 == $R5
         StrCpy ${VALID} "1"
       ${EndIf}
     ${EndIf}

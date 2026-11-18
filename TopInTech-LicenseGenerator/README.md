@@ -154,13 +154,13 @@ The long serial is the licence; it is also 170 characters, so nobody types it
 into a setup wizard. Each license therefore also has a short **install key**:
 
 ```
-WXYZ-1234-5678-9ABC        16 characters: 12 data + 4 check
+ABC-123        6 characters: 5 data + 1 check
 ```
 
-* The 12 data characters are a stable base32 slice of `sha256("install:" + serial)`,
+* The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
   so one serial always produces the same key and a second license produces a
   different one.
-* The 4 check characters come from a small arithmetic fold
+* The 1 check character comes from a small arithmetic fold
   (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
   runs exactly the same arithmetic in `build/installer.nsh`.
 * The result card shows the key under **Install key for the setup** with

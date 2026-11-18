@@ -29,8 +29,10 @@ function nsisValidate(raw) {
   const alphabet = value('SETUP_ALPHABET');
   const salt = value('SETUP_SALT');
   const modulus = Number(value('SETUP_MODULUS'));
+  const dataLength = Number(value('SETUP_DATA_LENGTH'));
+  const keyLength = Number(value('SETUP_KEY_LENGTH'));
   const key = String(raw).replace(/ /g, '').replace(/-/g, '');
-  if (key.length !== 16) return false;
+  if (key.length !== keyLength) return false;
   const indexOf = char => {
     for (let i = 0; i < 32; i += 1) {
       if (alphabet[i].toLowerCase() === String(char).toLowerCase()) return i;
@@ -38,22 +40,15 @@ function nsisValidate(raw) {
     return 32;
   };
   let a = 0;
-  for (let i = 0; i < 12; i += 1) {
+  for (let i = 0; i < dataLength; i += 1) {
     const index = indexOf(key[i]);
     if (index === 32) return false;
-    const saltIndex = indexOf(salt[i]);
-    a = (a * 33 + index + saltIndex + i * 7) % modulus;
+    a = (a * 33 + index + indexOf(salt[i]) + i * 7) % modulus;
     a = a < 0 ? a + modulus : a;
   }
   // IntOp truncates towards zero, and every value here is positive.
-  const b = ((a * 37 + 11) % modulus + modulus) % modulus;
-  const expected = [
-    alphabet[a % 32],
-    alphabet[Math.trunc(a / 32) % 32],
-    alphabet[b % 32],
-    alphabet[Math.trunc(b / 32) % 32]
-  ].join('');
-  return expected.toLowerCase() === key.slice(12).toLowerCase();
+  const check = alphabet[a % 32];
+  return check.toLowerCase() === key.slice(dataLength).toLowerCase();
 }
 
 test('the setup wizard asks for the serial key before anything is installed', () => {
@@ -89,11 +84,7 @@ test('the installer and the generator run the same arithmetic', () => {
     'IntOp $R2 $R2 + $R8',           //   + salt index
     'IntOp $R4 $R3 * 7',             //   + i * 7
     'IntOp $R2 $R2 % ${SETUP_MODULUS}',
-    'IntOp $R4 $R2 * 37',            // b = a * 37
-    'IntOp $R4 $R4 + 11',            //   + 11
-    'IntOp $R4 $R4 % ${SETUP_MODULUS}',
-    'IntOp $R6 $R2 / 32',            // the second character of the first pair
-    'IntOp $R6 $R4 / 32'             // and of the second pair
+    'IntOp $R6 $R2 % 32'             // the check character
   ];
   for (const line of lines) {
     assert.ok(nsh.includes(line), `the installer is missing: ${line}`);
@@ -124,10 +115,11 @@ test('a mistyped or invented key is refused', () => {
     spaces: '   ',
     short: 'ABC',
     long: `${key}-EXTRA`,
-    'wrong check group': key.slice(0, 15) + (key.endsWith('Z') ? 'Y' : 'Z'),
+    'wrong check character': key.slice(0, 5) + (key.endsWith('Z') ? 'Y' : 'Z'),
     'one data character changed': (key[0] === 'A' ? 'B' : 'A') + key.slice(1),
-    'not from the alphabet': 'IIII-IIII-IIII-IIII',
-    'made up': '1234-5678-9ABC-DEFG'
+    'not from the alphabet': 'III-III',
+    'made up': 'ABC-124',
+    'neat but unissued': '123-456'
   };
   for (const [name, typed] of Object.entries(cases)) {
     assert.equal(nsisValidate(typed), false, `refused: ${name}`);
@@ -140,8 +132,8 @@ test('a mistyped or invented key is refused', () => {
   };
   for (let i = 0; i < 500; i += 1) {
     let text = '';
-    for (let c = 0; c < 16; c += 1) text += setupkey.ALPHABET[next() % 32];
-    if (next() % 2) text = text.slice(0, 12) + setupkey.checkGroups(text.slice(0, 12));
+    for (let c = 0; c < 6; c += 1) text += setupkey.ALPHABET[next() % 32];
+    if (next() % 2) text = text.slice(0, 5) + setupkey.checkGroups(text.slice(0, 5));
     assert.equal(nsisValidate(text), setupkey.verifyInstallKey(text).valid,
       `the installer and the generator disagree about ${text}`);
   }

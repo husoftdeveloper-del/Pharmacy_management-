@@ -11,10 +11,12 @@ const keys = require('../lib/setupkey');
 const serial = require('../lib/serial');
 const crypto = require('node:crypto');
 
-test('an install key is 16 characters in four groups', () => {
+test('an install key is 6 characters in two groups: ABC-123', () => {
   const key = keys.makeInstallKey('TIT1EXAMPLE.0123456789ABCDEF');
-  assert.match(key, /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
-  assert.equal(key.replace(/-/g, '').length, 16);
+  assert.match(key, /^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
+  assert.equal(key.replace(/-/g, '').length, 6);
+  assert.equal(keys.DATA_LENGTH, 5);
+  assert.equal(keys.CHECK_LENGTH, 1);
 });
 
 test('the same serial always produces the same key, different serials differ', () => {
@@ -34,13 +36,16 @@ test('a generated key is accepted, in every way a customer may type it', () => {
 
 test('a mistyped, invented or empty key is refused with the wizard message', () => {
   const key = keys.makeInstallKey('TIT1SERIAL.FORSETUP');
-  const wrongCheck = key.slice(0, 15) + (key.endsWith('Z') ? 'Y' : 'Z');
-  // One character of the data changed, check characters left alone.
-  const typo = (key[0] === 'A' ? 'B' : 'A') + key.slice(1);
+  const flat = key.replace(/-/g, '');
+  const wrongCheck = flat.slice(0, 5) + (flat.endsWith('Z') ? 'Y' : 'Z');
+  // One character of the data changed, the check character left alone.
+  const typo = (flat[0] === 'A' ? 'B' : 'A') + flat.slice(1);
   const cases = [
-    '', '   ', 'hello', '1234567890123456', key.slice(0, 15), key + 'X',
-    wrongCheck, // right shape, wrong check characters
-    typo
+    '', '   ', 'hello', '1234567890123456', flat.slice(0, 5), key + 'X',
+    wrongCheck, // right shape, wrong check character
+    typo,
+    'ABC-123', // a neat looking key nobody issued
+    '000-001'
   ];
   for (const typed of cases) {
     const result = keys.verifyInstallKey(typed);
@@ -55,15 +60,10 @@ test('the check arithmetic matches what the NSIS installer computes', () => {
   assert.equal(keys.ALPHABET, '0123456789ABCDEFGHJKMNPQRSTVWXYZ');
   assert.equal(keys.SALT.length, 12);
   assert.equal(keys.MODULUS, 100003);
-  // A hand-worked vector: data "000000000000" folds to salt digits only.
-  const data = '000000000000';
+  // A hand-worked vector: data "00000" folds to salt digits only.
+  const data = '00000';
   const a = keys.fold(data);
-  const expected = [
-    keys.ALPHABET[a % 32],
-    keys.ALPHABET[Math.floor(a / 32) % 32],
-    keys.ALPHABET[((a * 37 + 11) % keys.MODULUS) % 32],
-    keys.ALPHABET[Math.floor(((a * 37 + 11) % keys.MODULUS) / 32) % 32]
-  ].join('');
+  const expected = keys.ALPHABET[a % 32];
   assert.equal(keys.checkGroups(data), expected);
   assert.equal(keys.verifyInstallKey(data + expected).valid, true);
 });
