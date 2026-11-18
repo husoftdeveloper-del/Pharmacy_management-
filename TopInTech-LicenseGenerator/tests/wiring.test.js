@@ -324,9 +324,13 @@ test('a laptop that was activated once is never asked for the key again', () => 
   assert.equal((check.match(/ReadRegStr \$1 HKLM/g) || []).length, 2, 'HKLM is read through both views');
   assert.equal((check.match(/ReadRegStr \$1 HKCU/g) || []).length, 2, 'HKCU is read through both views');
   // Marker files survive an uninstall and a setup that could not write HKLM.
-  for (const folder of ['COMMONAPPDATA', 'LOCALAPPDATA', 'APPDATA']) {
-    assert.ok(check.includes(`$${folder}\\Top In Tech\\License Generator\\$${'{'}ACTIVATION_MARKER}`), `${folder} marker file is checked`);
-  }
+  // The machine-wide one is $APPDATA inside the all-users context, because the
+  // NSIS 3.0.4 that electron-builder ships has no $COMMONAPPDATA.
+  assert.doesNotMatch(check, /\$COMMONAPPDATA/, 'no variable the bundled makensis rejects');
+  assert.match(check, /SetShellVarContext all/);
+  assert.match(check, /SetShellVarContext current/);
+  assert.equal((check.match(/\$\{FileExists\} "\$APPDATA\\Top In Tech\\License Generator\\\$\{ACTIVATION_MARKER\}"/g) || []).length, 2, 'the machine-wide and the per-user marker are both checked');
+  assert.ok(check.includes('$LOCALAPPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}'), 'the local-appdata marker is checked');
   // The application folder itself proves it was installed with a key.
   assert.ok(check.includes('$PROGRAMFILES64\\Top In Tech License Generator'), 'the installed app counts as activated');
   assert.ok(check.includes('$LOCALAPPDATA\\Programs\\Top In Tech License Generator'), 'a per-user install counts too');

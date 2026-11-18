@@ -82,11 +82,15 @@
   SetRegView lastused
 
   ; Marker files, for the case where a previous setup could not write HKLM.
+  ; In the all-users context $APPDATA is C:\ProgramData, so the machine-wide
+  ; marker is checked first and the per-user ones afterwards.
+  SetShellVarContext all
   ${If} $0 != "1"
-    ${If} ${FileExists} "$COMMONAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
+    ${If} ${FileExists} "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
       StrCpy $0 "1"
     ${EndIf}
   ${EndIf}
+  SetShellVarContext current
   ${If} $0 != "1"
     ${If} ${FileExists} "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
       StrCpy $0 "1"
@@ -121,12 +125,15 @@
   WriteRegStr HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
   SetRegView lastused
 
-  CreateDirectory "$COMMONAPPDATA\Top In Tech\License Generator"
-  FileOpen $9 "$COMMONAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
+  ; Machine-wide marker: in the all-users context $APPDATA is C:\ProgramData.
+  SetShellVarContext all
+  CreateDirectory "$APPDATA\Top In Tech\License Generator"
+  FileOpen $9 "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
   ${If} $9 != ""
     FileWrite $9 "activated$\r$\n"
     FileClose $9
   ${EndIf}
+  SetShellVarContext current
   CreateDirectory "$LOCALAPPDATA\Top In Tech\License Generator"
   FileOpen $9 "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
   ${If} $9 != ""
