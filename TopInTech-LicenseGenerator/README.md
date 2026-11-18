@@ -140,7 +140,8 @@ backup offline: without `private.pem` no new keys can be made for that key id.
 * Alphabet: Crockford base32 — no `I`, `L`, `O`, `U`, so `O` reads as `0` and
   `I`/`L` read as `1` when someone types a key by hand.
 * Payload: `{v, k, id, pr, d, i, x}` — version, key id, license id, product,
-  duration (`L` lifetime / `Y` 1 year / `H` 6 months), issue date, expiry date.
+  duration (`L` lifetime / `Y` 1 year / `H` 6 months / `M` 1 month / `F` 15
+  days / `T` 10 days), issue date, expiry date.
 * Signature: Ed25519 over the exact payload bytes. Editing one character breaks
   the signature; a key signed by another pair fails the key-id check.
 * A serial issued as *Lifetime* has an empty expiry and never expires.

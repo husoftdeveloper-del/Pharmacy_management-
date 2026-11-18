@@ -431,3 +431,18 @@ test('the install key for the Pharmacy setup is shown, copyable and reachable la
   // A license sold earlier can still be looked up in the table.
   assert.match(renderer, /copyText\(row\.installKey/, 'the licences table must offer the install key again');
 });
+
+test('the duration menu offers every plan the signer knows', () => {
+  const serial = require('../lib/serial');
+  const select = html.slice(html.indexOf('id="plan"'), html.indexOf('</select>', html.indexOf('id="plan"')));
+  const offered = [...select.matchAll(/<option value="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(offered, Object.keys(serial.PLANS),
+    'every plan must be selectable, and nothing may be offered that the signer rejects');
+  for (const planId of offered) {
+    assert.ok(serial.PLANS[planId], `the page offers ${planId}, which lib/serial.js does not know`);
+  }
+  // The short durations the owner asked for are there, in order, with their labels.
+  for (const [planId, label] of [['1m', '1 Month'], ['15d', '15 Days'], ['10d', '10 Days']]) {
+    assert.match(select, new RegExp(`<option value="${planId}">${label}</option>`));
+  }
+});

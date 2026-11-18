@@ -14,10 +14,15 @@ const crypto = require('node:crypto');
 
 const PREFIX = 'TIT1';
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+// The single letter in the payload is what older generators read, so the three
+// original letters never change; the short plans use letters nobody used before.
 const PLANS = {
   lifetime: { key: 'L', label: 'Lifetime', months: 0 },
   '1y': { key: 'Y', label: '1 Year', months: 12 },
-  '6m': { key: 'H', label: '6 Months', months: 6 }
+  '6m': { key: 'H', label: '6 Months', months: 6 },
+  '1m': { key: 'M', label: '1 Month', months: 1 },
+  '15d': { key: 'F', label: '15 Days', days: 15 },
+  '10d': { key: 'T', label: '10 Days', days: 10 }
 };
 const PLAN_BY_KEY = Object.fromEntries(Object.entries(PLANS).map(([id, plan]) => [plan.key, { id, ...plan }]));
 
@@ -68,6 +73,14 @@ function addMonths(date, months) {
   return copy;
 }
 
+// Short plans count whole days, so 10 and 15 days land on the same clock time
+// as the issue moment, not on a rounded month.
+function addDays(date, days) {
+  const copy = new Date(date.getTime());
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
 function planDetails(planId) {
   const plan = PLANS[planId];
   if (!plan) throw new Error('Choose a license duration.');
@@ -82,7 +95,9 @@ function buildPayload({ product, plan, licenseId, issuedAt = new Date(), kid }) 
   if (!kid) throw new Error('The signing key is missing.');
   const details = planDetails(plan);
   const issued = new Date(issuedAt);
-  const expires = details.months ? addMonths(issued, details.months) : null;
+  const expires = details.days
+    ? addDays(issued, details.days)
+    : (details.months ? addMonths(issued, details.months) : null);
   return {
     v: 1,
     k: kid,
@@ -132,7 +147,7 @@ function verifySerial(serial, publicKeyPem, now = new Date()) {
       const today = now.toISOString().slice(0, 10);
       if (payload.x < today) return { valid: false, reason: `This license expired on ${payload.x}.`, payload };
     }
-    const plan = PLAN_BY_KEY[payload.d] || { id: 'unknown', label: 'Unknown', months: 0 };
+    const plan = PLAN_BY_KEY[payload.d] || { id: 'unknown', label: 'Unknown', months: 0, days: 0 };
     return { valid: true, reason: '', payload, plan };
   } catch (error) {
     return { valid: false, reason: error.message, payload: null };
@@ -156,5 +171,5 @@ function unformatSerial(serial) {
 module.exports = {
   PREFIX, ALPHABET, PLANS, PLAN_BY_KEY,
   base32Encode, base32Decode, keyId, buildPayload, payloadBytes,
-  signPayload, parseSerial, verifySerial, formatSerial, unformatSerial, planDetails, addMonths
+  signPayload, parseSerial, verifySerial, formatSerial, unformatSerial, planDetails, addMonths, addDays
 };

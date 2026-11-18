@@ -92,6 +92,41 @@ test('month arithmetic keeps the day and rolls over short months', () => {
   assert.equal(serial.addMonths(new Date('2026-11-15T00:00:00Z'), 6).toISOString().slice(0, 10), '2027-05-15');
 });
 
+test('the short durations issue keys with the right expiry date', () => {
+  // Issue date in these tests is 2026-01-15 (see make()).
+  const cases = {
+    '1m': { label: '1 Month', key: 'M', expires: '2026-02-15' },
+    '15d': { label: '15 Days', key: 'F', expires: '2026-01-30' },
+    '10d': { label: '10 Days', key: 'T', expires: '2026-01-25' }
+  };
+  for (const [planId, expected] of Object.entries(cases)) {
+    assert.equal(serial.PLANS[planId].label, expected.label);
+    assert.equal(serial.PLANS[planId].key, expected.key, 'the payload letter must be unique');
+    const { payload, key } = make(planId);
+    assert.equal(payload.d, expected.key);
+    assert.equal(payload.x, expected.expires);
+    // Valid on the last day, refused the day after, and the label comes back.
+    const lastDay = serial.verifySerial(key, pair.publicPem, new Date(`${expected.expires}T12:00:00Z`));
+    assert.equal(lastDay.valid, true);
+    assert.equal(lastDay.plan.label, expected.label);
+    const dayAfter = serial.verifySerial(key, pair.publicPem, new Date(new Date(`${expected.expires}T00:00:00Z`).getTime() + 86400000));
+    assert.equal(dayAfter.valid, false);
+  }
+  // The three original letters keep their meaning, so old keys still read right.
+  assert.equal(serial.PLANS.lifetime.key, 'L');
+  assert.equal(serial.PLANS['1y'].key, 'Y');
+  assert.equal(serial.PLANS['6m'].key, 'H');
+  // Every plan letter is distinct.
+  const letters = Object.values(serial.PLANS).map(plan => plan.key);
+  assert.equal(new Set(letters).size, letters.length);
+});
+
+test('day arithmetic adds whole days', () => {
+  assert.equal(serial.addDays(new Date('2026-01-15T05:30:00Z'), 10).toISOString().slice(0, 10), '2026-01-25');
+  assert.equal(serial.addDays(new Date('2026-12-28T00:00:00Z'), 15).toISOString().slice(0, 10), '2027-01-12');
+  assert.equal(serial.addDays(new Date('2026-01-15T05:30:00Z'), 10).toISOString().slice(11, 16), '05:30');
+});
+
 test('bad input returns a reason instead of throwing', () => {
   for (const input of ['', 'hello', 'TIT1', 'TIT1AAAA.BBBB', null, undefined]) {
     const result = serial.verifySerial(input, pair.publicPem);
