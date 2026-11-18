@@ -108,13 +108,20 @@ test('price list shows shelf quantity, both prices and profit per medicine',(t)=
  assert.equal(book.rows.length,2);assert.equal(paracetamol.stock,30);assert.equal(paracetamol.cost,6);assert.equal(paracetamol.price,10);assert.equal(paracetamol.profit,4);
  assert.equal(panadol.stock,12);assert.equal(panadol.unit,'tablet');assert.equal(panadol.profit,3);
  assert.equal(book.totals.medicines,2);assert.equal(book.totals.stockValue,30*6+12*4);assert.equal(book.totals.profit,7);
+ // Profit on the whole shelf: 4 per tablet × 30 + 3 per tablet × 12.
+ assert.equal(paracetamol.totalProfit,120);assert.equal(panadol.totalProfit,36);
+ assert.equal(book.totals.totalProfit,156);assert.equal(book.totals.units,42);
  const doc=s.priceListDocument(admin);
- assert.deepEqual(doc.columns,['name','stock','purchasePrice','sellingPrice','profit']);
+ assert.deepEqual(doc.columns,['name','stock','purchasePrice','sellingPrice','profit','totalProfit']);
  assert.equal(doc.rows.find(r=>r.name==='Paracetamol 500mg').stock,'30 tablet');assert.equal(doc.rows.find(r=>r.name==='Panadol').sellingPrice,`${doc.currency} 7.00`);
+ assert.equal(doc.rows.find(r=>r.name==='Paracetamol 500mg').totalProfit,`${doc.currency} 120.00`);
+ const totalRow=doc.rows.at(-1);
+ assert.equal(totalRow.name,'TOTAL');assert.equal(totalRow.totalProfit,`${doc.currency} 156.00`);
  assert.equal(doc.kind,'pricelist');
  const updated=s.updateMedicinePrice(admin,{id:panadol.id,price:9.5});
  assert.equal(updated.price,9.5);assert.equal(s.get('SELECT price FROM medicines WHERE id=?',panadol.id).price,9.5);
  assert.equal(s.priceList(admin).rows.find(r=>r.id===panadol.id).profit,5.5);
+ assert.equal(s.priceList(admin).rows.find(r=>r.id===panadol.id).totalProfit,66);
  assert.equal(s.get("SELECT details FROM audit_logs WHERE action='price_change' ORDER BY id DESC LIMIT 1").details.includes('9.5'),true);
  assert.throws(()=>s.updateMedicinePrice(admin,{id:panadol.id,price:0}),/greater than zero/);
  assert.throws(()=>s.updateMedicinePrice(admin,{id:999999,price:5}),/not found/);

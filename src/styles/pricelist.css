@@ -43,3 +43,15 @@
 .price-save:disabled{opacity:.6}
 .price-cancel:hover{border-color:var(--red);color:var(--red)}
 @media(hover:none){.price-cell .price-edit{opacity:1}}
+
+/* Total profit: profit on one unit times the stock on the shelf, with the sum
+   of every row pinned under the table so it stays visible while scrolling. */
+.price-list-table th:last-child,.price-list-table td:last-child{white-space:nowrap}
+.total-profit{font-weight:600;font-variant-numeric:tabular-nums;display:block}
+.total-profit.negative{color:var(--red)}
+.profit-formula{display:block;font-size:10px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.price-list-table tfoot td{padding:16px 22px;border-top:1px solid var(--border);background:var(--surface2)}
+.price-total-label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.2px}
+.price-total{font-size:15px;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums}
+.price-list-footer{gap:10px}
+@media(max-width:650px){.price-list-table tfoot td{padding-inline:14px}}

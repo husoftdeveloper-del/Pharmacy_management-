@@ -549,13 +549,20 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=pricelist]').click();return true;");
   await until(()=>run("return !!document.querySelector('#price-rows') && !!document.querySelector('#price-search')"),'price list page');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Medicine Price List')"),'page titled medicine price list');
-  assert.equal(await run("return document.querySelectorAll('.price-list-table thead th').length"),5,'five price list columns');
+  assert.equal(await run("return document.querySelectorAll('.price-list-table thead th').length"),6,'six price list columns');
   const priceHeadings=await run("return [...document.querySelectorAll('.price-list-table thead th')].map(t=>t.textContent.trim().toLowerCase()).join('|')");
-  assert.equal(priceHeadings,'name|stock|purchase price|selling price|profit','price list column order');
+  assert.equal(priceHeadings,'name|stock|purchase price|selling price|profit|total profit','price list column order');
   const priceRow=await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''");
   assert.match(priceRow,/\d+ tablet/i,"stock quantity with its unit");
   assert.ok(priceRow.includes('6.00')&&priceRow.includes('10.00'),'purchase and selling price');
   assert.ok(priceRow.includes('4.00'),'profit per unit');
+  // Profit on the shelf is profit per unit × stock, and the table totals it.
+  const profitOnShelf=await run("const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return m.totalProfit.toFixed(2)");
+  assert.equal(await run(`const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return (m.profit*m.stock).toFixed(2)`),profitOnShelf,'total profit is the unit profit times the stock');
+  assert.ok(priceRow.includes(profitOnShelf),'total profit for the row');
+  // The table's last row is the grand total and must equal the summed rows.
+  const totalsAgree=await run("const num=t=>Number(String(t).replace(/[^0-9.]/g,''))||0;const rows=[...document.querySelectorAll('#price-rows [data-total-profit]')].reduce((sum,c)=>sum+num(c.textContent),0);return String(Math.abs(num(document.querySelector('#price-total').textContent)-rows)<0.005)");
+  assert.equal(totalsAgree,'true','the total profit row adds up every row');
   assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all')"),'showing all footer');
   assert.ok(await run("return !!document.querySelector('#export-price-list')"),'export PDF button');
   // The selling price shows a pencil only while its cell is hovered.
@@ -571,6 +578,9 @@ app.whenReady().then(async()=>{
   const edited=await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''");
   assert.ok(edited.includes('12.50'),'the new selling price is shown');
   assert.ok(edited.includes('6.50'),'profit follows the new selling price');
+  const editedProfit=await run("const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return m.totalProfit.toFixed(2)");
+  assert.ok(edited.includes(editedProfit),'total profit follows the new selling price');
+  assert.ok(edited.includes((12.5-6).toFixed(2)),'total profit is the new unit profit times the stock');
   assert.equal(await run("const r=await window.pharmacy.invoke('priceList');return r.rows.find(x=>x.name==='Paracetamol 500mg').price"),12.5,'the database stores the new price');
   await run("const key=[...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));key.querySelector('[data-edit-price]').click();return true;");
   await until(()=>run("return !!document.querySelector('#price-rows .price-input')"),'inline price editor again');
@@ -583,7 +593,8 @@ app.whenReady().then(async()=>{
 
   await run("document.querySelector('#price-search').value='nothing-matches';document.querySelector('#price-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
-  assert.ok(await run("return document.querySelector('#price-count').textContent==='Showing all 0'"),'search filters the price list');
+  assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all 0')"),'search filters the price list');
+  assert.ok(await run("return document.querySelector('#price-total').textContent.includes('0.00')"),'the total profit follows the search (no rows, no profit)');
   await run("document.querySelector('#price-search').value='';document.querySelector('#price-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
   // Customer payments page: a credit sale becomes a receivable, then the payment is recorded through the form.

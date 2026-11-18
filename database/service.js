@@ -156,18 +156,29 @@ class PharmacyService {
     const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.unit,m.cost,m.price,
         COALESCE(SUM(b.quantity),0) AS stock
       FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id
-      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => ({
-        ...row,
-        cost: round(row.cost),
-        price: round(row.price),
-        profit: round(Number(row.price) - Number(row.cost))
-      }));
+      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => {
+        const profit = round(Number(row.price) - Number(row.cost));
+        return {
+          ...row,
+          stock: Number(row.stock) || 0,
+          cost: round(row.cost),
+          price: round(row.price),
+          // Profit on one unit and, as the shopkeeper counts it, the profit
+          // locked in the stock on the shelf: 2 per tablet × 10 tablets = 20.
+          profit,
+          totalProfit: round(profit * (Number(row.stock) || 0))
+        };
+      });
     return {
       rows,
       totals: {
         medicines: rows.length,
         stockValue: round(rows.reduce((sum, row) => sum + Number(row.stock) * Number(row.cost), 0)),
-        profit: round(rows.reduce((sum, row) => sum + Number(row.profit), 0))
+        // Kept for older callers: the sum of the per-unit profits.
+        profit: round(rows.reduce((sum, row) => sum + Number(row.profit), 0)),
+        // The number the price list totals up: profit on every unit in stock.
+        totalProfit: round(rows.reduce((sum, row) => sum + Number(row.totalProfit), 0)),
+        units: rows.reduce((sum, row) => sum + Number(row.stock), 0)
       },
       currency: this.setting('currency')
     };
@@ -634,14 +645,19 @@ class PharmacyService {
       kind: 'pricelist',
       from: '',
       to: '',
-      columns: ['name', 'stock', 'purchasePrice', 'sellingPrice', 'profit'],
-      rows: book.rows.map(row => ({
-        name: row.name,
-        stock: `${row.stock} ${row.unit}`,
-        purchasePrice: `${currency} ${row.cost.toFixed(2)}`,
-        sellingPrice: `${currency} ${row.price.toFixed(2)}`,
-        profit: `${currency} ${row.profit.toFixed(2)}`
-      })),
+      columns: ['name', 'stock', 'purchasePrice', 'sellingPrice', 'profit', 'totalProfit'],
+      rows: [
+        ...book.rows.map(row => ({
+          name: row.name,
+          stock: `${row.stock} ${row.unit}`,
+          purchasePrice: `${currency} ${row.cost.toFixed(2)}`,
+          sellingPrice: `${currency} ${row.price.toFixed(2)}`,
+          profit: `${currency} ${row.profit.toFixed(2)}`,
+          totalProfit: `${currency} ${row.totalProfit.toFixed(2)}`
+        })),
+        // The printed list totals the same way the page does.
+        { name: 'TOTAL', stock: `${book.totals.units}`, purchasePrice: '', sellingPrice: '', profit: '', totalProfit: `${currency} ${book.totals.totalProfit.toFixed(2)}` }
+      ],
       currency,
       pharmacyName: this.setting('pharmacy_name')
     };
