@@ -7,9 +7,19 @@
 ;    installation location. The key is compared case-sensitively (StrCmpS).
 ;    A wrong or empty key keeps the user on the page with an error and blocks
 ;    the install. The key is never written into a label, header, log or error
-;    string - it exists only in its own !define and in the comparison. Once a
-;    machine is activated the flag is stored in the registry, so setup never
-;    asks again (repair, reinstall or update).
+;    string - it exists only in its own !define and in the comparison.
+;
+;    Once a machine is activated the flag is remembered in several independent
+;    places, and the page reads all of them:
+;      * HKLM and HKCU, read through both the 32-bit and the 64-bit registry
+;        view (a 32-bit setup writes into WOW6432Node, a 64-bit one does not);
+;      * a small marker file in %ProgramData%, %LOCALAPPDATA% and %APPDATA%;
+;      * the application folder itself - installing it needed the key, so an
+;        existing installation already counts as activated.
+;    One surviving copy is enough. That is why a repair, a reinstall, an update
+;    or a reinstall after an uninstall never asks for the key again, even when a
+;    previous version remembered it somewhere else or the installer ran without
+;    the rights to write HKLM.
 ;
 ; 2. The shortcuts. A per-machine install runs elevated, and Windows then
 ;    resolves $DESKTOP/$SMPROGRAMS to the administrator profile, so
@@ -30,6 +40,106 @@
 !define ACTIVATION_KEY "mynewpharmacy1221"
 !define ACTIVATION_REG_KEY "Software\Top In Tech\License Generator"
 !define ACTIVATION_REG_VALUE "Activated"
+; Marker file used by every folder we can write to, so at least one copy of the
+; flag survives a reinstall, a different Windows account and an uninstall.
+!define ACTIVATION_MARKER "activated.txt"
+!define ACTIVATION_APP_EXE "Top In Tech License Generator.exe"
+
+; ------------------------------------------------- was this machine activated?
+; Sets $0 to "1" when any of the remembered flags is present. This is a macro
+; rather than a function on purpose: macros expand where they are used, so the
+; uninstaller pass (which contains no installer pages) compiles without an
+; unused function, and electron-builder's -WX build stays clean.
+!macro ActivationKnownCheck
+  StrCpy $0 "0"
+
+  ; Registry, 64-bit view first and then the 32-bit view, HKLM and HKCU: a
+  ; 32-bit setup writes under WOW6432Node, a 64-bit one writes at the top.
+  SetRegView 64
+  ReadRegStr $1 HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+  ${If} $1 == "1"
+    StrCpy $0 "1"
+  ${EndIf}
+  ${If} $0 != "1"
+    ReadRegStr $1 HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+    ${If} $1 == "1"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+  SetRegView 32
+  ${If} $0 != "1"
+    ReadRegStr $1 HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+    ${If} $1 == "1"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+  ${If} $0 != "1"
+    ReadRegStr $1 HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+    ${If} $1 == "1"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+  SetRegView lastused
+
+  ; Marker files, for the case where a previous setup could not write HKLM.
+  ${If} $0 != "1"
+    ${If} ${FileExists} "$COMMONAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+  ${If} $0 != "1"
+    ${If} ${FileExists} "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+  ${If} $0 != "1"
+    ${If} ${FileExists} "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+
+  ; The application itself: it cannot be on this machine without the key.
+  ${If} $0 != "1"
+    ${If} ${FileExists} "$PROGRAMFILES64\Top In Tech License Generator\${ACTIVATION_APP_EXE}"
+      StrCpy $0 "1"
+    ${ElseIf} ${FileExists} "$PROGRAMFILES\Top In Tech License Generator\${ACTIVATION_APP_EXE}"
+      StrCpy $0 "1"
+    ${ElseIf} ${FileExists} "$LOCALAPPDATA\Programs\Top In Tech License Generator\${ACTIVATION_APP_EXE}"
+      StrCpy $0 "1"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+; Records the activation everywhere we can write, so the next setup run finds it
+; even if one of the places is missing, protected or read through another view.
+!macro RememberActivation
+  SetRegView 64
+  WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  WriteRegStr HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  SetRegView 32
+  WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  WriteRegStr HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  SetRegView lastused
+
+  CreateDirectory "$COMMONAPPDATA\Top In Tech\License Generator"
+  FileOpen $9 "$COMMONAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
+  ${If} $9 != ""
+    FileWrite $9 "activated$\r$\n"
+    FileClose $9
+  ${EndIf}
+  CreateDirectory "$LOCALAPPDATA\Top In Tech\License Generator"
+  FileOpen $9 "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
+  ${If} $9 != ""
+    FileWrite $9 "activated$\r$\n"
+    FileClose $9
+  ${EndIf}
+  CreateDirectory "$APPDATA\Top In Tech\License Generator"
+  FileOpen $9 "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
+  ${If} $9 != ""
+    FileWrite $9 "activated$\r$\n"
+    FileClose $9
+  ${EndIf}
+!macroend
 
 ; electron-builder compiles the script twice. The first pass has
 ; BUILD_UNINSTALLER defined and contains no pages at all, so the page and its
@@ -47,8 +157,10 @@ Var ActivationHeading
 ; page defines) must not be used here. The page draws its own title.
 Function ActivationPageShow
   ; An activated machine never sees this page again: Abort in a custom page's
-  ; create function removes the page from the wizard.
-  ReadRegStr $0 HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}"
+  ; create function removes the page from the wizard. Every remembered flag is
+  ; checked, not just one registry value, so a reinstall on a laptop that was
+  ; activated by any earlier version goes straight to the installation location.
+  !insertmacro ActivationKnownCheck
   ${If} $0 == "1"
     Abort
   ${EndIf}
@@ -117,14 +229,22 @@ FunctionEnd
 ; are refused outright when they cannot.
 !macro customInit
   ${If} ${Silent}
-    ReadEnvStr $R0 "TIT_SETUP_KEY"
-    StrCmpS $R0 "${ACTIVATION_KEY}" ActivationSilentAccepted
-      SetErrorLevel 2
-      Quit
+    ; An already activated machine is allowed through: a silent update must not
+    ; fail just because nobody can type the key into an unattended run.
+    !insertmacro ActivationKnownCheck
+    ${If} $0 == "1"
+      SetShellVarContext all
+      !insertmacro RememberActivation
+    ${Else}
+      ReadEnvStr $R0 "TIT_SETUP_KEY"
+      StrCmpS $R0 "${ACTIVATION_KEY}" ActivationSilentAccepted
+        SetErrorLevel 2
+        Quit
 
 ActivationSilentAccepted:
-    SetShellVarContext all
-    WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+      SetShellVarContext all
+      !insertmacro RememberActivation
+    ${EndIf}
   ${EndIf}
 !macroend
 
@@ -135,9 +255,10 @@ ActivationSilentAccepted:
 ; this macro only cleans up the duplicates those versions left behind for the
 ; account that runs setup, then records the activation.
 !macro customInstall
-  ; The key was accepted by this run, so this machine is activated from now on.
+  ; The key was accepted by this run - or this machine was already activated and
+  ; the page was skipped - so record it in every place the next run checks.
   SetShellVarContext all
-  WriteRegStr HKLM "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
+  !insertmacro RememberActivation
 
   ; Switch to the account that started setup and drop its private copies: the
   ; all-users Desktop / Start-menu entries made by the wizard stay untouched.

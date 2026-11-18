@@ -60,9 +60,23 @@ The **Software Activation** page asks for **Enter Your Key** and has `Continue`
 and `Cancel` buttons. Only the serial key supplied with the purchase is
 accepted, and it is compared case-sensitively. A wrong or empty key keeps the
 user on the page with an error and the install never starts. The key itself is
-never displayed anywhere in the installer. Once a machine is activated the
-answer is stored under `HKEY_LOCAL_MACHINE\Software\Top In Tech\License
-Generator`, so repairs, reinstalls and updates never ask again.
+never displayed anywhere in the installer.
+
+Once a machine is activated the answer is remembered in several places at once,
+and the page asks again only when **none** of them is found:
+
+- `HKEY_LOCAL_MACHINE` and `HKEY_CURRENT_USER`, each read through **both** the
+  32-bit and the 64-bit registry view (a 32-bit setup writes into
+  `WOW6432Node`, a 64-bit one writes at the top of `Software`);
+- `activated.txt` in `%ProgramData%\Top In Tech\License Generator`,
+  `%LOCALAPPDATA%\Top In Tech\License Generator` and
+  `%APPDATA%\Top In Tech\License Generator`;
+- the installed application folder itself (`C:\Program Files\Top In Tech
+  License Generator`) — it cannot be there without the key.
+
+So a repair, a reinstall, an update, a reinstall after an uninstall and even a
+silent `/S` update on an activated laptop all go straight past the activation
+page. Uninstalling never removes these flags.
 
 The install directory defaults to `C:\Program Files\Top In Tech License
 Generator`, and the wizard leaves a desktop shortcut and a Start menu entry.

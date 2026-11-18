@@ -305,7 +305,49 @@ test('the installer asks for the serial key before anything is installed', () =>
   assert.equal(keyMentions.length, 1, 'the key appears only in its !define, never in a label or message');
   assert.match(keyMentions[0], /!define ACTIVATION_KEY/);
   assert.match(nsh, /WriteRegStr HKLM "\$\{ACTIVATION_REG_KEY\}"/);
-  assert.match(nsh, /ReadRegStr \$0 HKLM/, 'an activated machine skips the page');
+  // An activated machine skips the page: the remembered flags are checked in
+  // ActivationKnownCheck (both registry views, marker files, installed app).
+  assert.match(nsh, /ReadRegStr \$1 HKLM/, 'an activated machine skips the page');
+});
+
+test('a laptop that was activated once is never asked for the key again', () => {
+  // The owner reinstalled the setup on a laptop that had been activated before
+  // and the "Enter Your Key" page came back, because only one registry value was
+  // remembered. The page must now look everywhere an activation can be stored.
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro ActivationKnownCheck/);
+  const check = nsh.slice(nsh.indexOf('!macro ActivationKnownCheck'), nsh.indexOf('!macroend', nsh.indexOf('!macro ActivationKnownCheck')));
+  // Both registry views and both hives: 32-bit setup writes WOW6432Node.
+  assert.match(check, /SetRegView 64/, 'the 64-bit view is read');
+  assert.match(check, /SetRegView 32/, 'the 32-bit view is read');
+  assert.match(check, /SetRegView lastused/, 'the view is restored');
+  assert.equal((check.match(/ReadRegStr \$1 HKLM/g) || []).length, 2, 'HKLM is read through both views');
+  assert.equal((check.match(/ReadRegStr \$1 HKCU/g) || []).length, 2, 'HKCU is read through both views');
+  // Marker files survive an uninstall and a setup that could not write HKLM.
+  for (const folder of ['COMMONAPPDATA', 'LOCALAPPDATA', 'APPDATA']) {
+    assert.ok(check.includes(`$${folder}\\Top In Tech\\License Generator\\$${'{'}ACTIVATION_MARKER}`), `${folder} marker file is checked`);
+  }
+  // The application folder itself proves it was installed with a key.
+  assert.ok(check.includes('$PROGRAMFILES64\\Top In Tech License Generator'), 'the installed app counts as activated');
+  assert.ok(check.includes('$LOCALAPPDATA\\Programs\\Top In Tech License Generator'), 'a per-user install counts too');
+
+  // Leaving the page out is what "never asked again" means.
+  const show = nsh.slice(nsh.indexOf('Function ActivationPageShow'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageShow')));
+  assert.match(show, /!insertmacro ActivationKnownCheck/);
+  assert.match(show, /Abort/, 'the page removes itself when the machine is known');
+
+  // Every flag is written after a successful install, so the next run finds one.
+  assert.match(nsh, /!macro RememberActivation/);
+  const remember = nsh.slice(nsh.indexOf('!macro RememberActivation'), nsh.indexOf('!macroend', nsh.indexOf('!macro RememberActivation')));
+  assert.equal((remember.match(/WriteRegStr/g) || []).length, 4, 'both hives in both views are written');
+  assert.equal((remember.match(/FileOpen/g) || []).length, 3, 'three marker files are written');
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
+  assert.match(install, /!insertmacro RememberActivation/);
+  const uninstall = nsh.slice(nsh.indexOf('!macro customUnInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customUnInstall')));
+  assert.doesNotMatch(uninstall, /DeleteRegValue|DeleteRegKey/, 'uninstalling keeps the activation');
+  // The key itself is still never displayed.
+  const uiLines = nsh.split('\n').filter(line => !line.trim().startsWith(';'));
+  assert.equal(uiLines.filter(line => line.includes('mynewpharmacy1221')).length, 1);
 });
 
 test('the activation page is left out of the uninstaller pass', () => {
@@ -332,6 +374,10 @@ test('a silent install cannot skip the activation check', () => {
   assert.match(nsh, /ReadEnvStr \$R0 "TIT_SETUP_KEY"/);
   assert.match(nsh, /SetErrorLevel 2/);
   assert.match(nsh, /Quit/, 'a silent run without the key must stop, not install');
+  // ...unless the machine was already activated: a silent update is allowed.
+  const init = nsh.slice(nsh.indexOf('!macro customInit'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInit')));
+  assert.match(init, /!insertmacro ActivationKnownCheck/);
+  assert.ok(init.indexOf('ActivationKnownCheck') < init.indexOf('TIT_SETUP_KEY'), 'the remembered flag is checked before the environment key');
 });
 
 test('the wizard owns the shortcuts, so no second Desktop icon is created', () => {
