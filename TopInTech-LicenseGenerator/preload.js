@@ -6,7 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 const ALLOWED = new Set([
   'status', 'licenses', 'events', 'generate', 'verify',
   'setStatus', 'saveNote', 'removeLicense', 'export',
-  'openDataFolder', 'copyPublicKey', 'backupKeys', 'createShortcut', 'showShortcut'
+  'openDataFolder', 'copyPublicKey', 'backupKeys', 'createShortcut', 'showShortcut',
+  'authState', 'signIn', 'register', 'signOut'
 ]);
 
 contextBridge.exposeInMainWorld('generator', {

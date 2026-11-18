@@ -1,11 +1,44 @@
-/* Customers page: two totals, a wide search bar and one table.
+/* Customers page: four money totals in one row, a wide search bar and one table.
    Shared card, table and stat styles come from base.css. */
-.customer-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:22px}
+.customer-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:22px}
 .customer-stats .stat-card{padding:20px 22px}
-.customer-stats .stat-value{font-size:26px;display:flex;align-items:baseline;gap:6px}
+.customer-stats .stat-value{font-size:26px;display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums}
 .customer-stats .stat-footer svg{color:var(--primary)}
+.customer-stats .stat-card:last-child .stat-value{color:var(--red)}
+.customer-stats .stat-card:last-child .stat-footer svg{color:var(--red)}
 .customer-search-bar{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:center}
 .customer-search-bar .search-field{max-width:none;flex:1}
 .customer-search-bar .search-field input{padding:12px 0;font-size:12.5px}
+.customer-count{font-size:11.5px;color:var(--muted);white-space:nowrap}
 #customer-rows td:nth-child(4){font-variant-numeric:tabular-nums}
-@media(max-width:650px){.customer-stats{grid-template-columns:1fr}.customer-search-bar{padding:14px 16px}}
+/* Row actions: statement, edit and payment side by side. */
+#customer-rows .row-actions{display:inline-flex;align-items:center;gap:6px;justify-content:flex-end}
+.row-icon{width:30px;height:30px;display:inline-grid;place-items:center;border:1px solid transparent;border-radius:8px;background:none;color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.row-icon:hover{background:var(--primary-soft);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 25%,transparent)}
+.row-icon:focus-visible{outline:2px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:1px}
+.row-icon svg{pointer-events:none}
+@media(hover:none){.row-icon{width:36px;height:36px}}
+
+/* Customer statement (modal): who it is, the same four totals for one person,
+   then every invoice, return and payment with a running balance. */
+.statement-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.statement-head strong{font-size:15px;display:block}
+.statement-head small{font-size:11.5px;color:var(--muted);display:block;margin-top:4px}
+.statement-head-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.statement-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.statement-card{padding:14px 16px}
+.statement-card .stat-top{margin-bottom:8px}
+.statement-card .stat-value{font-size:19px;font-variant-numeric:tabular-nums}
+.statement-card .stat-footer{margin-top:8px}
+.statement-card.statement-owed .stat-value{color:var(--red)}
+.statement-table .table-scroll{max-height:46vh;overflow:auto}
+.statement-table td,.statement-table th{font-variant-numeric:tabular-nums}
+.statement-table tbody tr:last-child td{border-bottom:0}
+.statement-table strong{font-weight:600}
+.statement-summary{border-bottom:0;border-top:1px solid var(--border)}
+.statement-summary strong{font-size:15px;font-variant-numeric:tabular-nums}
+.statement-summary strong.negative{color:var(--red)}
+.statement-summary strong.positive{color:var(--primary)}
+.statement-footer{justify-content:flex-end;margin-top:18px}
+@media(max-width:1100px){.customer-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.statement-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.customer-stats{grid-template-columns:1fr}.customer-search-bar{padding:14px 16px;flex-wrap:wrap}.statement-stats{grid-template-columns:1fr}}

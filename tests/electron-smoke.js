@@ -22,7 +22,11 @@ app.whenReady().then(async()=>{
   const errors=[];win.webContents.on('did-fail-load',(event,code,description,url)=>errors.push(url+' '+code+' '+description));win.webContents.on('console-message',event=>{const message=event.message||'';if(/TypeError|ReferenceError|SyntaxError|Failed to load module/.test(message))errors.push(message);});
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('#auth-form')"),'setup form');
   assert.equal(await run('return typeof window.require'), 'undefined');
-  assert.ok(await run("return document.body.innerText.includes('build.71')"),'visible build label');
+  // The label follows src/scripts/version.js, so a build bump never leaves a
+  // stale literal behind in the smoke test.
+  const build=fs.readFileSync(path.join(__dirname,'..','src','scripts','version.js'),'utf8').match(/APP_BUILD='([^']+)'/)?.[1];
+  assert.ok(build,'the app declares a build label');
+  assert.ok(await run(`return document.body.innerText.includes('${build}')`),'visible build label '+build);
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -337,12 +341,14 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'return detail from the returns page');
   await run("document.querySelector('#modal-root [data-close]').click();return true;");
   await until(()=>run("return !document.querySelector('#modal-root .modal')"),'return detail closed');
-  // Customers page: two totals, search and the customer table.
+  // Customers page: the four money totals, search and the customer table.
   await run("document.querySelector('[data-page=customers]').click();return true;");
   await until(()=>run("return !!document.querySelector('#new-customer') && !!document.querySelector('#customer-rows')"),'customers page');
-  assert.equal(await run("return document.querySelectorAll('.customer-stats .stat-value').length"),2,'two customer totals');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Total Customers')"),'total customers label');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Outstanding Credit')"),'outstanding credit label');
+  assert.equal(await run("return document.querySelectorAll('.customer-stats .stat-value').length"),4,'four customer totals');
+  for(const label of ['Total Paid','Total Credit Sales','Total Returned','Total Owed'])assert.ok(await run(`return document.querySelector('#page-content').innerText.includes('${label}')`),`${label} label`);
+  // The count is filled in when the ledger arrives, so wait for it instead of
+  // reading the empty placeholder right after the page markup appears.
+  await until(()=>run("return /\\d+ customers/i.test(document.querySelector('#customer-count')?.textContent||'')"),'customer count next to the search');
   await run("await window.pharmacy.invoke('save',{entity:'customers',record:{name:'Email Customer',phone:'0700555666',email:'mail@example.com',opening_balance:0,credit_limit:0,active:1}});document.querySelector('#new-customer').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form')"),'new customer form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=email]')"),'email field in the customer form');
@@ -364,6 +370,18 @@ app.whenReady().then(async()=>{
   assert.ok(!(await run("return document.querySelector('#customer-rows').innerText.includes('Form Customer')")),'search filters rows');
   await run("document.querySelector('#customer-search').value='';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
+  // A customer with an opening balance: the statement must show it as the first
+  // ledger line, the running balance and the four totals for that one customer.
+  const statementCustomer=await run("const created=await window.pharmacy.invoke('save',{entity:'customers',record:{name:'Statement Customer',phone:'0700999000',opening_balance:50,credit_limit:0,active:1}});return created.id");
+  await run("document.querySelector('[data-page=customers]').click();return true;");
+  await until(()=>run("return !!document.querySelector('[data-statement]')"),'statement buttons');
+  await run(`document.querySelector('[data-statement="${statementCustomer}"]').click();return true;`);
+  await until(()=>run("return !!document.querySelector('#modal-root .statement-table')"),'customer statement opens');
+  assert.equal(await run("return document.querySelectorAll('#modal-root .statement-stats .stat-value').length"),4,'statement shows the four totals');
+  assert.equal(await run("return document.querySelectorAll('#modal-root .statement-table tbody tr').length"),1,'the opening balance is the first ledger line');
+  assert.ok(await run("return document.querySelector('#modal-root .statement-summary').innerText.includes('50.00')"),'the statement shows the opening balance');
+  await run("document.querySelector('#modal-root [data-close]').click();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'customer statement closed');
   // Medicines (catalogue) and Inventory (batches) are two different pages.
   await run("document.querySelector('[data-page=medicines]').click();return true;");
   await until(()=>run("return !!document.querySelector('#add-medicine') && !!document.querySelector('#medicine-rows')"),'medicines page');
@@ -531,13 +549,20 @@ app.whenReady().then(async()=>{
   await run("document.querySelector('[data-page=pricelist]').click();return true;");
   await until(()=>run("return !!document.querySelector('#price-rows') && !!document.querySelector('#price-search')"),'price list page');
   assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Medicine Price List')"),'page titled medicine price list');
-  assert.equal(await run("return document.querySelectorAll('.price-list-table thead th').length"),5,'five price list columns');
+  assert.equal(await run("return document.querySelectorAll('.price-list-table thead th').length"),6,'six price list columns');
   const priceHeadings=await run("return [...document.querySelectorAll('.price-list-table thead th')].map(t=>t.textContent.trim().toLowerCase()).join('|')");
-  assert.equal(priceHeadings,'name|stock|purchase price|selling price|profit','price list column order');
+  assert.equal(priceHeadings,'name|stock|purchase price|selling price|profit|total profit','price list column order');
   const priceRow=await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''");
   assert.match(priceRow,/\d+ tablet/i,"stock quantity with its unit");
   assert.ok(priceRow.includes('6.00')&&priceRow.includes('10.00'),'purchase and selling price');
   assert.ok(priceRow.includes('4.00'),'profit per unit');
+  // Profit on the shelf is profit per unit × stock, and the table totals it.
+  const profitOnShelf=await run("const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return m.totalProfit.toFixed(2)");
+  assert.equal(await run(`const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return (m.profit*m.stock).toFixed(2)`),profitOnShelf,'total profit is the unit profit times the stock');
+  assert.ok(priceRow.includes(profitOnShelf),'total profit for the row');
+  // The table's last row is the grand total and must equal the summed rows.
+  const totalsAgree=await run("const num=t=>Number(String(t).replace(/[^0-9.]/g,''))||0;const rows=[...document.querySelectorAll('#price-rows [data-total-profit]')].reduce((sum,c)=>sum+num(c.textContent),0);return String(Math.abs(num(document.querySelector('#price-total').textContent)-rows)<0.005)");
+  assert.equal(totalsAgree,'true','the total profit row adds up every row');
   assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all')"),'showing all footer');
   assert.ok(await run("return !!document.querySelector('#export-price-list')"),'export PDF button');
   // The selling price shows a pencil only while its cell is hovered.
@@ -553,6 +578,9 @@ app.whenReady().then(async()=>{
   const edited=await run("return [...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'))?.innerText||''");
   assert.ok(edited.includes('12.50'),'the new selling price is shown');
   assert.ok(edited.includes('6.50'),'profit follows the new selling price');
+  const editedProfit=await run("const r=await window.pharmacy.invoke('priceList');const m=r.rows.find(x=>x.name==='Paracetamol 500mg');return m.totalProfit.toFixed(2)");
+  assert.ok(edited.includes(editedProfit),'total profit follows the new selling price');
+  assert.ok(edited.includes((12.5-6).toFixed(2)),'total profit is the new unit profit times the stock');
   assert.equal(await run("const r=await window.pharmacy.invoke('priceList');return r.rows.find(x=>x.name==='Paracetamol 500mg').price"),12.5,'the database stores the new price');
   await run("const key=[...document.querySelectorAll('#price-rows tr')].find(r=>r.textContent.includes('Paracetamol 500mg'));key.querySelector('[data-edit-price]').click();return true;");
   await until(()=>run("return !!document.querySelector('#price-rows .price-input')"),'inline price editor again');
@@ -565,7 +593,8 @@ app.whenReady().then(async()=>{
 
   await run("document.querySelector('#price-search').value='nothing-matches';document.querySelector('#price-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
-  assert.ok(await run("return document.querySelector('#price-count').textContent==='Showing all 0'"),'search filters the price list');
+  assert.ok(await run("return document.querySelector('#price-count').textContent.startsWith('Showing all 0')"),'search filters the price list');
+  assert.ok(await run("return document.querySelector('#price-total').textContent.includes('0.00')"),'the total profit follows the search (no rows, no profit)');
   await run("document.querySelector('#price-search').value='';document.querySelector('#price-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
   // Customer payments page: a credit sale becomes a receivable, then the payment is recorded through the form.

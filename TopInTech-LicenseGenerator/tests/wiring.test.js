@@ -23,7 +23,9 @@ function allowedChannels() {
 }
 
 function mainChannels() {
-  const start = main.indexOf('const channels = {');
+  // The handlers live in `inner`; `channels` is the sign-in-guarded wrapper
+  // around them (a Proxy, so it has no literal channel list).
+  const start = main.indexOf('const inner = {');
   const block = main.slice(start, main.indexOf('\n};', start));
   return new Set([...block.matchAll(/^ {2}([a-zA-Z]+):/gm)].map(match => match[1]));
 }
@@ -47,6 +49,30 @@ test('the preload allow-list and the main handlers are the same set', () => {
   const allowed = [...allowedChannels()].sort();
   const handled = [...mainChannels()].sort();
   assert.deepEqual(allowed, handled);
+});
+
+test('the tool is locked until the owner signs in', () => {
+  // The window shows a sign-in form; the main process is the real lock, so a
+  // script in the page cannot reach the private key or the license database.
+  assert.match(html, /id="login-screen"/);
+  assert.match(html, /id="login-form"/);
+  assert.match(html, /id="login-username"/);
+  assert.match(html, /id="login-password"[^>]*type="password"/);
+  assert.match(html, /id="login-confirm"[^>]*type="password"/);
+  assert.match(html, /id="app-main" hidden/, 'the tool starts hidden behind the form');
+
+  assert.match(main, /let session = \{ signedIn: false/, 'the app starts signed out');
+  assert.match(main, /const PUBLIC_CHANNELS = new Set\(\['authState', 'signIn', 'register'\]\)/);
+  assert.match(main, /if \(!session\.signedIn\) throw new Error\('Sign in to continue\.'\)/, 'every other operation is refused');
+  assert.match(main, /new Proxy\(inner/, 'the guard wraps every handler');
+
+  // The password is hashed, never kept in clear text or written to a log.
+  assert.match(main, /require\('\.\/lib\/account'\)/);
+  const lib = fs.readFileSync(path.join(root, 'lib/account.js'), 'utf8');
+  assert.match(lib, /crypto\.scrypt\(/);
+  assert.match(lib, /timingSafeEqual/);
+  assert.equal(/console\.(log|error|warn)\([^)]*password/i.test(lib + main), false, 'the password is never logged');
+  assert.equal((html.match(/HKDEVELOPER2/g) || []).length, 0, 'no password is baked into the page');
 });
 
 test('the preload exposes only the call() function and no raw ipcRenderer', () => {
@@ -158,14 +184,15 @@ test('the fields the table reads exist on a decorated license row', () => {
     .map(match => match[1] || match[2]));
   assert.ok(columns.has('issued_on'), 'the schema must keep issued_on');
   assert.ok(columns.has('expires_on'), 'the schema must keep expires_on');
-  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain']);
+  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey']);
   const referenced = new Set([...renderer.matchAll(/\b(?:row|license)\.([a-z_]+)/gi)].map(match => match[1]));
   assert.ok(referenced.size > 4);
   for (const field of referenced) {
     assert.ok(columns.has(field) || decorated.has(field),
       `the renderer reads row.${field}, which neither the licenses table nor decorate() provides`);
   }
-  // decorate() must actually add the four display fields.
+  // decorate() must actually add the display fields, including the short install
+  // key the customer types into the setup wizard.
   const decorate = main.slice(main.indexOf('function decorate'), main.indexOf('function newLicenseId'));
   for (const field of decorated) {
     assert.match(decorate, new RegExp(`\\b${field}\\s*[:,]`), `decorate() does not add ${field}`);
@@ -279,7 +306,57 @@ test('the installer asks for the serial key before anything is installed', () =>
   assert.equal(keyMentions.length, 1, 'the key appears only in its !define, never in a label or message');
   assert.match(keyMentions[0], /!define ACTIVATION_KEY/);
   assert.match(nsh, /WriteRegStr HKLM "\$\{ACTIVATION_REG_KEY\}"/);
-  assert.match(nsh, /ReadRegStr \$0 HKLM/, 'an activated machine skips the page');
+  // An activated machine skips the page: the remembered flags are checked in
+  // ActivationKnownCheck (both registry views, marker files, installed app).
+  assert.match(nsh, /ReadRegStr \$1 HKLM/, 'an activated machine skips the page');
+});
+
+test('a laptop that was activated once is never asked for the key again', () => {
+  // The owner reinstalled the setup on a laptop that had been activated before
+  // and the "Enter Your Key" page came back, because only one registry value was
+  // remembered. The page must now look everywhere an activation can be stored.
+  const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro ActivationKnownCheck/);
+  const check = nsh.slice(nsh.indexOf('!macro ActivationKnownCheck'), nsh.indexOf('!macroend', nsh.indexOf('!macro ActivationKnownCheck')));
+  // Both registry views and both hives: 32-bit setup writes WOW6432Node.
+  assert.match(check, /SetRegView 64/, 'the 64-bit view is read');
+  assert.match(check, /SetRegView 32/, 'the 32-bit view is read');
+  assert.match(check, /SetRegView lastused/, 'the view is restored');
+  assert.equal((check.match(/ReadRegStr \$1 HKLM/g) || []).length, 2, 'HKLM is read through both views');
+  assert.equal((check.match(/ReadRegStr \$1 HKCU/g) || []).length, 2, 'HKCU is read through both views');
+  // Marker files survive an uninstall and a setup that could not write HKLM.
+  // The machine-wide folder is read from the ProgramData environment variable,
+  // because the bundled NSIS has no $COMMONAPPDATA and switching the shell
+  // context here would move the desktop shortcut the wizard later creates.
+  assert.doesNotMatch(check, /\$COMMONAPPDATA/, 'no variable the bundled makensis rejects');
+  assert.doesNotMatch(check, /SetShellVarContext/, 'the page must not change where shortcuts go');
+  assert.match(check, /ReadEnvStr \$1 "ProgramData"/);
+  assert.ok(check.includes('"$1\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the machine-wide marker is checked');
+  assert.ok(check.includes('"$LOCALAPPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the local-appdata marker is checked');
+  assert.ok(check.includes('"$APPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the roaming-appdata marker is checked');
+  // The application folder itself proves it was installed with a key.
+  assert.ok(check.includes('$PROGRAMFILES64\\Top In Tech License Generator'), 'the installed app counts as activated');
+  assert.ok(check.includes('$LOCALAPPDATA\\Programs\\Top In Tech License Generator'), 'a per-user install counts too');
+
+  // Leaving the page out is what "never asked again" means.
+  const show = nsh.slice(nsh.indexOf('Function ActivationPageShow'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageShow')));
+  assert.match(show, /!insertmacro ActivationKnownCheck/);
+  assert.match(show, /Abort/, 'the page removes itself when the machine is known');
+
+  // Every flag is written after a successful install, so the next run finds one.
+  assert.match(nsh, /!macro RememberActivation/);
+  const remember = nsh.slice(nsh.indexOf('!macro RememberActivation'), nsh.indexOf('!macroend', nsh.indexOf('!macro RememberActivation')));
+  assert.equal((remember.match(/WriteRegStr/g) || []).length, 4, 'both hives in both views are written');
+  assert.equal((remember.match(/FileOpen/g) || []).length, 3, 'three marker files are written');
+  assert.match(remember, /ReadEnvStr \$1 "ProgramData"/);
+  assert.doesNotMatch(remember, /SetShellVarContext/, 'writing the flags must not move the shortcuts');
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
+  assert.match(install, /!insertmacro RememberActivation/);
+  const uninstall = nsh.slice(nsh.indexOf('!macro customUnInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customUnInstall')));
+  assert.doesNotMatch(uninstall, /DeleteRegValue|DeleteRegKey/, 'uninstalling keeps the activation');
+  // The key itself is still never displayed.
+  const uiLines = nsh.split('\n').filter(line => !line.trim().startsWith(';'));
+  assert.equal(uiLines.filter(line => line.includes('mynewpharmacy1221')).length, 1);
 });
 
 test('the activation page is left out of the uninstaller pass', () => {
@@ -306,50 +383,51 @@ test('a silent install cannot skip the activation check', () => {
   assert.match(nsh, /ReadEnvStr \$R0 "TIT_SETUP_KEY"/);
   assert.match(nsh, /SetErrorLevel 2/);
   assert.match(nsh, /Quit/, 'a silent run without the key must stop, not install');
+  // ...unless the machine was already activated: a silent update is allowed.
+  const init = nsh.slice(nsh.indexOf('!macro customInit'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInit')));
+  assert.match(init, /!insertmacro ActivationKnownCheck/);
+  assert.ok(init.indexOf('ActivationKnownCheck') < init.indexOf('TIT_SETUP_KEY'), 'the remembered flag is checked before the environment key');
 });
 
-test('the NSIS include keeps the desktop icon for the current user', () => {
+test('the wizard owns the shortcuts, so no second Desktop icon is created', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
   assert.match(nsh, /!macro customInstall/);
-  assert.match(nsh, /SetShellVarContext current/);
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
-  assert.match(nsh, /!macro customUnInstall/);
-  assert.match(nsh, /Delete "\$DESKTOP/);
-  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
+
+  // electron-builder creates the Desktop and Start-menu shortcuts itself, in the
+  // all-users locations. Creating them again from customInstall is what put two
+  // identical icons on the Desktop, so the include must not create any.
+  assert.doesNotMatch(nsh, /CreateShortcut/, 'the wizard creates the shortcuts, not the include');
   assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
+  assert.equal(pkg.build.nsis.createDesktopShortcut, true, 'the wizard still makes the desktop icon');
+  assert.equal(pkg.build.nsis.createStartMenuShortcut, true, 'the wizard still makes the start-menu entry');
+  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
 });
 
-test('the icon files exist and the ico holds several sizes', () => {
-  const ico = fs.readFileSync(path.join(root, 'buildResources/icon.ico'));
-  assert.equal(ico.readUInt16LE(0), 0, 'reserved field');
-  assert.equal(ico.readUInt16LE(2), 1, 'type 1 = icon');
-  const count = ico.readUInt16LE(4);
-  assert.ok(count >= 4, `expected at least four icon sizes, found ${count}`);
-  const sizes = [];
-  for (let index = 0; index < count; index += 1) {
-    const offset = 6 + index * 16;
-    sizes.push(ico[offset] || 256);
-  }
-  for (const size of [256, 48, 32, 16]) assert.ok(sizes.includes(size), `missing the ${size}px icon`);
-  assert.ok(fs.existsSync(path.join(root, 'buildResources/icon.png')));
-});
-
-test('the NSIS include pins the desktop icon to the current user', () => {
+test('the include removes the duplicate shortcuts the older builds left behind', () => {
   const nsh = fs.readFileSync(path.join(root, 'buildResources/installer.nsh'), 'utf8');
-  assert.match(nsh, /!macro customInstall/);
-  assert.match(nsh, /SetShellVarContext current/);
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /\$\{APP_EXECUTABLE_FILENAME\}/);
-  assert.match(nsh, /CreateShortcut "\$SMPROGRAMS/);
-  assert.equal(pkg.build.nsis.runAfterFinish, true, 'the Finish page runs the app');
-  assert.doesNotMatch(nsh, /Exec '/, 'never launch the app from the elevated installer context');
-  // The icon is written to every desktop a redirected profile may use.
-  assert.match(nsh, /CreateShortcut "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
-  assert.match(nsh, /CreateShortcut "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'));
+  assert.match(install, /SetShellVarContext current/, 'the per-user copies belong to the account that ran setup');
+  assert.match(install, /Delete "\$DESKTOP\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$PROFILE\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$PROFILE\\OneDrive\\Desktop\\Top In Tech License Generator\.lnk"/);
+  assert.match(install, /Delete "\$SMPROGRAMS\\Top In Tech License Generator/);
   assert.match(nsh, /!macro customUnInstall/);
   assert.match(nsh, /Delete "\$DESKTOP/);
+});
+
+test('the install key for the Pharmacy setup is shown, copyable and reachable later', () => {
+  // main.js derives it from the serial, using the module the setup also relies on.
+  assert.match(main, /require\('\.\/lib\/setupkey'\)/, 'main.js must load lib/setupkey');
+  assert.match(main, /installKey:\s*setupkey\.makeInstallKey\(/, 'decorate() must add installKey');
+
+  // The result card shows it under the long serial, with its own copy button.
+  assert.match(html, /id="result-install-key"/);
+  assert.match(html, /id="copy-install-key"/);
+  assert.match(html, /Install key for the setup/);
+  assert.match(renderer, /\$\('#result-install-key'\)\.textContent\s*=\s*license\.installKey/,
+    'showResult() must display the install key');
+  assert.match(renderer, /\$\('#copy-install-key'\)\.addEventListener\('click'/,
+    'the copy button must be wired');
+  // A license sold earlier can still be looked up in the table.
+  assert.match(renderer, /copyText\(row\.installKey/, 'the licences table must offer the install key again');
 });

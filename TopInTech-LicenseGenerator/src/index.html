@@ -8,6 +8,43 @@
   <link rel="stylesheet" href="styles/app.css">
 </head>
 <body>
+  <!-- The tool opens locked: no serial can be generated until the owner signs in.
+       The form is also the first-run screen, where the owner account is created. -->
+  <section class="login" id="login-screen" aria-labelledby="login-title">
+    <form class="login-card" id="login-form" novalidate>
+      <div class="login-brand">
+        <img src="assets/pharmacy-logo.png" alt="" width="52" height="52">
+        <div>
+          <h1 id="login-title">Top In Tech <span>License Generator</span></h1>
+          <p id="login-lead">Owner sign-in · this tool never leaves your computer</p>
+        </div>
+      </div>
+
+      <label class="field" id="login-user-field">
+        <span>Username <b>*</b></span>
+        <input id="login-username" name="username" maxlength="40" autocomplete="username" spellcheck="false" placeholder="Owner username" required>
+      </label>
+
+      <label class="field">
+        <span>Password <b>*</b></span>
+        <input id="login-password" name="password" type="password" maxlength="128" autocomplete="current-password" placeholder="Your password" required>
+      </label>
+
+      <label class="field" id="login-confirm-field" hidden>
+        <span>Confirm password <b>*</b></span>
+        <input id="login-confirm" name="confirm" type="password" maxlength="128" autocomplete="new-password" placeholder="Repeat the password">
+      </label>
+
+      <p class="login-hint" id="login-hint">At least 6 characters. The password is stored only as a hash on this computer.</p>
+      <p class="login-error" id="login-error" role="alert"></p>
+
+      <button class="btn btn-primary login-submit" id="login-submit" type="submit">
+        <span id="login-submit-label">Sign in</span>
+      </button>
+
+      <p class="login-foot">Offline serial keys · owner tool · never shipped to customers</p>
+    </form>
+  </section>
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
@@ -25,7 +62,7 @@
     </div>
   </header>
 
-  <main class="layout">
+  <main class="layout" id="app-main" hidden>
     <section class="panel generator" aria-labelledby="generate-title">
       <header class="panel-head">
         <h2 id="generate-title">Create a license</h2>
@@ -63,6 +100,18 @@
       </form>
 
       <section class="result" id="result" hidden aria-live="polite">
+        <!-- The key the customer actually types. It sits first, above the long
+             serial, because it is the part that leaves this computer. -->
+        <div class="install-key" id="install-key-card">
+          <div class="install-key-head">
+            <h4>Install key — give this to the customer</h4>
+            <p>The setup asks for it on the “Enter your serial key” page.</p>
+          </div>
+          <div class="install-key-row">
+            <output id="result-install-key" aria-label="Install key for the setup wizard">—</output>
+            <button type="button" class="btn btn-secondary" id="copy-install-key">Copy Install Key</button>
+          </div>
+        </div>
         <div class="result-head">
           <div>
             <h3>Serial key</h3>

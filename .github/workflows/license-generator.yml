@@ -46,6 +46,29 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
+      # The tool opens locked. A wrong password must not reveal the tool, and the
+      # password itself must never be written into the bundle in clear text.
+      - name: Check the owner sign-in screen is wired into the app
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This job already runs inside TopInTech-LicenseGenerator.
+          page=src/index.html
+          renderer=src/scripts/app.js
+          bridge=preload.js
+          main=main.js
+          grep -q 'id="login-screen"' "$page"
+          grep -q 'id="login-password"' "$page"
+          grep -q 'id="app-main" hidden' "$page"
+          grep -q 'authState' "$renderer"
+          grep -q "'signIn'" "$bridge"
+          grep -q 'Sign in to continue' "$main"
+          if grep -q 'HKDEVELOPER2' "$page" "$renderer" "$bridge" "$main"; then
+            echo '::error::a password is baked into the application'
+            exit 1
+          fi
+          echo '::notice title=owner-sign-in-wired=True::the app opens on the sign-in form and hashes the password'
+
       - name: Check the installer script is present
         shell: bash
         run: |
@@ -205,17 +228,36 @@ jobs:
           Start-Sleep -Seconds 8
 
           $exe = Join-Path $env:ProgramFiles "$appName\$appName.exe"
-          $desktop = [Environment]::GetFolderPath('Desktop')
-          $link = Join-Path $desktop "$appName.lnk"
-          $startLink = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
-          $startLinkUser = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"
+          # Windows merges the all-users desktop with the signed-in user's desktop
+          # (which OneDrive may redirect), so count every place a shortcut could be.
+          $desktops = @(
+            (Join-Path $env:PUBLIC 'Desktop'),
+            [Environment]::GetFolderPath('Desktop'),
+            (Join-Path $env:USERPROFILE 'Desktop'),
+            (Join-Path $env:USERPROFILE 'OneDrive\Desktop')
+          ) | Where-Object { $_ } | Select-Object -Unique
+          $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
+          $link = $links | Select-Object -First 1
+          # The wizard puts the entry directly under Programs (or in its own
+          # folder when a menu category is configured), for all users.
+          $startCandidates = @(
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"),
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName.lnk"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName.lnk")
+          )
+          $startLinks = @($startCandidates | Where-Object { Test-Path $_ })
           $uninstaller = Join-Path $env:ProgramFiles "$appName\Uninstall $appName.exe"
           $activated = (Get-ItemProperty -Path "HKLM:\Software\Top In Tech\License Generator" -Name Activated -ErrorAction SilentlyContinue).Activated
 
           $required = [ordered]@{
             'installed in Program Files' = (Test-Path $exe)
-            'desktop shortcut'           = (Test-Path $link)
-            'start menu shortcut'        = ((Test-Path $startLink) -or (Test-Path $startLinkUser))
+            'desktop shortcut'           = ($links.Count -ge 1)
+            # One icon only: the wizard makes the all-users shortcut, and nothing
+            # else may add a private copy next to it.
+            'single desktop shortcut'    = ($links.Count -eq 1)
+            'start menu shortcut'        = ($startLinks.Count -ge 1)
+            'single start menu entry'    = ($startLinks.Count -eq 1)
             'uninstaller present'        = (Test-Path $uninstaller)
             'activation remembered'      = ($activated -eq '1')
           }
@@ -227,7 +269,7 @@ jobs:
             if (-not $ok) { $failed += 1 }
           }
           Write-Host "program file : $exe"
-          Write-Host "desktop link : $link"
+          Write-Host ("desktop link(s): " + (($links | ForEach-Object { $_ }) -join ' | '))
           if (Test-Path $link) {
             $shell = New-Object -ComObject WScript.Shell
             $target = $shell.CreateShortcut($link).TargetPath

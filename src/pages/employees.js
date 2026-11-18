@@ -1,6 +1,6 @@
 import {api,state,money,escapeHTML as e} from '../scripts/api.js';
 import {t} from '../scripts/i18n.js';
-import {icon,button,modal,form,field,bindForm,toast,run,refreshOptions} from '../components/ui.js';
+import {icon,button,modal,form,field,bindForm,toast,run,refreshOptions,confirmAction} from '../components/ui.js';
 import {bindPaymentAccount} from '../components/payment-fields.js';
 
 /* Employees: two totals, a search with an active/all switch and the team table.
@@ -41,10 +41,11 @@ export async function render(root){
         <td class="text-end nowrap">${money(row.salary)}</td>
         <td class="nowrap muted">${row.hired_on?e(row.hired_on):'—'}</td>
         <td><span class="badge ${Number(row.active)===1?'good':'muted'}"><i></i>${e(t(Number(row.active)===1?'active':'inactive'))}</span></td>
-        <td class="text-end nowrap"><button class="btn btn-ghost btn-sm" data-advance="${row.id}">${e(t('advance'))}</button><button class="btn btn-ghost btn-sm" data-edit="${row.id}">${e(t('edit'))}</button></td>
+        <td class="text-end nowrap"><span class="row-actions"><button class="btn btn-ghost btn-sm" data-advance="${row.id}">${e(t('advance'))}</button><button class="row-icon" data-edit="${row.id}" title="${e(t('edit'))}" aria-label="${e(t('edit'))} ${e(row.name)}">${icon('pencil',16)}</button>${Number(row.active)===1?`<button class="row-icon danger" data-remove="${row.id}" title="${e(t('removeEmployee'))}" aria-label="${e(t('removeEmployee'))} ${e(row.name)}">${icon('trash',16)}</button>`:''}</span></td>
       </tr>`).join(''):`<tr><td colspan="7" class="employees-empty-cell"><div class="employees-empty"><div class="employees-empty-icon">${icon('users',26)}</div><h3>${e(t(rows.length?'noEmployeeMatch':'noEmployees'))}</h3><p>${e(t(rows.length?'noEmployeeMatchHint':'noEmployeesHint'))}</p></div></td></tr>`;
     root.querySelectorAll('[data-edit]').forEach(node=>node.onclick=()=>openEmployee(rows.find(row=>row.id===Number(node.dataset.edit))));
     root.querySelectorAll('[data-advance]').forEach(node=>node.onclick=()=>openAdvance(rows.find(row=>row.id===Number(node.dataset.advance))));
+    root.querySelectorAll('[data-remove]').forEach(node=>node.onclick=()=>removeEmployee(rows.find(row=>row.id===Number(node.dataset.remove))));
   };
 
   async function load(){
@@ -67,10 +68,32 @@ export async function render(root){
       field('active',record?Number(record.active):1,{type:'checkbox'})
     ));
     bindForm(m.root,async data=>{
-      await api('save',{entity:'staff',id:record?.id,record:{...data,salary:Number(data.salary)}});
+      // The id belongs inside the record: main.js passes only p.record to
+      // saveEntity(), so an id beside it was ignored and every "edit" saved a
+      // brand-new employee. Editing now updates the same row.
+      await api('save',{entity:'staff',record:{...data,id:record?.id??undefined,salary:Number(data.salary)}});
       toast(t('recordSaved'));
       await load();
     },m.close);
+  });
+
+  /* Removing a team member deactivates the record instead of deleting it: the
+     salaries and advances already paid must stay in the reports, and the app's
+     rule everywhere else is "records are deactivated, not deleted". */
+  const removeEmployee=record=>run(async()=>{
+    const ok=await confirmAction(t('removeEmployee'),`${record.name} — ${t('removeEmployeeConfirm')}`);
+    if(!ok)return;
+    await api('save',{entity:'staff',record:{
+      id:record.id,
+      name:record.name,
+      phone:record.phone||'',
+      position:record.position||'',
+      salary:Number(record.salary)||0,
+      hired_on:record.hired_on||'',
+      active:0
+    }});
+    toast(t('employeeRemoved'));
+    await load();
   });
 
   const openAdvance=record=>run(async()=>{

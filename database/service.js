@@ -156,18 +156,29 @@ class PharmacyService {
     const rows = this.all(`SELECT m.id,m.name,m.generic_name,m.unit,m.cost,m.price,
         COALESCE(SUM(b.quantity),0) AS stock
       FROM medicines m LEFT JOIN batches b ON b.medicine_id=m.id
-      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => ({
-        ...row,
-        cost: round(row.cost),
-        price: round(row.price),
-        profit: round(Number(row.price) - Number(row.cost))
-      }));
+      WHERE m.active=1 GROUP BY m.id ORDER BY m.name`).map(row => {
+        const profit = round(Number(row.price) - Number(row.cost));
+        return {
+          ...row,
+          stock: Number(row.stock) || 0,
+          cost: round(row.cost),
+          price: round(row.price),
+          // Profit on one unit and, as the shopkeeper counts it, the profit
+          // locked in the stock on the shelf: 2 per tablet × 10 tablets = 20.
+          profit,
+          totalProfit: round(profit * (Number(row.stock) || 0))
+        };
+      });
     return {
       rows,
       totals: {
         medicines: rows.length,
         stockValue: round(rows.reduce((sum, row) => sum + Number(row.stock) * Number(row.cost), 0)),
-        profit: round(rows.reduce((sum, row) => sum + Number(row.profit), 0))
+        // Kept for older callers: the sum of the per-unit profits.
+        profit: round(rows.reduce((sum, row) => sum + Number(row.profit), 0)),
+        // The number the price list totals up: profit on every unit in stock.
+        totalProfit: round(rows.reduce((sum, row) => sum + Number(row.totalProfit), 0)),
+        units: rows.reduce((sum, row) => sum + Number(row.stock), 0)
       },
       currency: this.setting('currency')
     };
@@ -202,12 +213,30 @@ class PharmacyService {
       const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',account.id,from,to);
       return round(account.type==='income'?row.credit-row.debit:row.debit-row.credit);
     };
+    /* 4100 Sales returns and 4200 Sales discounts are contra-income: a return
+       debits them, so their natural balance reads negative. Take debit minus
+       credit, otherwise "Less: Sale returns" showed -50 and the revenue line was
+       inflated by the returned value instead of reduced by it. */
+    const contraTotal = code => {
+      const account = this.get('SELECT id FROM accounts WHERE code=?', code);
+      if (!account) return 0;
+      const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',account.id,from,to);
+      return round(Number(row.debit) - Number(row.credit));
+    };
     const salesRevenue = accountTotal('4000');
-    const saleReturns = accountTotal('4100');
-    const discounts = accountTotal('4200');
-    const cogs = accountTotal('5000');
+    const saleReturns = contraTotal('4100');
+    const discounts = contraTotal('4200');
+    /* Cost of goods sold comes from the documents, not from the 5000 account:
+       that account is already credited when a return puts stock back on the
+       shelf, so reading it and then subtracting the returned cost again counted
+       the same cost twice and overstated profit after every return. Gross cost
+       minus the cost of the goods that came back is the net cost of what stayed
+       sold; damaged goods that were not restocked keep their cost in COGS. */
+    const soldCost = this.get(`SELECT COALESCE(SUM(i.cost*i.quantity),0) AS cost FROM sale_items i
+      JOIN sales s ON s.id=i.sale_id WHERE date(s.date) BETWEEN ? AND ?`,from,to);
     const cogsReturned = round(this.get(`SELECT COALESCE(SUM(si.cost*sri.quantity),0) AS n FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
-      JOIN sale_returns r ON r.id=sri.return_id WHERE date(r.date) BETWEEN ? AND ?`,from,to).n);
+      JOIN sale_returns r ON r.id=sri.return_id WHERE sri.restock=1 AND date(r.date) BETWEEN ? AND ?`,from,to).n);
+    const cogs = round(Number(soldCost.cost));
     const expenses = accountTotal('6000');
     const netRevenue = round(salesRevenue - saleReturns);
     const netCogs = round(cogs - cogsReturned);
@@ -249,20 +278,33 @@ class PharmacyService {
     const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
     const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
     if (from > to) fail('Start date must be before end date.');
-    const sales = this.get(`SELECT COALESCE(SUM(s.subtotal),0) AS revenue,COALESCE(SUM(s.discount),0) AS discount,COALESCE(SUM(s.total),0) AS total,COUNT(s.id) AS orders
+    const sales = this.get(`SELECT COALESCE(SUM(s.total),0) AS total,COALESCE(SUM(s.discount),0) AS discount,COUNT(s.id) AS orders
       FROM sales s WHERE date(s.date) BETWEEN ? AND ?`,from,to);
     const items = this.get(`SELECT COALESCE(SUM(i.quantity),0) AS quantity,COALESCE(SUM(i.cost*i.quantity),0) AS cogs
       FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date) BETWEEN ? AND ?`,from,to);
-    const returns = this.get('SELECT COALESCE(SUM(total),0) AS total FROM sale_returns WHERE date(date) BETWEEN ? AND ?',from,to);
+    /* A return takes the whole value back out of Revenue, but only the profit
+       inside those goods out of Gross Profit: the medicine is back on the shelf,
+       so its cost leaves cost of goods sold too. 100 sold with 20 profit, half
+       returned → revenue 50, cost 40, gross profit 10. Goods returned damaged
+       (not restocked) are never put back on the shelf, so their cost stays in
+       COGS and the profit drops by the whole refund instead. */
+    const returns = this.get(`SELECT COALESCE(SUM(r.total),0) AS total
+      FROM sale_returns r WHERE date(r.date) BETWEEN ? AND ?`,from,to);
+    const returnedCost = this.get(`SELECT COALESCE(SUM(sri.quantity*si.cost),0) AS cost
+      FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+      JOIN sale_returns r ON r.id=sri.return_id
+      WHERE sri.restock=1 AND date(r.date) BETWEEN ? AND ?`,from,to);
     const expenses = this.get('SELECT COALESCE(SUM(amount),0) AS total,COUNT(*) AS entries FROM expenses WHERE date(date) BETWEEN ? AND ?',from,to);
-    const revenue = round(Number(sales.revenue) - Number(returns.total));
-    const cogs = round(items.cogs);
+    const revenue = round(Number(sales.total) - Number(returns.total));
+    const cogs = round(Number(items.cogs) - Number(returnedCost.cost));
     const grossProfit = round(revenue - cogs);
     const netProfit = round(grossProfit - Number(expenses.total));
     const trend = this.all(`SELECT d.day,
-        (SELECT COALESCE(SUM(s.subtotal),0) FROM sales s WHERE date(s.date)=d.day) -
+        (SELECT COALESCE(SUM(s.total),0) FROM sales s WHERE date(s.date)=d.day) -
         (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE date(r.date)=d.day) AS revenue,
-        (SELECT COALESCE(SUM(i.cost*i.quantity),0) FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date)=d.day) AS cogs
+        (SELECT COALESCE(SUM(i.cost*i.quantity),0) FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date)=d.day) -
+        (SELECT COALESCE(SUM(sri.quantity*si.cost),0) FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+           JOIN sale_returns r ON r.id=sri.return_id WHERE sri.restock=1 AND date(r.date)=d.day) AS cogs
       FROM (WITH RECURSIVE days(day) AS (SELECT ? UNION ALL SELECT date(day,'+1 day') FROM days WHERE day < ?) SELECT day FROM days) d
       ORDER BY d.day`,from,to).map(row=>{
         const dayRevenue = round(row.revenue);
@@ -280,6 +322,8 @@ class PharmacyService {
         orders: Number(sales.orders),
         itemsSold: Number(items.quantity),
         cogs,
+        returnedValue: round(Number(returns.total)),
+        returnedCost: round(Number(returnedCost.cost)),
         averageOrder: sales.orders ? round(Number(sales.total)/Number(sales.orders)) : 0,
         margin: revenue > 0 ? round(grossProfit / revenue * 100) : 0,
         expenseEntries: Number(expenses.entries)
@@ -634,14 +678,19 @@ class PharmacyService {
       kind: 'pricelist',
       from: '',
       to: '',
-      columns: ['name', 'stock', 'purchasePrice', 'sellingPrice', 'profit'],
-      rows: book.rows.map(row => ({
-        name: row.name,
-        stock: `${row.stock} ${row.unit}`,
-        purchasePrice: `${currency} ${row.cost.toFixed(2)}`,
-        sellingPrice: `${currency} ${row.price.toFixed(2)}`,
-        profit: `${currency} ${row.profit.toFixed(2)}`
-      })),
+      columns: ['name', 'stock', 'purchasePrice', 'sellingPrice', 'profit', 'totalProfit'],
+      rows: [
+        ...book.rows.map(row => ({
+          name: row.name,
+          stock: `${row.stock} ${row.unit}`,
+          purchasePrice: `${currency} ${row.cost.toFixed(2)}`,
+          sellingPrice: `${currency} ${row.price.toFixed(2)}`,
+          profit: `${currency} ${row.profit.toFixed(2)}`,
+          totalProfit: `${currency} ${row.totalProfit.toFixed(2)}`
+        })),
+        // The printed list totals the same way the page does.
+        { name: 'TOTAL', stock: `${book.totals.units}`, purchasePrice: '', sellingPrice: '', profit: '', totalProfit: `${currency} ${book.totals.totalProfit.toFixed(2)}` }
+      ],
       currency,
       pharmacyName: this.setting('pharmacy_name')
     };
@@ -1293,25 +1342,132 @@ class PharmacyService {
     };
   }
 
+  /* One customer ledger feeds every customer screen: the four totals on the
+     Customers page, the Balances tab of Customer Payments and the per-customer
+     statement. Money is split the way a shopkeeper reads it —
+       credit sales  the part of an invoice the customer did not pay at the counter
+       paid          cash handed over at the counter plus every later payment
+       returned      the part of a return that cancelled debt (cash refunds are
+                     tracked separately, they never change the balance)
+     so that  opening + creditSales - returned - payments = balance  always holds. */
+  customerLedger(customerId) {
+    const customer = this.get('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers WHERE id=?', id(customerId));
+    if (!customer) fail('Customer not found.');
+    const sales = this.all('SELECT id,invoice_no,date,subtotal,discount,total,paid,payment_method FROM sales WHERE customer_id=? ORDER BY date,id', customer.id);
+    const returns = this.all(`SELECT r.id,r.date,r.total,r.credit_amount,r.reason,r.method,s.invoice_no
+      FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id=? ORDER BY r.date,r.id`, customer.id);
+    const payments = this.all("SELECT id,date,amount,method,reference FROM payments WHERE party_type='customer' AND party_id=? ORDER BY date,id", customer.id);
+    const opening = round(customer.opening_balance);
+    // `total - paid` is exactly what an invoice added to the customer's debt,
+    // whether it was booked as a credit sale or half paid at the counter.
+    const creditSales = round(sales.reduce((sum,row) => sum + Math.max(0,row.total-row.paid),0));
+    const paidAtSale = round(sales.reduce((sum,row) => sum + row.paid,0));
+    const paymentsTotal = round(payments.reduce((sum,row) => sum + row.amount,0));
+    const returned = round(returns.reduce((sum,row) => sum + row.credit_amount,0));
+    const refunded = round(returns.reduce((sum,row) => sum + (row.total-row.credit_amount),0));
+    const paid = round(paidAtSale+paymentsTotal);
+    const balance = round(opening+creditSales-returned-paymentsTotal);
+    return {
+      customer,
+      sales, returns, payments,
+      opening,
+      creditSales,
+      paidAtSale,
+      paymentsTotal,
+      paid,
+      returned,
+      refunded,
+      balance,
+      owed: round(Math.max(0,balance)),
+      lastPayment: payments.length ? payments[payments.length-1].date : null
+    };
+  }
+  /* The statement is the same ledger written as running rows, oldest first. */
+  customerStatement(user, query = {}) {
+    this.require(user, 'customers');
+    const ledger = this.customerLedger(query.customerId ?? query.id);
+    const movements = [];
+    let running = ledger.opening;
+    if (ledger.opening) movements.push({ date:null, kind:'opening', reference:'', credit:ledger.opening, paid:0, balance:running, note:'' });
+    // Each line carries the invoice total and what was paid against it, so the
+    // customer recognises the numbers on their receipt. The sequence keeps the
+    // order stable when several entries share the same timestamp: invoices
+    // first, then returns, then payments.
+    const dated = [];
+    for (const row of ledger.sales) {
+      dated.push({ date:row.date, seq:row.id, kind:'sale', reference:row.invoice_no, credit:round(row.total), paid:round(row.paid), note:row.payment_method });
+    }
+    for (const row of ledger.returns) {
+      dated.push({ date:row.date, seq:1e9+row.id, kind:'return', reference:row.invoice_no, credit:0, paid:round(row.credit_amount), note:row.reason, refund:round(row.total-row.credit_amount) });
+    }
+    for (const row of ledger.payments) {
+      dated.push({ date:row.date, seq:2e9+row.id, kind:'payment', reference:row.reference, credit:0, paid:round(row.amount), note:row.method });
+    }
+    dated.sort((a,b) => String(a.date||'').localeCompare(String(b.date||'')) || a.seq-b.seq);
+    for (const row of dated) {
+      running = round(running+row.credit-row.paid);
+      movements.push({ ...row, balance:running, refund:row.refund||0 });
+    }
+    return {
+      customer: {
+        id: ledger.customer.id,
+        name: ledger.customer.name,
+        phone: ledger.customer.phone,
+        email: ledger.customer.email,
+        address: ledger.customer.address,
+        active: Number(ledger.customer.active) === 1 ? 1 : 0,
+        opening_balance: ledger.opening,
+        credit_limit: round(ledger.customer.credit_limit)
+      },
+      movements,
+      closing: running,
+      totals: {
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paid: ledger.paid,
+        paidAtSale: ledger.paidAtSale,
+        payments: ledger.paymentsTotal,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        owed: ledger.owed,
+        balance: ledger.balance
+      },
+      currency: this.setting('currency'),
+      pharmacyName: this.setting('pharmacy_name')
+    };
+  }
   customerBook(user) {
     this.require(user,'customers');
-    const balance = customer => {
-      const invoices = this.get('SELECT COALESCE(SUM(total-paid),0) AS n FROM sales WHERE customer_id=?',customer.id).n;
-      const returns = this.get('SELECT COALESCE(SUM(r.credit_amount),0) AS n FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id=?',customer.id).n;
-      const payments = this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE party_type=? AND party_id=?','customer',customer.id).n;
-      return round(customer.opening_balance+invoices-returns-payments);
-    };
-    const rows = this.all('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers ORDER BY name').map(customer => ({
-      ...customer,
-      active: Number(customer.active) === 1 ? 1 : 0,
-      balance: balance(customer)
-    }));
+    const rows = this.all('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers ORDER BY name').map(customer => {
+      const ledger = this.customerLedger(customer.id);
+      return {
+        ...customer,
+        active: Number(customer.active) === 1 ? 1 : 0,
+        balance: ledger.balance,
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paid: ledger.paid,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        owed: ledger.owed,
+        lastPayment: ledger.lastPayment
+      };
+    });
+    const total = key => round(rows.reduce((sum,row) => sum + row[key],0));
     return {
       rows,
       totals: {
         customers: rows.length,
         active: rows.filter(row => row.active === 1).length,
-        outstanding: round(rows.reduce((sum,row) => sum + Math.max(0,row.balance),0))
+        // Kept for the pages that already read it; `owed` is the same number.
+        outstanding: total('owed'),
+        owed: total('owed'),
+        creditSales: total('creditSales'),
+        paid: total('paid'),
+        returned: total('returned'),
+        refunded: total('refunded'),
+        opening: total('opening'),
+        withDues: rows.filter(row => row.owed > 0).length
       },
       currency: this.setting('currency')
     };
@@ -1321,28 +1477,42 @@ class PharmacyService {
     const from = query.from ? date(query.from) : '0000-01-01';
     const to = query.to ? date(query.to) : '9999-12-31';
     if (from > to) fail('Start date must be before end date.');
-    const byId = rows => new Map(rows.map(row => [row.id, row]));
-    const credit = byId(this.all("SELECT customer_id AS id,SUM(total) AS total FROM sales WHERE payment_method='credit' AND customer_id IS NOT NULL AND date(date) BETWEEN ? AND ? GROUP BY customer_id",from,to));
-    const payments = byId(this.all("SELECT party_id AS id,SUM(amount) AS total,MAX(date) AS last FROM payments WHERE party_type='customer' AND date(date) BETWEEN ? AND ? GROUP BY party_id",from,to));
-    const returns = byId(this.all("SELECT s.customer_id AS id,SUM(r.total) AS total FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id IS NOT NULL AND date(r.date) BETWEEN ? AND ? GROUP BY s.customer_id",from,to));
-    const rows = this.all('SELECT id,name,phone,opening_balance FROM customers WHERE active=1 ORDER BY name').map(customer => ({
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      creditSales: round(credit.get(customer.id)?.total||0),
-      paid: round(payments.get(customer.id)?.total||0),
-      returned: round(returns.get(customer.id)?.total||0),
-      balance: this.party('customer',customer.id).balance,
-      lastPayment: payments.get(customer.id)?.last||null
-    }));
+    // The balances come from the shared ledger (opening balance, counter
+    // payments, later payments and debt-cancelling returns), so a half-paid
+    // invoice is counted once and the four totals always add up to the balance.
+    const rows = this.all('SELECT id FROM customers WHERE active=1 ORDER BY name').map(customer => {
+      const ledger = this.customerLedger(customer.id);
+      return {
+        id: ledger.customer.id,
+        name: ledger.customer.name,
+        phone: ledger.customer.phone,
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paidAtSale: ledger.paidAtSale,
+        payments: ledger.paymentsTotal,
+        paid: ledger.paid,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        balance: ledger.balance,
+        owed: ledger.owed,
+        lastPayment: ledger.lastPayment
+      };
+    });
+    const total = key => round(rows.reduce((sum,row)=>sum+row[key],0));
     return {
       rows,
       totals: {
-        creditSales: round(rows.reduce((sum,row)=>sum+row.creditSales,0)),
-        paid: round(rows.reduce((sum,row)=>sum+row.paid,0)),
-        returned: round(rows.reduce((sum,row)=>sum+row.returned,0)),
-        owed: round(rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+        customers: rows.length,
+        creditSales: total('creditSales'),
+        paid: total('paid'),
+        paidAtSale: total('paidAtSale'),
+        payments: total('payments'),
+        returned: total('returned'),
+        refunded: total('refunded'),
+        owed: total('owed'),
+        withDues: rows.filter(row=>row.owed>0).length
       },
+      from, to,
       currency: this.setting('currency')
     };
   }

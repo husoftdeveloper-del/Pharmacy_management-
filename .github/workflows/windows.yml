@@ -21,7 +21,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +40,270 @@ jobs:
           npm run dist:win 2>&1 | tee artifacts/windows-build.log
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The setup asks the customer for the install key the owner generates in
+      # Top In Tech License Generator, and refuses anything else. The page lives
+      # inside the compressed installer body, so the real NSIS compiler used by
+      # the build preprocesses a wizard script that includes this repository's
+      # build/installer.nsh, and the page is asserted in that output.
+      - name: Check the activation page compiles into the setup wizard
+        shell: pwsh
+        run: |
+          $nsis = Get-ChildItem "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Filter 'makensis.exe' |
+            Where-Object { $_.FullName -like '*nsis-3.0.4.1*' } | Select-Object -First 1
+          if (-not $nsis) { Write-Error 'makensis.exe was not found in the electron-builder cache'; exit 1 }
+          # The compiler sits in a Bin folder and the includes are above it, but the
+          # cache nests the bundle an extra level deep: walk up until Stubs is there.
+          $root = $nsis.Directory.FullName
+          while ($root -and -not (Test-Path (Join-Path $root 'Stubs'))) { $root = Split-Path $root -Parent }
+          if (-not $root) { Write-Error 'the NSIS bundle root (Stubs folder) was not found'; exit 1 }
+          $env:NSISDIR = $root
+          Write-Host "makensis: $($nsis.FullName)"
+
+          # Same shape as the real wizard: the custom page first, then Location,
+          # Install and Finish, with the silent guard in .onInit.
+          $include = (Resolve-Path 'build\installer.nsh').Path
+          $harness = Join-Path $env:RUNNER_TEMP 'pharmacy-activation.nsi'
+          $harnessText = @"
+          !include "$include"
+          Name "Pharmacy activation check"
+          OutFile "$env:RUNNER_TEMP\pharmacy-activation.exe"
+          InstallDir "`$LOCALAPPDATA\Programs\Pharmacy Management"
+          !include "MUI2.nsh"
+          !insertmacro customWelcomePage
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_LANGUAGE "English"
+          Section
+          SectionEnd
+          Function .onInit
+            !insertmacro customInit
+          FunctionEnd
+          "@
+          [System.IO.File]::WriteAllText($harness, $harnessText, (New-Object System.Text.UTF8Encoding $false))
+
+          $output = & $nsis.FullName -V2 -INPUTCHARSET UTF8 -PPO $harness 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::error::makensis rejected the setup script'
+            foreach ($line in ($output -split "`n" | Select-Object -Last 8)) { Write-Host "::error::$line" }
+            exit 1
+          }
+
+          # The order of the pages is a property of the script, not of the
+          # compiled output (makensis expands MUI_PAGE_WELCOME, so its text is
+          # gone from the preprocessed listing).
+          $script = Get-Content 'build\installer.nsh' -Raw
+          $welcome = $script.IndexOf('!insertmacro MUI_PAGE_WELCOME')
+          $activation = $script.IndexOf('Page custom ActivationPageShow ActivationPageLeave')
+          $checks = [ordered]@{
+            'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
+            'welcome page before the activation page' = ($welcome -ge 0 -and $welcome -lt $activation)
+            'page title'                    = $output.Contains('Pharmacy Management Activation')
+            'key label'                     = $output.Contains('Enter your serial key')
+            'Continue button'               = $output.Contains('STR:Continue')
+            'Cancel button'                 = $output.Contains('STR:Cancel')
+            'invalid key message'           = $output.Contains('Invalid Serial Key!')
+            'not installed message'         = $output.Contains('Application Not Installed.')
+            'silent guard'                  = $output.Contains('PHARMACY_SETUP_KEY')
+            # Nothing in the compiled page may skip the form for an old install.
+            'no activation memory in the page' = (-not $output.Contains('activated.txt'))
+            'no registry memory in the page'   = (-not $output.Contains('Top In Tech\Pharmacy Management'))
+          }
+          $failed = 0
+          foreach ($key in $checks.Keys) {
+            $ok = $checks[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=setup-wizard-$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed setup wizard check(s) failed"; exit 1 }
+
+      # A silent install (/S) never draws the page, so it proves the key through
+      # PHARMACY_SETUP_KEY instead. Without a key - and with a wrong one - the
+      # installer must stop without touching the disk.
+      - name: A silent install is refused without a valid serial key
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Pharmacy Management\Pharmacy Management.exe'
+
+          $cases = @(
+            @{ name = 'no key'; key = $null },
+            @{ name = 'made-up key'; key = 'ABCD-1234-5678-9ABC' }
+          )
+          $failed = 0
+          foreach ($case in $cases) {
+            Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+            if ($case.key) { $env:PHARMACY_SETUP_KEY = $case.key }
+            $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+            $null = $process.WaitForExit(120000)
+            Start-Sleep -Seconds 3
+            $refused = -not (Test-Path $exe)
+            Write-Host "$($case.name): exit code $($process.ExitCode), installed: $(Test-Path $exe)"
+            Write-Host "::notice title=silent-install-refused-$($case.name -replace ' ','-')=$refused::the setup stopped instead of installing"
+            if (-not $refused) {
+              Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'Programs\Pharmacy Management') -ErrorAction SilentlyContinue
+              $failed += 1
+            }
+          }
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          if ($failed -gt 0) { Write-Error "$failed silent install(s) were allowed without a valid serial key"; exit 1 }
+
+      # The same key the owner copies out of Top In Tech License Generator lets the
+      # install finish: one program folder, one Desktop icon, one Start-menu entry.
+      - name: A valid serial key installs the application once
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
+
+          # Exactly what the generator's "Copy Install Key" button produces.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          Write-Host "install key: $env:PHARMACY_SETUP_KEY"
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $exited = $process.WaitForExit(180000)
+          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
+          Write-Host "installer exit code: $($process.ExitCode) (exited: $exited)"
+          Start-Sleep -Seconds 8
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+
+          $appName = 'Pharmacy Management'
+          $programs = @(
+            (Join-Path $env:LOCALAPPDATA "Programs\$appName"),
+            (Join-Path $env:ProgramFiles $appName),
+            (Join-Path ${env:ProgramFiles(x86)} $appName)
+          ) | Where-Object { $_ }
+          $exe = @($programs | ForEach-Object { Join-Path $_ "$appName.exe" } | Where-Object { Test-Path $_ }) | Select-Object -First 1
+          $installDir = if ($exe) { Split-Path $exe -Parent } else { $null }
+
+          $desktops = @(
+            [Environment]::GetFolderPath('Desktop'),
+            (Join-Path $env:USERPROFILE 'Desktop'),
+            (Join-Path $env:USERPROFILE 'OneDrive\Desktop'),
+            (Join-Path $env:PUBLIC 'Desktop')
+          ) | Where-Object { $_ } | Select-Object -Unique
+          $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
+
+          $startCandidates = @(
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName.lnk"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk"),
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName.lnk"),
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$appName\$appName.lnk")
+          )
+          $startLinks = @($startCandidates | Where-Object { Test-Path $_ })
+
+          # The setup must not leave an activation record behind: a later run has to
+          # ask again, so nothing may be readable that says "already activated".
+          $leftover = @(
+            (Test-Path "HKCU:\Software\Top In Tech\Pharmacy Management"),
+            (Test-Path "HKLM:\Software\Top In Tech\Pharmacy Management"),
+            (Test-Path (Join-Path $env:LOCALAPPDATA 'Top In Tech\Pharmacy Management\activated.txt'))
+          ) -contains $true
+
+          $required = [ordered]@{
+            'the application is installed' = [bool]$exe
+            'desktop shortcut'             = ($links.Count -ge 1)
+            'single desktop shortcut'      = ($links.Count -eq 1)
+            'start menu shortcut'          = ($startLinks.Count -ge 1)
+            'single start menu entry'      = ($startLinks.Count -eq 1)
+            'uninstaller present'          = ($installDir -and (Test-Path (Join-Path $installDir "Uninstall $appName.exe")))
+            'no activation record left behind' = (-not $leftover)
+          }
+          $failed = 0
+          foreach ($key in $required.Keys) {
+            $ok = $required[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          Write-Host "program file  : $exe"
+          Write-Host ("desktop link(s): " + ($links -join ' | '))
+          if ($links.Count -gt 0) {
+            $shell = New-Object -ComObject WScript.Shell
+            $target = $shell.CreateShortcut($links[0]).TargetPath
+            $targetOk = Test-Path $target
+            Write-Host "shortcut target: $target (exists: $targetOk)"
+            Write-Host "::notice title=shortcut-target=$targetOk::$target"
+            if (-not $targetOk) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed installation check(s) failed"; exit 1 }
+          Write-Host 'The serial key installs the app once, with one icon and one Start-menu entry.'
+
+      # The rule the owner asked for last: uninstalling does not unlock anything.
+      # After a real uninstall, a setup run without a key must be refused, and a
+      # run with a valid key must ask again and install once.
+      - name: Uninstall, then reinstall asks for the key again
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
+
+          $appName = 'Pharmacy Management'
+          $exe = @(
+            (Join-Path $env:LOCALAPPDATA "Programs\$appName\$appName.exe"),
+            (Join-Path $env:ProgramFiles "$appName\$appName.exe")
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) { Write-Error 'the application is not installed, so the uninstall cannot be tested'; exit 1 }
+          $uninstaller = Join-Path (Split-Path $exe -Parent) "Uninstall $appName.exe"
+
+          $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru
+          $null = $process.WaitForExit(120000)
+          # An NSIS uninstaller copies itself to %TEMP% and returns at once, so the
+          # removal is waited for rather than assumed.
+          for ($i = 0; $i -lt 30 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 2 }
+          $uninstalled = -not (Test-Path $exe)
+          Write-Host "uninstall exit code: $($process.ExitCode), removed: $uninstalled"
+          Write-Host "::notice title=uninstalled=$uninstalled::the application was removed"
+          if (-not $uninstalled) { Write-Error 'the uninstaller did not remove the application'; exit 1 }
+
+          # One: a fresh setup without a key must still be refused.
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          $refused = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $refused.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $blocked = -not (Test-Path $exe)
+          Write-Host "setup without a key after an uninstall: exit code $($refused.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=reinstall-without-key-refused=$blocked::the old installation does not unlock the setup"
+          if (-not $blocked) {
+            Remove-Item -Recurse -Force (Split-Path $exe -Parent) -ErrorAction SilentlyContinue
+            Write-Error 'A reinstall after an uninstall skipped the serial key';
+            exit 1
+          }
+
+          # Two: the same setup with a valid key installs again, once.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          $again = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $exited = $again.WaitForExit(180000)
+          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
+          Start-Sleep -Seconds 8
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          Write-Host "reinstall exit code: $($again.ExitCode) (exited: $exited)"
+
+          $reinstalled = Test-Path $exe
+          $desktops = @(
+            [Environment]::GetFolderPath('Desktop'),
+            (Join-Path $env:USERPROFILE 'Desktop'),
+            (Join-Path $env:USERPROFILE 'OneDrive\Desktop'),
+            (Join-Path $env:PUBLIC 'Desktop')
+          ) | Where-Object { $_ } | Select-Object -Unique
+          $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
+
+          $required = [ordered]@{
+            'the reinstall accepted the valid key' = ($again.ExitCode -eq 0)
+            'still installed'                      = $reinstalled
+            'still exactly one desktop icon'        = ($links.Count -eq 1)
+          }
+          $failed = 0
+          foreach ($key in $required.Keys) {
+            $ok = $required[$key]
+            Write-Host "$(if ($ok) { 'ok  ' } else { 'FAIL' }) $key"
+            Write-Host "::notice title=reinstall-$($key -replace ' ','-')=$ok::$key"
+            if (-not $ok) { $failed += 1 }
+          }
+          if ($failed -gt 0) { Write-Error "$failed reinstall check(s) failed"; exit 1 }
+          Write-Host 'After an uninstall the setup asks for the key again and installs once with one icon.'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

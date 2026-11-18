@@ -17,8 +17,12 @@ export async function render(root){
     </section>
     <section class="card price-list-card">
       <div class="table-scroll"><table class="price-list-table">
-        <thead><tr><th>${e(t('name'))}</th><th>${e(t('stock'))}</th><th>${e(t('purchasePrice'))}</th><th>${e(t('sellingPrice'))}</th><th class="text-end">${e(t('profitPerUnit'))}</th></tr></thead>
+        <thead><tr><th>${e(t('name'))}</th><th>${e(t('stock'))}</th><th>${e(t('purchasePrice'))}</th><th>${e(t('sellingPrice'))}</th><th class="text-end">${e(t('profitPerUnit'))}</th><th class="text-end">${e(t('totalProfit'))}</th></tr></thead>
         <tbody id="price-rows"></tbody>
+        <tfoot><tr>
+          <td colspan="5" class="text-end price-total-label">${e(t('totalProfit'))}</td>
+          <td class="text-end nowrap"><strong class="price-total" id="price-total">${e(currency)} ${money(0)}</strong></td>
+        </tr></tfoot>
       </table></div>
       <footer class="price-list-footer"><span id="price-count"></span></footer>
     </section>`;
@@ -37,8 +41,14 @@ export async function render(root){
           <button class="price-edit" type="button" data-edit-price="${row.id}" aria-label="${e(t('editSellingPrice'))}" title="${e(t('editSellingPrice'))}">${icon('pencil',14)}</button>
         </td>
         <td class="text-end nowrap"><strong class="profit ${Number(row.profit)>=0?'':'negative'}">${price(row.profit)}</strong></td>
-      </tr>`).join(''):`<tr><td colspan="5" class="price-list-empty-cell"><div class="price-list-empty"><div class="price-list-empty-icon">${icon('printer',26)}</div><h3>${e(t('noPriceList'))}</h3><p>${e(t('noPriceListHint'))}</p></div></td></tr>`;
-    root.querySelector('#price-count').textContent=`${t('showingAll')} ${visible.length}`;
+        <td class="text-end nowrap"><strong class="total-profit ${Number(row.totalProfit)>=0?'':'negative'}" data-total-profit="${row.id}">${price(row.totalProfit)}</strong><small class="profit-formula">${row.stock} × ${money(row.profit)}</small></td>
+      </tr>`).join(''):`<tr><td colspan="6" class="price-list-empty-cell"><div class="price-list-empty"><div class="price-list-empty-icon">${icon('printer',26)}</div><h3>${e(t('noPriceList'))}</h3><p>${e(t('noPriceListHint'))}</p></div></td></tr>`;
+    // The footer follows the search: it adds up the rows the owner is looking
+    // at, so filtering to one medicine shows that medicine's total profit.
+    const total=visible.reduce((sum,row)=>sum+Number(row.totalProfit||0),0);
+    const units=visible.reduce((sum,row)=>sum+Number(row.stock||0),0);
+    root.querySelector('#price-total').textContent=price(total);
+    root.querySelector('#price-count').textContent=`${t('showingAll')} ${visible.length} · ${units} ${t('units')}`;
     root.querySelectorAll('[data-edit-price]').forEach(node=>node.onclick=()=>startEdit(Number(node.dataset.editPrice)));
   };
 

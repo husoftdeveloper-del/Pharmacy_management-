@@ -60,9 +60,25 @@ The **Software Activation** page asks for **Enter Your Key** and has `Continue`
 and `Cancel` buttons. Only the serial key supplied with the purchase is
 accepted, and it is compared case-sensitively. A wrong or empty key keeps the
 user on the page with an error and the install never starts. The key itself is
-never displayed anywhere in the installer. Once a machine is activated the
-answer is stored under `HKEY_LOCAL_MACHINE\Software\Top In Tech\License
-Generator`, so repairs, reinstalls and updates never ask again.
+never displayed anywhere in the installer.
+
+Once a machine is activated the answer is remembered in several places at once,
+and the page asks again only when **none** of them is found:
+
+- `HKEY_LOCAL_MACHINE` and `HKEY_CURRENT_USER`, each read through **both** the
+  32-bit and the 64-bit registry view (a 32-bit setup writes into
+  `WOW6432Node`, a 64-bit one writes at the top of `Software`);
+- `activated.txt` in `%ProgramData%\Top In Tech\License Generator`,
+  `%LOCALAPPDATA%\Top In Tech\License Generator` and
+  `%APPDATA%\Top In Tech\License Generator` (the ProgramData folder is read
+  from the `ProgramData` environment variable, because the NSIS that
+  electron-builder ships has no constant for it);
+- the installed application folder itself (`C:\Program Files\Top In Tech
+  License Generator`) — it cannot be there without the key.
+
+So a repair, a reinstall, an update, a reinstall after an uninstall and even a
+silent `/S` update on an activated laptop all go straight past the activation
+page. Uninstalling never removes these flags.
 
 The install directory defaults to `C:\Program Files\Top In Tech License
 Generator`, and the wizard leaves a desktop shortcut and a Start menu entry.
@@ -131,6 +147,36 @@ backup offline: without `private.pem` no new keys can be made for that key id.
 
 Every generated key is verified against the public key before it is saved, so a
 damaged key pair can never hand a customer a serial that their app rejects.
+
+## Install key for the Pharmacy setup
+
+The long serial is the licence; it is also 170 characters, so nobody types it
+into a setup wizard. Each license therefore also has a short **install key**:
+
+```
+ABC-123        6 characters: 5 data + 1 check
+```
+
+* The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
+  so one serial always produces the same key and a second license produces a
+  different one.
+* The 1 check character comes from a small arithmetic fold
+  (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
+  runs exactly the same arithmetic in `build/installer.nsh`.
+* The result card shows the key under **Install key for the setup** with
+  **Copy Install Key**; the licences table has a ⌨ button that copies it again
+  for a key sold earlier.
+* The customer types it on the setup's **Pharmacy Management Activation** page.
+  A typo or an empty field shows *"Invalid Serial Key! / Application Not
+  Installed."* and the install does not start. Dashes, spaces and lower case are
+  all accepted.
+* The setup asks on **every** run: a repair, a reinstall, an upgrade or an
+  install after an uninstall on the same computer all need the key again. The
+  installer stores no activation record, so an old installation cannot open it.
+
+This check stops casual copying; it is not the security boundary. The signed
+serial is: verify it in the customer app with `public.pem`, as described in
+[`docs/customer-verification.md`](docs/customer-verification.md).
 
 ## Records
 
