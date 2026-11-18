@@ -21,7 +21,7 @@ export async function render(root){
         <tbody id="price-rows"></tbody>
         <tfoot><tr>
           <td colspan="5" class="text-end price-total-label">${e(t('totalProfit'))}</td>
-          <td class="text-end nowrap"><strong class="price-total" id="price-total">${price(0)}</strong></td>
+          <td class="text-end nowrap"><strong class="price-total" id="price-total">${e(currency)} ${money(0)}</strong></td>
         </tr></tfoot>
       </table></div>
       <footer class="price-list-footer"><span id="price-count"></span></footer>
