@@ -233,7 +233,7 @@ jobs:
       # The rule the owner asked for last: uninstalling does not unlock anything.
       # After a real uninstall, a setup run without a key must be refused, and a
       # run with a valid key must ask again and install once.
-      - name: Uninstall, then reinstall asks for the key again
+      - name: Uninstall, then reinstall asks for the key again (with a 2.3.2 key)
         shell: pwsh
         run: |
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
@@ -271,8 +271,11 @@ jobs:
             exit 1
           }
 
-          # Two: the same setup with a valid key installs again, once.
-          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          # Two: the same setup with a valid key installs again, once. This run uses
+          # the 16-character key that generator 2.3.2 printed, because an older key
+          # the owner already handed out must keep working.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').legacyMakeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          Write-Host "legacy install key: $env:PHARMACY_SETUP_KEY"
           $again = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $again.WaitForExit(180000)
           if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }

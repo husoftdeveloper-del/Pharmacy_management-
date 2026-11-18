@@ -83,3 +83,17 @@ test('a real serial from the generator produces a working install key', () => {
   assert.equal(keys.verifyInstallKey(installKey).reason, '');
   assert.equal(serial.verifySerial(serial.formatSerial(signed), publicPem).valid, true, 'the signed serial stays valid');
 });
+
+test('a 16-character key from version 2.3.2 is still accepted', () => {
+  // The owner may keep an old key or an old printout; the setup accepts both
+  // shapes, so this module must too.
+  const legacy = keys.legacyMakeInstallKey('TIT1OLD.SERIAL-0001');
+  assert.equal(legacy.replace(/-/g, '').length, 16);
+  assert.equal(keys.verifyInstallKey(legacy).valid, true);
+  assert.equal(keys.verifyInstallKey(legacy.toLowerCase()).valid, true);
+  // Damage it and it is refused, like any other key.
+  const broken = (legacy[0] === 'A' ? 'B' : 'A') + legacy.slice(1);
+  assert.equal(keys.verifyInstallKey(broken).valid, false);
+  // The current generator keeps issuing the short key.
+  assert.match(keys.makeInstallKey('TIT1OLD.SERIAL-0001'), /^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
+});

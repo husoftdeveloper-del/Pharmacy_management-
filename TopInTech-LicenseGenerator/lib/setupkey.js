@@ -30,6 +30,10 @@ const MODULUS = 100003;
 const DATA_LENGTH = 5; // characters taken from the serial
 const CHECK_LENGTH = 1; // characters that prove the rest was typed correctly
 const GROUPS = 3; // ABC-123, so six characters read as two small pieces
+// The shape version 2.3.2 printed (WXYZ-1234-5678-9ABC). Keys issued then are
+// still accepted by the setup, so nobody has to ask for a new key.
+const LEGACY_DATA_LENGTH = 12;
+const LEGACY_CHECK_LENGTH = 4;
 
 // Alphabet index of one character; accepts the lower-case form and the usual
 // Crockford confusions (O -> 0, I/L -> 1) so a key read over the phone works.
@@ -55,9 +59,20 @@ function checkGroups(data) {
   return ALPHABET[a % 32];
 }
 
+// The four check characters of the 2.3.2 layout, kept so an older key can still
+// be told apart from a mistyped one.
+function legacyCheckGroups(data) {
+  const a = fold(data);
+  const b = (a * 37 + 11) % MODULUS;
+  return [a % 32, Math.floor(a / 32) % 32, b % 32, Math.floor(b / 32) % 32]
+    .map(index => ALPHABET[index])
+    .join('');
+}
+
 // Data characters: a stable base32 slice of the serial, so one license gets one
-// key and the same key is shown every time the row is opened.
-function dataFor(serial) {
+// key and the same key is shown every time the row is opened. A longer slice is
+// the same stream continued, which is how 2.3.2 printed twelve characters.
+function dataSlice(serial, length) {
   const digest = crypto.createHash('sha256').update(`install:${String(serial || '')}`, 'utf8').digest();
   let bits = 0;
   let value = 0;
@@ -65,13 +80,24 @@ function dataFor(serial) {
   for (const byte of digest) {
     value = (value << 8) | byte;
     bits += 8;
-    while (bits >= 5 && output.length < DATA_LENGTH) {
+    while (bits >= 5 && output.length < length) {
       output += ALPHABET[(value >>> (bits - 5)) & 31];
       bits -= 5;
     }
-    if (output.length >= DATA_LENGTH) break;
+    if (output.length >= length) break;
   }
   return output;
+}
+
+function dataFor(serial) {
+  return dataSlice(serial, DATA_LENGTH);
+}
+
+// The whole key exactly as version 2.3.2 printed it, for a customer who still
+// holds the old paper slip.
+function legacyMakeInstallKey(serial) {
+  const data = dataSlice(serial, LEGACY_DATA_LENGTH);
+  return (data + legacyCheckGroups(data)).replace(/(.{4})(?=.)/g, '$1-');
 }
 
 function group(text) {
@@ -92,21 +118,28 @@ function normalise(key) {
 // whatever the customer typed.
 function verifyInstallKey(key) {
   const clean = normalise(key);
-  const length = DATA_LENGTH + CHECK_LENGTH;
   if (!clean) return { valid: false, reason: 'Please enter your serial key to continue.' };
-  if (clean.length !== length) return { valid: false, reason: 'The key you entered is not valid. Check it and try again.' };
+  const refuse = { valid: false, reason: 'The key you entered is not valid. Check it and try again.' };
   try {
-    const data = clean.slice(0, DATA_LENGTH);
-    if (checkGroups(data) !== clean.slice(DATA_LENGTH)) {
-      return { valid: false, reason: 'The key you entered is not valid. Check it and try again.' };
+    if (clean.length === DATA_LENGTH + CHECK_LENGTH) {
+      const data = clean.slice(0, DATA_LENGTH);
+      if (checkGroups(data) === clean.slice(DATA_LENGTH)) return { valid: true, reason: '' };
+      return refuse;
+    }
+    if (clean.length === LEGACY_DATA_LENGTH + LEGACY_CHECK_LENGTH) {
+      const data = clean.slice(0, LEGACY_DATA_LENGTH);
+      if (legacyCheckGroups(data) === clean.slice(LEGACY_DATA_LENGTH)) return { valid: true, reason: '' };
+      return refuse;
     }
   } catch {
-    return { valid: false, reason: 'The key you entered is not valid. Check it and try again.' };
+    return refuse;
   }
-  return { valid: true, reason: '' };
+  return refuse;
 }
 
 module.exports = {
   ALPHABET, SALT, MODULUS, DATA_LENGTH, CHECK_LENGTH, GROUPS,
-  indexOf, fold, checkGroups, dataFor, group, makeInstallKey, verifyInstallKey, normalise
+  LEGACY_DATA_LENGTH, LEGACY_CHECK_LENGTH,
+  indexOf, fold, checkGroups, legacyCheckGroups, dataFor, dataSlice, group,
+  makeInstallKey, legacyMakeInstallKey, verifyInstallKey, normalise
 };

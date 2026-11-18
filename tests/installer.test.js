@@ -29,26 +29,32 @@ function nsisValidate(raw) {
   const alphabet = value('SETUP_ALPHABET');
   const salt = value('SETUP_SALT');
   const modulus = Number(value('SETUP_MODULUS'));
-  const dataLength = Number(value('SETUP_DATA_LENGTH'));
-  const keyLength = Number(value('SETUP_KEY_LENGTH'));
-  const key = String(raw).replace(/ /g, '').replace(/-/g, '');
-  if (key.length !== keyLength) return false;
+  const shapes = [
+    { data: Number(value('SETUP_DATA_LENGTH')), length: Number(value('SETUP_KEY_LENGTH')), legacy: false },
+    { data: Number(value('SETUP_LEGACY_DATA_LENGTH')), length: Number(value('SETUP_LEGACY_KEY_LENGTH')), legacy: true }
+  ];
+  const key = String(raw).replace(/ /g, '').replace(/-/g, '').toUpperCase();
+  const shape = shapes.find(entry => entry.length === key.length);
+  if (!shape) return false;
   const indexOf = char => {
     for (let i = 0; i < 32; i += 1) {
-      if (alphabet[i].toLowerCase() === String(char).toLowerCase()) return i;
+      if (alphabet[i] === char) return i;
     }
     return 32;
   };
   let a = 0;
-  for (let i = 0; i < dataLength; i += 1) {
+  for (let i = 0; i < shape.data; i += 1) {
     const index = indexOf(key[i]);
     if (index === 32) return false;
     a = (a * 33 + index + indexOf(salt[i]) + i * 7) % modulus;
     a = a < 0 ? a + modulus : a;
   }
   // IntOp truncates towards zero, and every value here is positive.
-  const check = alphabet[a % 32];
-  return check.toLowerCase() === key.slice(dataLength).toLowerCase();
+  const b = (a * 37 + 11) % modulus;
+  const expected = shape.legacy
+    ? [alphabet[a % 32], alphabet[Math.trunc(a / 32) % 32], alphabet[b % 32], alphabet[Math.trunc(b / 32) % 32]]
+    : [alphabet[a % 32]];
+  return expected.join('') === key.slice(shape.data);
 }
 
 test('the setup wizard asks for the serial key before anything is installed', () => {
@@ -137,6 +143,42 @@ test('a mistyped or invented key is refused', () => {
     assert.equal(nsisValidate(text), setupkey.verifyInstallKey(text).valid,
       `the installer and the generator disagree about ${text}`);
   }
+});
+
+test('a key printed by the older generator (16 characters) still installs', () => {
+  // This is the bug the owner hit: generator 2.3.2 printed WXYZ-1234-5678-9ABC
+  // and the 6-character setup refused it. Both shapes must be accepted, and the
+  // generator must agree with the installer about which ones are good.
+  assert.equal(Number(value('SETUP_LEGACY_DATA_LENGTH')), setupkey.LEGACY_DATA_LENGTH);
+  assert.equal(Number(value('SETUP_LEGACY_KEY_LENGTH')), setupkey.LEGACY_DATA_LENGTH + setupkey.LEGACY_CHECK_LENGTH);
+
+  for (const serial of ['TIT1AAA.BBB', 'TIT1OLD.SERIAL-0001', 'TIT1ABC.DEF']) {
+    // Exactly the key version 2.3.2 printed: twelve derived characters plus the
+    // four old check characters.
+    const legacy = setupkey.legacyMakeInstallKey(serial);
+    assert.equal(legacy.replace(/-/g, '').length, 16);
+    assert.equal(nsisValidate(legacy), true, `the setup must accept the old key ${legacy}`);
+    assert.equal(setupkey.verifyInstallKey(legacy).valid, true, `the generator must accept the old key ${legacy}`);
+    // Typed by hand, without dashes or in lower case, it is still the same key.
+    assert.equal(nsisValidate(legacy.replace(/-/g, '')), true);
+    assert.equal(nsisValidate(legacy.toLowerCase()), true);
+    // A damaged old key is still refused.
+    const broken = (legacy[0] === 'A' ? 'B' : 'A') + legacy.slice(1);
+    assert.equal(nsisValidate(broken), false);
+    assert.equal(setupkey.verifyInstallKey(broken).valid, false);
+  }
+});
+
+test('a pasted serial gets a hint about the short key', () => {
+  assert.match(nsh, /!define SETUP_REFUSED_SERIAL "Invalid Serial Key!\$\\r\$\\nApplication Not Installed\./,
+    'the refusal message stays word for word');
+  assert.match(nsh, /That looks like the serial key/);
+  assert.match(nsh, /The setup needs the short install key/);
+  const leave = nsh.slice(nsh.indexOf('Function ActivationPageLeave'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageLeave')));
+  assert.match(leave, /StrCpy \$5 \$4 4/, 'the first four characters are compared');
+  assert.match(leave, /\$5 == "TIT1"/, 'a serial starts with TIT1');
+  assert.match(leave, /\$6 > 20/, 'anything longer than a key is a serial');
+  assert.equal((leave.match(/Abort/g) || []).length, 1, 'either way the install is blocked');
 });
 
 test('every run asks for the key and no earlier install can skip it', () => {

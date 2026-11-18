@@ -21,9 +21,16 @@
 ; installation on the same computer is remembered or trusted, so a previous
 ; install can never let a later setup through without a key.
 ;
+; Both key shapes this project has ever issued are accepted, so a key the owner
+; generated with an older generator keeps working:
+;
+;     ABC-123                     the 6-character key (current)
+;     WXYZ-1234-5678-9ABC         the 16-character key (generator 2.3.2)
+;
 ; A wrong, mistyped, invented or empty key keeps the customer on the page with
 ; the message "Invalid Serial Key! / Application Not Installed." and the install
-; never starts. Cancel closes the wizard without installing anything.
+; never starts. A pasted long serial is refused with a hint that says which key
+; the setup wants. Cancel closes the wizard without installing anything.
 ;
 ; The activation is checked once, here, at install time. The application itself
 ; has no key check and never asks again when it opens.
@@ -42,15 +49,78 @@
 ; Key shape: five characters of data and one of check, shown as ABC-123.
 !define SETUP_DATA_LENGTH 5
 !define SETUP_KEY_LENGTH 6
+; The key generator 2.3.2 printed: twelve of data and four of check, in groups
+; of four (WXYZ-1234-5678-9ABC). Still accepted, so an older key is not wasted.
+!define SETUP_LEGACY_DATA_LENGTH 12
+!define SETUP_LEGACY_KEY_LENGTH 16
 ; The one message a refused key shows, word for word.
 !define SETUP_REFUSED "Invalid Serial Key!$\r$\nApplication Not Installed."
+; Shown when the customer pastes the long serial instead of the short key.
+!define SETUP_REFUSED_SERIAL "Invalid Serial Key!$\r$\nApplication Not Installed.$\r$\n$\r$\nThat looks like the serial key. The setup needs the short install key, for example ABC-123, shown in the key generator."
+
+; ---------------------------------------------------------------------------
+; Folds ${LENGTH} data characters of $R0 into $R2 and remembers in $R1 whether
+; every character was in the alphabet. Shared by both key shapes.
+;     a = (a * 33 + alphabet[data[i]] + alphabet[SALT[i]] + i * 7) mod 100003
+; ---------------------------------------------------------------------------
+!macro SetupKeyFold LENGTH
+  StrCpy $R1 "1"     ; every character so far is in the alphabet
+  StrCpy $R2 "0"     ; a
+  StrCpy $R3 "0"     ; i
+  ${Do}
+    ${If} $R3 >= ${LENGTH}
+      ${ExitDo}
+    ${EndIf}
+    StrCpy $R4 $R0 1 $R3            ; the data character
+    ; Its alphabet index -> $R5 (32 means "not in the alphabet").
+    StrCpy $R5 "32"
+    StrCpy $R6 "0"
+    ${Do}
+      ${If} $R6 >= 32
+        ${ExitDo}
+      ${EndIf}
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      ${If} $R7 == $R4
+        StrCpy $R5 $R6
+        ${ExitDo}
+      ${EndIf}
+      IntOp $R6 $R6 + 1
+    ${Loop}
+    ${If} $R5 == 32
+      StrCpy $R1 "0"
+      ${ExitDo}
+    ${EndIf}
+    ; The salt character at the same position -> $R8.
+    StrCpy $R7 "${SETUP_SALT}" 1 $R3
+    StrCpy $R8 "32"
+    StrCpy $R6 "0"
+    ${Do}
+      ${If} $R6 >= 32
+        ${ExitDo}
+      ${EndIf}
+      StrCpy $R4 "${SETUP_ALPHABET}" 1 $R6
+      ${If} $R4 == $R7
+        StrCpy $R8 $R6
+        ${ExitDo}
+      ${EndIf}
+      IntOp $R6 $R6 + 1
+    ${Loop}
+    IntOp $R2 $R2 * 33
+    IntOp $R2 $R2 + $R5
+    IntOp $R2 $R2 + $R8
+    IntOp $R4 $R3 * 7
+    IntOp $R2 $R2 + $R4
+    IntOp $R2 $R2 % ${SETUP_MODULUS}
+    IntOp $R3 $R3 + 1
+  ${Loop}
+!macroend
 
 ; ---------------------------------------------------------------------------
 ; Validates the text in ${KEY} and sets ${VALID} to "1" or "0".
 ; ${KEY} and ${VALID} must be general registers ($0, $1, ...): the macro works
-; only in $R0-$R9 internally, and it changes them. It is a macro, not a function, so the uninstaller
-; pass (which has no installer pages) compiles without an unused function and
-; electron-builder's -WX stays clean.
+; only in $R0-$R9 internally, and it changes them. It is a macro, not a function,
+; so the uninstaller pass (which has no installer pages) compiles without an
+; unused function and electron-builder's -WX stays clean.
 ; ---------------------------------------------------------------------------
 !macro SetupKeyValidate KEY VALID
   StrCpy ${VALID} "0"
@@ -59,79 +129,60 @@
   ; Written as a loop instead of StrRep because that macro lives in an optional
   ; include.
   StrCpy $R0 ""
-  StrCpy $R1 ${KEY}
-  StrLen $R3 $R1
-  StrCpy $R9 "0"
+  StrCpy $R9 ${KEY}
+  StrLen $R3 $R9
+  StrCpy $R4 "0"
   ${Do}
-    ${If} $R9 >= $R3
+    ${If} $R4 >= $R3
       ${ExitDo}
     ${EndIf}
-    StrCpy $R4 $R1 1 $R9
-    ${If} $R4 != "-"
-    ${AndIf} $R4 != " "
-      StrCpy $R0 "$R0$R4"
+    StrCpy $R5 $R9 1 $R4
+    ${If} $R5 != "-"
+    ${AndIf} $R5 != " "
+      StrCpy $R0 "$R0$R5"
     ${EndIf}
-    IntOp $R9 $R9 + 1
+    IntOp $R4 $R4 + 1
   ${Loop}
 
-  StrCpy $R1 "1"     ; every character so far is in the alphabet
   StrLen $R3 $R0
+
   ${If} $R3 == ${SETUP_KEY_LENGTH}
-    StrCpy $R2 "0"   ; a
-    StrCpy $R3 "0"   ; i
-    ${Do}
-      ${If} $R3 >= ${SETUP_DATA_LENGTH}
-        ${ExitDo}
-      ${EndIf}
-      StrCpy $R4 $R0 1 $R3          ; the data character
-      ; Its alphabet index -> $R5 (32 means "not in the alphabet").
-      StrCpy $R5 "32"
-      StrCpy $R6 "0"
-      ${Do}
-        ${If} $R6 >= 32
-          ${ExitDo}
-        ${EndIf}
-        StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-        ${If} $R7 == $R4
-          StrCpy $R5 $R6
-          ${ExitDo}
-        ${EndIf}
-        IntOp $R6 $R6 + 1
-      ${Loop}
-      ${If} $R5 == 32
-        StrCpy $R1 "0"
-        ${ExitDo}
-      ${EndIf}
-      ; The salt character at the same position -> $R8.
-      StrCpy $R7 "${SETUP_SALT}" 1 $R3
-      StrCpy $R8 "32"
-      StrCpy $R6 "0"
-      ${Do}
-        ${If} $R6 >= 32
-          ${ExitDo}
-        ${EndIf}
-        StrCpy $R4 "${SETUP_ALPHABET}" 1 $R6
-        ${If} $R4 == $R7
-          StrCpy $R8 $R6
-          ${ExitDo}
-        ${EndIf}
-        IntOp $R6 $R6 + 1
-      ${Loop}
-      ; a = (a * 33 + index + salt + i * 7) mod 100003
-      IntOp $R2 $R2 * 33
-      IntOp $R2 $R2 + $R5
-      IntOp $R2 $R2 + $R8
-      IntOp $R4 $R3 * 7
-      IntOp $R2 $R2 + $R4
-      IntOp $R2 $R2 % ${SETUP_MODULUS}
-      IntOp $R3 $R3 + 1
-    ${Loop}
+    ; ABC-123: five data characters and one check character.
+    !insertmacro SetupKeyFold ${SETUP_DATA_LENGTH}
     ${If} $R1 == 1
-      ; The one character the key must end with.
       IntOp $R6 $R2 % 32
       StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
       StrCpy $R5 $R0 1 ${SETUP_DATA_LENGTH}   ; the character the customer typed
       ${If} $R7 == $R5
+        StrCpy ${VALID} "1"
+      ${EndIf}
+    ${EndIf}
+  ${ElseIf} $R3 == ${SETUP_LEGACY_KEY_LENGTH}
+    ; WXYZ-1234-5678-9ABC, the key generator 2.3.2 printed: twelve data
+    ; characters and four check characters.
+    !insertmacro SetupKeyFold ${SETUP_LEGACY_DATA_LENGTH}
+    ${If} $R1 == 1
+      ; b = (a * 37 + 11) mod 100003
+      IntOp $R4 $R2 * 37
+      IntOp $R4 $R4 + 11
+      IntOp $R4 $R4 % ${SETUP_MODULUS}
+      ; The four characters the key must end with.
+      IntOp $R6 $R2 % 32
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      StrCpy $R8 "$R7"
+      IntOp $R6 $R2 / 32
+      IntOp $R6 $R6 % 32
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      StrCpy $R8 "$R8$R7"
+      IntOp $R6 $R4 % 32
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      StrCpy $R8 "$R8$R7"
+      IntOp $R6 $R4 / 32
+      IntOp $R6 $R6 % 32
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      StrCpy $R8 "$R8$R7"
+      StrCpy $R5 $R0 4 ${SETUP_LEGACY_DATA_LENGTH}  ; the check characters typed
+      ${If} $R8 == $R5
         StrCpy ${VALID} "1"
       ${EndIf}
     ${EndIf}
@@ -171,7 +222,7 @@ Function ActivationPageShow
   Pop $ActivationField
   ${NSD_SetFocus} $ActivationField
 
-  ${NSD_CreateLabel} 0 66u 100% 28u ""
+  ${NSD_CreateLabel} 0 66u 100% 48u ""
   Pop $ActivationError
   SetCtlColors $ActivationError 0xB00020 transparent
 
@@ -198,7 +249,18 @@ Function ActivationPageLeave
   ${EndIf}
 
   ${If} $2 != "1"
-    ${NSD_SetText} $ActivationError "${SETUP_REFUSED}"
+    ; A pasted serial (TIT1..., about 170 characters) is the commonest mistake:
+    ; say so instead of only "invalid", so the customer knows to use the short
+    ; key the seller sent.
+    StrCpy $4 $0
+    StrCpy $5 $4 4
+    StrLen $6 $4
+    ${If} $5 == "TIT1"
+    ${OrIf} $6 > 20
+      ${NSD_SetText} $ActivationError "${SETUP_REFUSED_SERIAL}"
+    ${Else}
+      ${NSD_SetText} $ActivationError "${SETUP_REFUSED}"
+    ${EndIf}
     Abort
   ${EndIf}
 FunctionEnd
