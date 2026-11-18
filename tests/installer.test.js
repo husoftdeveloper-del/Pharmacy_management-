@@ -69,11 +69,12 @@ test('the setup wizard asks for the serial key before anything is installed', ()
   assert.match(nsh, /\$\{NSD_CreateText\}/, 'the serial key field');
   assert.match(nsh, /STR:Continue/);
   assert.match(nsh, /STR:Cancel/);
-  // Refusals: empty, and wrong.
-  assert.match(nsh, /Please enter your serial key to continue\./);
-  assert.match(nsh, /The key you entered is not valid\. Check it and try again\./);
+  // One refusal message, word for word, for both an empty and a wrong key.
+  assert.match(nsh, /!define SETUP_REFUSED "Invalid Serial Key!\$\\r\$\\nApplication Not Installed\."/);
   const leave = nsh.slice(nsh.indexOf('Function ActivationPageLeave'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageLeave')));
-  assert.equal((leave.match(/Abort/g) || []).length, 2, 'both refusals stop the wizard on the page');
+  assert.equal((leave.match(/Abort/g) || []).length, 1, 'a refused key stops the wizard on the page');
+  assert.match(leave, /\$\{NSD_SetText\} \$ActivationError "\$\{SETUP_REFUSED\}"/, 'the refusal is shown in the page');
+  assert.match(leave, /StrCpy \$3 \$0/, 'an empty field is checked first');
   assert.match(leave, /!insertmacro SetupKeyValidate/, 'the typed key is validated');
 });
 
@@ -146,32 +147,41 @@ test('a mistyped or invented key is refused', () => {
   }
 });
 
-test('an activated machine is not asked again', () => {
-  // Same lesson as the license generator: reinstall, update and a second account
-  // must not see the page again, so every place an activation can live is read.
-  const check = nsh.slice(nsh.indexOf('!macro SetupKnownCheck'), nsh.indexOf('!macroend', nsh.indexOf('!macro SetupKnownCheck')));
-  assert.match(check, /SetRegView 64/);
-  assert.match(check, /SetRegView 32/);
-  assert.equal((check.match(/ReadRegStr \$1 HKLM/g) || []).length, 2);
-  assert.equal((check.match(/ReadRegStr \$1 HKCU/g) || []).length, 2);
-  assert.match(check, /ReadEnvStr \$1 "ProgramData"/);
-  assert.ok(check.includes('$LOCALAPPDATA\\Top In Tech\\Pharmacy Management\\${SETUP_MARKER}'));
-  assert.ok(check.includes('$LOCALAPPDATA\\Programs\\${SETUP_APP_NAME}\\${SETUP_APP_EXE}'), 'a per-user install counts as activated');
-  // The page removes itself when one of them is found.
+test('every run asks for the key and no earlier install can skip it', () => {
+  // The page must have no precondition at all: an installed application, an old
+  // registry flag or a leftover marker file must not remove it.
   const show = nsh.slice(nsh.indexOf('Function ActivationPageShow'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageShow')));
-  assert.match(show, /!insertmacro SetupKnownCheck/);
-  assert.match(show, /Abort/);
-  // Every flag is written after the key is accepted, and uninstalling keeps them.
-  const remember = nsh.slice(nsh.indexOf('!macro SetupRemember'), nsh.indexOf('!macroend', nsh.indexOf('!macro SetupRemember')));
-  assert.equal((remember.match(/WriteRegStr/g) || []).length, 4);
-  assert.equal((remember.match(/FileOpen/g) || []).length, 3);
-  assert.match(nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall'))), /!insertmacro SetupRemember/);
-  assert.doesNotMatch(nsh, /customUnInstall/, 'uninstalling never clears the activation');
+  // The only Abort left in the page is the nsDialogs::Create failure path, not a
+  // "this machine is already activated" decision.
+  assert.ok(!/SetupKnownCheck|ReadRegStr|FileExists/.test(show), 'the page is always drawn, never skipped');
+  for (const remembered of ['ReadRegStr', 'WriteRegStr', 'activated.txt', 'SETUP_MARKER', 'SetupKnownCheck', 'SetupRemember']) {
+    assert.ok(!nsh.includes(remembered), `the installer must not remember an activation: found ${remembered}`);
+  }
+  // Nothing is written at install time that a later setup could read back.
+  assert.doesNotMatch(nsh, /!macro customInstall\b/, 'customInstall would be the place to write such a flag');
+  assert.doesNotMatch(nsh, /customUnInstall/, 'the wizard never touches an activation record');
+  // The silent path has no exemption for a machine that already has the app:
+  // one branch only, straight to the environment variable and the same check.
+  const init = nsh.slice(nsh.indexOf('!macro customInit'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInit')));
+  // Two conditions only: "is this a silent run" and "was the key accepted".
+  assert.equal((init.match(/\$\{If\}/g) || []).length, 2, 'no third condition may exempt an existing installation');
+  assert.doesNotMatch(init, /ReadRegStr|FileExists|SetupKnownCheck/, 'a silent upgrade is checked like a first install');
+  assert.match(init, /ReadEnvStr \$0 "PHARMACY_SETUP_KEY"/);
+  assert.match(init, /!insertmacro SetupKeyValidate \$0 \$1/);
+});
+
+test('the application itself is left alone', () => {
+  // The key is checked once, by the setup. No application file may grow a check.
+  const appFiles = ['main.js', 'preload.js', 'src/scripts/app.js', 'src/scripts/version.js'];
+  for (const file of appFiles) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.ok(!/SetupKeyValidate|verifyInstallKey|makeInstallKey|serial key/i.test(text),
+      `${file} must not ask for a serial key`);
+  }
 });
 
 test('the wizard still owns the shortcuts and files', () => {
-  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
-  assert.doesNotMatch(install, /CreateShortcut/, 'a second shortcut would put two icons on the Desktop');
+  assert.doesNotMatch(nsh, /CreateShortcut/, 'a second shortcut would put two icons on the Desktop');
   assert.doesNotMatch(nsh, /SetShellVarContext/, 'changing the shell context moves where the wizard puts its shortcuts');
   assert.equal(pkg.build.nsis.createDesktopShortcut, true);
   assert.equal(pkg.build.nsis.createStartMenuShortcut, true);

@@ -10,7 +10,7 @@ An offline Windows desktop application built with **pure HTML5, CSS3, Vanilla Ja
    - `Pharmacy-1.0.1-x64.exe`: Setup installer, with Desktop and Start Menu shortcuts.
    - `Pharmacy-1.0.1-Portable.exe`: portable application.
 2. Run the installer. These builds are **unsigned**; verify that you downloaded them from this repository. Windows SmartScreen may warn about an unknown publisher. A production deployment should use the organization's code-signing certificate.
-3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish. On the activation page type the install key that the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `WXYZ-1234-5678-9ABC`). A wrong or empty key keeps you on the page with a red message and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
+3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish, and it asks on every run, including a reinstall or an upgrade. Type the install key the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `WXYZ-1234-5678-9ABC`). A wrong or empty key keeps you on the page with the message *Invalid Serial Key! / Application Not Installed.* and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
 4. Launch **Pharmacy Management**.
 5. Complete first-run setup: pharmacy name, your name, administrator username, and a password of at least 10 characters. **There is no default password.**
 6. Open Settings to fill in your profile, pharmacy details, receipt footer, notifications, language and theme.
@@ -30,11 +30,18 @@ The Pharmacy setup is gated by a key, so a copied `Pharmacy-Setup.exe` is useles
 4. Send the customer the setup file and that install key. One licence, one key: the key is derived from the serial, and the same serial always shows the same install key, so you can find it again in the licences table with the ⌨ button.
 5. The customer runs the setup, types the key on the **Pharmacy Management Activation** page and presses **Continue**. The key is accepted with or without the dashes, in lower or upper case.
 
-A wrong or invented key shows *"The key you entered is not valid. Check it and try again."* and the wizard stays on the page; an empty field shows *"Please enter your serial key to continue."* Nothing is written to disk until a key is accepted.
+A wrong, invented or empty key shows
 
-The activation is remembered per laptop: the registry (`HKCU`/`HKLM \Software\Top In Tech\Pharmacy Management`, both registry views) plus marker files in ProgramData and AppData. A repair, a reinstall, an update, or an uninstall followed by a fresh install on the same machine therefore never asks again, and an existing installation counts as activated so current customers are not locked out when they update. Uninstalling never deletes the activation. Silent installs (`setup.exe /S`) prove the key through the `PHARMACY_SETUP_KEY` environment variable and stop with exit code 2 when it is missing or wrong.
+> **Invalid Serial Key!**
+> **Application Not Installed.**
 
-The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses mistyped and invented keys. It stops casual copying; the signed 170-character serial remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys.
+and the wizard stays on the same page: nothing is installed, nothing is written to the disk and the application folder is never created. **Cancel** closes the setup without installing anything.
+
+**Every run of `Setup.exe` asks for the key** — the first installation, a repair, a reinstall, an upgrade, and an installation after the app was uninstalled on the same computer. The setup keeps no activation record anywhere (no registry value, no marker file), so an earlier installation can never be used to skip the page; there is no "already activated on this machine" shortcut to abuse. Silent installs (`setup.exe /S`) prove the key through the `PHARMACY_SETUP_KEY` environment variable and stop with exit code 2 when it is missing, wrong, or when the machine already has the application but no key is given.
+
+The key is checked once, at install time. The application itself never asks for it again and keeps no key state: opening Pharmacy Management is unchanged.
+
+The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses mistyped and invented keys. It stops casual copying; the signed 170-character serial in the generator remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys. If you want the setup to verify the Ed25519 signature of the full serial instead, that needs a cryptographic verifier shipped with the installer — say so and it can be added as a small helper executable.
 
 The **Portable.exe** build is the same application without the setup wizard, so it does not ask for the key. Ship the Setup installer to customers and keep the portable build for your own testing on machines you control.
 

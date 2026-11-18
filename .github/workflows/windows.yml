@@ -102,9 +102,12 @@ jobs:
             'key label'                     = $output.Contains('Enter your serial key')
             'Continue button'               = $output.Contains('STR:Continue')
             'Cancel button'                 = $output.Contains('STR:Cancel')
-            'empty key message'             = $output.Contains('Please enter your serial key to continue.')
-            'invalid key message'           = $output.Contains('The key you entered is not valid. Check it and try again.')
+            'invalid key message'           = $output.Contains('Invalid Serial Key!')
+            'not installed message'         = $output.Contains('Application Not Installed.')
             'silent guard'                  = $output.Contains('PHARMACY_SETUP_KEY')
+            # Nothing in the compiled page may skip the form for an old install.
+            'no activation memory in the page' = (-not $output.Contains('activated.txt'))
+            'no registry memory in the page'   = (-not $output.Contains('Top In Tech\Pharmacy Management'))
           }
           $failed = 0
           foreach ($key in $checks.Keys) {
@@ -190,11 +193,13 @@ jobs:
           )
           $startLinks = @($startCandidates | Where-Object { Test-Path $_ })
 
-          $activation = @(
-            (Get-ItemProperty -Path "HKCU:\Software\Top In Tech\Pharmacy Management" -Name Activated -ErrorAction SilentlyContinue).Activated,
-            (Get-ItemProperty -Path "HKLM:\Software\Top In Tech\Pharmacy Management" -Name Activated -ErrorAction SilentlyContinue).Activated
-          )
-          $marker = Join-Path $env:LOCALAPPDATA 'Top In Tech\Pharmacy Management\activated.txt'
+          # The setup must not leave an activation record behind: a later run has to
+          # ask again, so nothing may be readable that says "already activated".
+          $leftover = @(
+            (Test-Path "HKCU:\Software\Top In Tech\Pharmacy Management"),
+            (Test-Path "HKLM:\Software\Top In Tech\Pharmacy Management"),
+            (Test-Path (Join-Path $env:LOCALAPPDATA 'Top In Tech\Pharmacy Management\activated.txt'))
+          ) -contains $true
 
           $required = [ordered]@{
             'the application is installed' = [bool]$exe
@@ -203,8 +208,7 @@ jobs:
             'start menu shortcut'          = ($startLinks.Count -ge 1)
             'single start menu entry'      = ($startLinks.Count -eq 1)
             'uninstaller present'          = ($installDir -and (Test-Path (Join-Path $installDir "Uninstall $appName.exe")))
-            'activation remembered in the registry' = ($activation -contains '1')
-            'activation marker written'    = (Test-Path $marker)
+            'no activation record left behind' = (-not $leftover)
           }
           $failed = 0
           foreach ($key in $required.Keys) {
@@ -226,26 +230,57 @@ jobs:
           if ($failed -gt 0) { Write-Error "$failed installation check(s) failed"; exit 1 }
           Write-Host 'The serial key installs the app once, with one icon and one Start-menu entry.'
 
-      # A customer who repairs, reinstalls or updates the app must never be asked
-      # again, and must never end up with a second icon.
-      - name: A reinstall is not asked for the key again
+      # The rule the owner asked for last: uninstalling does not unlock anything.
+      # After a real uninstall, a setup run without a key must be refused, and a
+      # run with a valid key must ask again and install once.
+      - name: Uninstall, then reinstall asks for the key again
         shell: pwsh
         run: |
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
           if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
-          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
-
-          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
-          $exited = $process.WaitForExit(180000)
-          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
-          Start-Sleep -Seconds 8
-          Write-Host "reinstall exit code: $($process.ExitCode) (exited: $exited)"
 
           $appName = 'Pharmacy Management'
           $exe = @(
             (Join-Path $env:LOCALAPPDATA "Programs\$appName\$appName.exe"),
             (Join-Path $env:ProgramFiles "$appName\$appName.exe")
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) { Write-Error 'the application is not installed, so the uninstall cannot be tested'; exit 1 }
+          $uninstaller = Join-Path (Split-Path $exe -Parent) "Uninstall $appName.exe"
+
+          $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru
+          $null = $process.WaitForExit(120000)
+          # An NSIS uninstaller copies itself to %TEMP% and returns at once, so the
+          # removal is waited for rather than assumed.
+          for ($i = 0; $i -lt 30 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 2 }
+          $uninstalled = -not (Test-Path $exe)
+          Write-Host "uninstall exit code: $($process.ExitCode), removed: $uninstalled"
+          Write-Host "::notice title=uninstalled=$uninstalled::the application was removed"
+          if (-not $uninstalled) { Write-Error 'the uninstaller did not remove the application'; exit 1 }
+
+          # One: a fresh setup without a key must still be refused.
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          $refused = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $null = $refused.WaitForExit(120000)
+          Start-Sleep -Seconds 3
+          $blocked = -not (Test-Path $exe)
+          Write-Host "setup without a key after an uninstall: exit code $($refused.ExitCode), installed: $(Test-Path $exe)"
+          Write-Host "::notice title=reinstall-without-key-refused=$blocked::the old installation does not unlock the setup"
+          if (-not $blocked) {
+            Remove-Item -Recurse -Force (Split-Path $exe -Parent) -ErrorAction SilentlyContinue
+            Write-Error 'A reinstall after an uninstall skipped the serial key';
+            exit 1
+          }
+
+          # Two: the same setup with a valid key installs again, once.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          $again = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          $exited = $again.WaitForExit(180000)
+          if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
+          Start-Sleep -Seconds 8
+          Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          Write-Host "reinstall exit code: $($again.ExitCode) (exited: $exited)"
+
+          $reinstalled = Test-Path $exe
           $desktops = @(
             [Environment]::GetFolderPath('Desktop'),
             (Join-Path $env:USERPROFILE 'Desktop'),
@@ -255,9 +290,9 @@ jobs:
           $links = @($desktops | ForEach-Object { Join-Path $_ "$appName.lnk" } | Where-Object { Test-Path $_ })
 
           $required = [ordered]@{
-            'the installer accepted the activated machine' = ($process.ExitCode -eq 0)
-            'still installed'                             = [bool]$exe
-            'still exactly one desktop icon'              = ($links.Count -eq 1)
+            'the reinstall accepted the valid key' = ($again.ExitCode -eq 0)
+            'still installed'                      = $reinstalled
+            'still exactly one desktop icon'        = ($links.Count -eq 1)
           }
           $failed = 0
           foreach ($key in $required.Keys) {
@@ -267,7 +302,7 @@ jobs:
             if (-not $ok) { $failed += 1 }
           }
           if ($failed -gt 0) { Write-Error "$failed reinstall check(s) failed"; exit 1 }
-          Write-Host 'A second run of the setup needs no serial key and leaves one icon.'
+          Write-Host 'After an uninstall the setup asks for the key again and installs once with one icon.'
 
       - uses: actions/upload-artifact@v4
         if: always()

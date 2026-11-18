@@ -19,11 +19,17 @@
 ;     check = alphabet[a mod 32] alphabet[(a / 32) mod 32]
 ;             alphabet[b mod 32] alphabet[(b / 32) mod 32]
 ;
-; A wrong, mistyped, invented or empty key keeps the customer on the page with a
-; red message and the install never starts. An accepted key is remembered in the
-; registry and in marker files, so a reinstall or an update on the same machine
-; never asks again, and a machine that already has the app installed counts as
-; activated.
+; The page is shown on EVERY run of Setup.exe: first installation, reinstall,
+; repair, upgrade, and an install after an uninstall. Nothing about an earlier
+; installation on the same computer is remembered or trusted, so a previous
+; install can never let a later setup through without a key.
+;
+; A wrong, mistyped, invented or empty key keeps the customer on the page with
+; the message "Invalid Serial Key! / Application Not Installed." and the install
+; never starts. Cancel closes the wizard without installing anything.
+;
+; The activation is checked once, here, at install time. The application itself
+; has no key check and never asks again when it opens.
 ;
 ; The application itself is untouched: this file only changes the installer.
 
@@ -36,11 +42,8 @@
 ; Must equal SALT in TopInTech-LicenseGenerator/lib/setupkey.js.
 !define SETUP_SALT "7Q2M9K4X1B8T"
 !define SETUP_MODULUS 100003
-!define SETUP_APP_NAME "Pharmacy Management"
-!define SETUP_REG_KEY "Software\Top In Tech\Pharmacy Management"
-!define SETUP_REG_VALUE "Activated"
-!define SETUP_MARKER "activated.txt"
-!define SETUP_APP_EXE "Pharmacy Management.exe"
+; The one message a refused key shows, word for word.
+!define SETUP_REFUSED "Invalid Serial Key!$\r$\nApplication Not Installed."
 
 ; ---------------------------------------------------------------------------
 ; Validates the text in ${KEY} and sets ${VALID} to "1" or "0".
@@ -151,105 +154,6 @@
   ${EndIf}
 !macroend
 
-; ---------------------------------------------------------------------------
-; Was this machine already activated? Sets $0 to "1".
-; The registry is read through both views and both hives (a 32-bit setup writes
-; under WOW6432Node); the marker files cover a run that could not write the
-; registry; an installed application counts too. The machine-wide folder comes
-; from the ProgramData environment variable, because the bundled NSIS has no
-; constant for it and switching the shell context here would move the desktop
-; shortcut the wizard later creates.
-; ---------------------------------------------------------------------------
-!macro SetupKnownCheck
-  StrCpy $0 "0"
-  SetRegView 64
-  ReadRegStr $1 HKLM "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}"
-  ${If} $1 == "1"
-    StrCpy $0 "1"
-  ${EndIf}
-  ${If} $0 != "1"
-    ReadRegStr $1 HKCU "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}"
-    ${If} $1 == "1"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-  SetRegView 32
-  ${If} $0 != "1"
-    ReadRegStr $1 HKLM "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}"
-    ${If} $1 == "1"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-  ${If} $0 != "1"
-    ReadRegStr $1 HKCU "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}"
-    ${If} $1 == "1"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-  SetRegView lastused
-
-  ReadEnvStr $1 "ProgramData"
-  ${If} $0 != "1"
-    ${If} $1 != ""
-      ${If} ${FileExists} "$1\Top In Tech\Pharmacy Management\${SETUP_MARKER}"
-        StrCpy $0 "1"
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
-  ${If} $0 != "1"
-    ${If} ${FileExists} "$LOCALAPPDATA\Top In Tech\Pharmacy Management\${SETUP_MARKER}"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-  ${If} $0 != "1"
-    ${If} ${FileExists} "$APPDATA\Top In Tech\Pharmacy Management\${SETUP_MARKER}"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-  ${If} $0 != "1"
-    ${If} ${FileExists} "$PROGRAMFILES64\${SETUP_APP_NAME}\${SETUP_APP_EXE}"
-      StrCpy $0 "1"
-    ${ElseIf} ${FileExists} "$PROGRAMFILES\${SETUP_APP_NAME}\${SETUP_APP_EXE}"
-      StrCpy $0 "1"
-    ${ElseIf} ${FileExists} "$LOCALAPPDATA\Programs\${SETUP_APP_NAME}\${SETUP_APP_EXE}"
-      StrCpy $0 "1"
-    ${EndIf}
-  ${EndIf}
-!macroend
-
-; Records the activation everywhere SetupKnownCheck looks.
-!macro SetupRemember
-  SetRegView 64
-  WriteRegStr HKLM "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}" "1"
-  WriteRegStr HKCU "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}" "1"
-  SetRegView 32
-  WriteRegStr HKLM "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}" "1"
-  WriteRegStr HKCU "${SETUP_REG_KEY}" "${SETUP_REG_VALUE}" "1"
-  SetRegView lastused
-
-  ReadEnvStr $1 "ProgramData"
-  ${If} $1 != ""
-    CreateDirectory "$1\Top In Tech\Pharmacy Management"
-    FileOpen $9 "$1\Top In Tech\Pharmacy Management\${SETUP_MARKER}" w
-    ${If} $9 != ""
-      FileWrite $9 "activated$\r$\n"
-      FileClose $9
-    ${EndIf}
-  ${EndIf}
-  CreateDirectory "$LOCALAPPDATA\Top In Tech\Pharmacy Management"
-  FileOpen $9 "$LOCALAPPDATA\Top In Tech\Pharmacy Management\${SETUP_MARKER}" w
-  ${If} $9 != ""
-    FileWrite $9 "activated$\r$\n"
-    FileClose $9
-  ${EndIf}
-  CreateDirectory "$APPDATA\Top In Tech\Pharmacy Management"
-  FileOpen $9 "$APPDATA\Top In Tech\Pharmacy Management\${SETUP_MARKER}" w
-  ${If} $9 != ""
-    FileWrite $9 "activated$\r$\n"
-    FileClose $9
-  ${EndIf}
-!macroend
-
 ; electron-builder compiles this script twice. The first pass has
 ; BUILD_UNINSTALLER defined and contains no pages, so the page, its variables and
 ; its callbacks must not be compiled there.
@@ -263,13 +167,9 @@ Var ActivationHeading
 ; This file is parsed before MUI2, so MUI macros must not be used here: the page
 ; draws its own title, like the screen the owner asked for.
 Function ActivationPageShow
-  ; An activated machine never sees this page: Abort in a custom page's create
-  ; function removes the page from the wizard.
-  !insertmacro SetupKnownCheck
-  ${If} $0 == "1"
-    Abort
-  ${EndIf}
-
+  ; The page has no precondition. It is drawn on every run - first install,
+  ; reinstall, repair, upgrade, and an install after an uninstall - because
+  ; nothing from an earlier installation is allowed to skip it.
   nsDialogs::Create 1018
   Pop $ActivationDialog
   ${If} $ActivationDialog == error
@@ -305,14 +205,16 @@ FunctionEnd
 Function ActivationPageLeave
   ${NSD_GetText} $ActivationField $0
 
-  ${If} $0 == ""
-    ${NSD_SetText} $ActivationError "Please enter your serial key to continue."
-    Abort
+  ; An empty field is refused before the arithmetic runs.
+  StrCpy $2 "0"
+  StrCpy $3 $0
+  ${If} $3 != ""
+    !insertmacro SetupKeyValidate $0 $1
+    StrCpy $2 $1
   ${EndIf}
 
-  !insertmacro SetupKeyValidate $0 $1
-  ${If} $1 != "1"
-    ${NSD_SetText} $ActivationError "The key you entered is not valid. Check it and try again."
+  ${If} $2 != "1"
+    ${NSD_SetText} $ActivationError "${SETUP_REFUSED}"
     Abort
   ${EndIf}
 FunctionEnd
@@ -327,27 +229,22 @@ FunctionEnd
 
 ; ------------------------------------------------------------- unattended guard
 ; A silent install (/S) never draws the page, so it must prove the key through
-; the environment instead: PHARMACY_SETUP_KEY. A machine that is already
-; activated is allowed through, so an unattended update never fails.
+; the environment instead: PHARMACY_SETUP_KEY. There is no exemption for a
+; machine that already has the application, so an unattended reinstall or
+; upgrade needs the key exactly like a first install.
 !macro customInit
   ${If} ${Silent}
-    !insertmacro SetupKnownCheck
-    ${If} $0 != "1"
-      ReadEnvStr $0 "PHARMACY_SETUP_KEY"
-      !insertmacro SetupKeyValidate $0 $1
-      ${If} $1 != "1"
-        ; Nothing is installed and nothing is written: the setup stops here.
-        SetErrorLevel 2
-        Quit
-      ${EndIf}
+    ReadEnvStr $0 "PHARMACY_SETUP_KEY"
+    !insertmacro SetupKeyValidate $0 $1
+    ${If} $1 != "1"
+      ; Nothing is installed and nothing is written: the setup stops here.
+      SetErrorLevel 2
+      Quit
     ${EndIf}
   ${EndIf}
 !macroend
 
 ; -------------------------------------------------------------------- install
-; The wizard already creates the Desktop shortcut and the Start-menu entry, so
-; nothing here touches shortcuts (a second CreateShortcut is what once put two
-; identical icons on the Desktop). It only records the activation.
-!macro customInstall
-  !insertmacro SetupRemember
-!macroend
+; Nothing to do. The wizard already creates the Desktop shortcut and the
+; Start-menu entry itself. Anything extra here once put two identical icons on
+; the Desktop, and a saved flag here would let the next setup skip the key page.

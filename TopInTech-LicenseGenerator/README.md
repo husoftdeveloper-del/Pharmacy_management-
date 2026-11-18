@@ -167,8 +167,12 @@ WXYZ-1234-5678-9ABC        16 characters: 12 data + 4 check
   **Copy Install Key**; the licences table has a ⌨ button that copies it again
   for a key sold earlier.
 * The customer types it on the setup's **Pharmacy Management Activation** page.
-  A typo shows *"The key you entered is not valid. Check it and try again."* and
-  the install does not start. Dashes, spaces and lower case are all accepted.
+  A typo or an empty field shows *"Invalid Serial Key! / Application Not
+  Installed."* and the install does not start. Dashes, spaces and lower case are
+  all accepted.
+* The setup asks on **every** run: a repair, a reinstall, an upgrade or an
+  install after an uninstall on the same computer all need the key again. The
+  installer stores no activation record, so an old installation cannot open it.
 
 This check stops casual copying; it is not the security boundary. The signed
 serial is: verify it in the customer app with `public.pem`, as described in
