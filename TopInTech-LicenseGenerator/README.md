@@ -70,7 +70,9 @@ and the page asks again only when **none** of them is found:
   `WOW6432Node`, a 64-bit one writes at the top of `Software`);
 - `activated.txt` in `%ProgramData%\Top In Tech\License Generator`,
   `%LOCALAPPDATA%\Top In Tech\License Generator` and
-  `%APPDATA%\Top In Tech\License Generator`;
+  `%APPDATA%\Top In Tech\License Generator` (the ProgramData folder is read
+  from the `ProgramData` environment variable, because the NSIS that
+  electron-builder ships has no constant for it);
 - the installed application folder itself (`C:\Program Files\Top In Tech
   License Generator`) — it cannot be there without the key.
 

@@ -324,13 +324,15 @@ test('a laptop that was activated once is never asked for the key again', () => 
   assert.equal((check.match(/ReadRegStr \$1 HKLM/g) || []).length, 2, 'HKLM is read through both views');
   assert.equal((check.match(/ReadRegStr \$1 HKCU/g) || []).length, 2, 'HKCU is read through both views');
   // Marker files survive an uninstall and a setup that could not write HKLM.
-  // The machine-wide one is $APPDATA inside the all-users context, because the
-  // NSIS 3.0.4 that electron-builder ships has no $COMMONAPPDATA.
+  // The machine-wide folder is read from the ProgramData environment variable,
+  // because the bundled NSIS has no $COMMONAPPDATA and switching the shell
+  // context here would move the desktop shortcut the wizard later creates.
   assert.doesNotMatch(check, /\$COMMONAPPDATA/, 'no variable the bundled makensis rejects');
-  assert.match(check, /SetShellVarContext all/);
-  assert.match(check, /SetShellVarContext current/);
-  assert.equal((check.match(/\$\{FileExists\} "\$APPDATA\\Top In Tech\\License Generator\\\$\{ACTIVATION_MARKER\}"/g) || []).length, 2, 'the machine-wide and the per-user marker are both checked');
-  assert.ok(check.includes('$LOCALAPPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}'), 'the local-appdata marker is checked');
+  assert.doesNotMatch(check, /SetShellVarContext/, 'the page must not change where shortcuts go');
+  assert.match(check, /ReadEnvStr \$1 "ProgramData"/);
+  assert.ok(check.includes('"$1\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the machine-wide marker is checked');
+  assert.ok(check.includes('"$LOCALAPPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the local-appdata marker is checked');
+  assert.ok(check.includes('"$APPDATA\\Top In Tech\\License Generator\\${ACTIVATION_MARKER}"'), 'the roaming-appdata marker is checked');
   // The application folder itself proves it was installed with a key.
   assert.ok(check.includes('$PROGRAMFILES64\\Top In Tech License Generator'), 'the installed app counts as activated');
   assert.ok(check.includes('$LOCALAPPDATA\\Programs\\Top In Tech License Generator'), 'a per-user install counts too');
@@ -345,6 +347,8 @@ test('a laptop that was activated once is never asked for the key again', () => 
   const remember = nsh.slice(nsh.indexOf('!macro RememberActivation'), nsh.indexOf('!macroend', nsh.indexOf('!macro RememberActivation')));
   assert.equal((remember.match(/WriteRegStr/g) || []).length, 4, 'both hives in both views are written');
   assert.equal((remember.match(/FileOpen/g) || []).length, 3, 'three marker files are written');
+  assert.match(remember, /ReadEnvStr \$1 "ProgramData"/);
+  assert.doesNotMatch(remember, /SetShellVarContext/, 'writing the flags must not move the shortcuts');
   const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
   assert.match(install, /!insertmacro RememberActivation/);
   const uninstall = nsh.slice(nsh.indexOf('!macro customUnInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customUnInstall')));

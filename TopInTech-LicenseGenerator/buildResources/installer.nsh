@@ -82,15 +82,18 @@
   SetRegView lastused
 
   ; Marker files, for the case where a previous setup could not write HKLM.
-  ; In the all-users context $APPDATA is C:\ProgramData, so the machine-wide
-  ; marker is checked first and the per-user ones afterwards.
-  SetShellVarContext all
+  ; The machine-wide folder comes from the ProgramData environment variable:
+  ; the NSIS 3.0.4 that electron-builder ships has no constant for it, and
+  ; switching the shell context here would change where the wizard later builds
+  ; its shortcuts.
+  ReadEnvStr $1 "ProgramData"
   ${If} $0 != "1"
-    ${If} ${FileExists} "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
-      StrCpy $0 "1"
+    ${If} $1 != ""
+      ${If} ${FileExists} "$1\Top In Tech\License Generator\${ACTIVATION_MARKER}"
+        StrCpy $0 "1"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
-  SetShellVarContext current
   ${If} $0 != "1"
     ${If} ${FileExists} "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}"
       StrCpy $0 "1"
@@ -125,15 +128,16 @@
   WriteRegStr HKCU "${ACTIVATION_REG_KEY}" "${ACTIVATION_REG_VALUE}" "1"
   SetRegView lastused
 
-  ; Machine-wide marker: in the all-users context $APPDATA is C:\ProgramData.
-  SetShellVarContext all
-  CreateDirectory "$APPDATA\Top In Tech\License Generator"
-  FileOpen $9 "$APPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
-  ${If} $9 != ""
-    FileWrite $9 "activated$\r$\n"
-    FileClose $9
+  ; Machine-wide marker in the ProgramData folder (see the note above).
+  ReadEnvStr $1 "ProgramData"
+  ${If} $1 != ""
+    CreateDirectory "$1\Top In Tech\License Generator"
+    FileOpen $9 "$1\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
+    ${If} $9 != ""
+      FileWrite $9 "activated$\r$\n"
+      FileClose $9
+    ${EndIf}
   ${EndIf}
-  SetShellVarContext current
   CreateDirectory "$LOCALAPPDATA\Top In Tech\License Generator"
   FileOpen $9 "$LOCALAPPDATA\Top In Tech\License Generator\${ACTIVATION_MARKER}" w
   ${If} $9 != ""
