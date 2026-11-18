@@ -213,12 +213,30 @@ class PharmacyService {
       const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',account.id,from,to);
       return round(account.type==='income'?row.credit-row.debit:row.debit-row.credit);
     };
+    /* 4100 Sales returns and 4200 Sales discounts are contra-income: a return
+       debits them, so their natural balance reads negative. Take debit minus
+       credit, otherwise "Less: Sale returns" showed -50 and the revenue line was
+       inflated by the returned value instead of reduced by it. */
+    const contraTotal = code => {
+      const account = this.get('SELECT id FROM accounts WHERE code=?', code);
+      if (!account) return 0;
+      const row = this.get('SELECT COALESCE(SUM(l.debit),0) AS debit,COALESCE(SUM(l.credit),0) AS credit FROM journal_lines l JOIN journals j ON j.id=l.journal_id WHERE l.account_id=? AND date(j.date) BETWEEN ? AND ?',account.id,from,to);
+      return round(Number(row.debit) - Number(row.credit));
+    };
     const salesRevenue = accountTotal('4000');
-    const saleReturns = accountTotal('4100');
-    const discounts = accountTotal('4200');
-    const cogs = accountTotal('5000');
+    const saleReturns = contraTotal('4100');
+    const discounts = contraTotal('4200');
+    /* Cost of goods sold comes from the documents, not from the 5000 account:
+       that account is already credited when a return puts stock back on the
+       shelf, so reading it and then subtracting the returned cost again counted
+       the same cost twice and overstated profit after every return. Gross cost
+       minus the cost of the goods that came back is the net cost of what stayed
+       sold; damaged goods that were not restocked keep their cost in COGS. */
+    const soldCost = this.get(`SELECT COALESCE(SUM(i.cost*i.quantity),0) AS cost FROM sale_items i
+      JOIN sales s ON s.id=i.sale_id WHERE date(s.date) BETWEEN ? AND ?`,from,to);
     const cogsReturned = round(this.get(`SELECT COALESCE(SUM(si.cost*sri.quantity),0) AS n FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
-      JOIN sale_returns r ON r.id=sri.return_id WHERE date(r.date) BETWEEN ? AND ?`,from,to).n);
+      JOIN sale_returns r ON r.id=sri.return_id WHERE sri.restock=1 AND date(r.date) BETWEEN ? AND ?`,from,to).n);
+    const cogs = round(Number(soldCost.cost));
     const expenses = accountTotal('6000');
     const netRevenue = round(salesRevenue - saleReturns);
     const netCogs = round(cogs - cogsReturned);
@@ -260,20 +278,33 @@ class PharmacyService {
     const from = query.from ? date(query.from) : new Date(Date.now()-29*86400000).toISOString().slice(0,10);
     const to = query.to ? date(query.to) : new Date().toISOString().slice(0,10);
     if (from > to) fail('Start date must be before end date.');
-    const sales = this.get(`SELECT COALESCE(SUM(s.subtotal),0) AS revenue,COALESCE(SUM(s.discount),0) AS discount,COALESCE(SUM(s.total),0) AS total,COUNT(s.id) AS orders
+    const sales = this.get(`SELECT COALESCE(SUM(s.total),0) AS total,COALESCE(SUM(s.discount),0) AS discount,COUNT(s.id) AS orders
       FROM sales s WHERE date(s.date) BETWEEN ? AND ?`,from,to);
     const items = this.get(`SELECT COALESCE(SUM(i.quantity),0) AS quantity,COALESCE(SUM(i.cost*i.quantity),0) AS cogs
       FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date) BETWEEN ? AND ?`,from,to);
-    const returns = this.get('SELECT COALESCE(SUM(total),0) AS total FROM sale_returns WHERE date(date) BETWEEN ? AND ?',from,to);
+    /* A return takes the whole value back out of Revenue, but only the profit
+       inside those goods out of Gross Profit: the medicine is back on the shelf,
+       so its cost leaves cost of goods sold too. 100 sold with 20 profit, half
+       returned → revenue 50, cost 40, gross profit 10. Goods returned damaged
+       (not restocked) are never put back on the shelf, so their cost stays in
+       COGS and the profit drops by the whole refund instead. */
+    const returns = this.get(`SELECT COALESCE(SUM(r.total),0) AS total
+      FROM sale_returns r WHERE date(r.date) BETWEEN ? AND ?`,from,to);
+    const returnedCost = this.get(`SELECT COALESCE(SUM(sri.quantity*si.cost),0) AS cost
+      FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+      JOIN sale_returns r ON r.id=sri.return_id
+      WHERE sri.restock=1 AND date(r.date) BETWEEN ? AND ?`,from,to);
     const expenses = this.get('SELECT COALESCE(SUM(amount),0) AS total,COUNT(*) AS entries FROM expenses WHERE date(date) BETWEEN ? AND ?',from,to);
-    const revenue = round(Number(sales.revenue) - Number(returns.total));
-    const cogs = round(items.cogs);
+    const revenue = round(Number(sales.total) - Number(returns.total));
+    const cogs = round(Number(items.cogs) - Number(returnedCost.cost));
     const grossProfit = round(revenue - cogs);
     const netProfit = round(grossProfit - Number(expenses.total));
     const trend = this.all(`SELECT d.day,
-        (SELECT COALESCE(SUM(s.subtotal),0) FROM sales s WHERE date(s.date)=d.day) -
+        (SELECT COALESCE(SUM(s.total),0) FROM sales s WHERE date(s.date)=d.day) -
         (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE date(r.date)=d.day) AS revenue,
-        (SELECT COALESCE(SUM(i.cost*i.quantity),0) FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date)=d.day) AS cogs
+        (SELECT COALESCE(SUM(i.cost*i.quantity),0) FROM sale_items i JOIN sales s ON s.id=i.sale_id WHERE date(s.date)=d.day) -
+        (SELECT COALESCE(SUM(sri.quantity*si.cost),0) FROM sale_return_items sri JOIN sale_items si ON si.id=sri.sale_item_id
+           JOIN sale_returns r ON r.id=sri.return_id WHERE sri.restock=1 AND date(r.date)=d.day) AS cogs
       FROM (WITH RECURSIVE days(day) AS (SELECT ? UNION ALL SELECT date(day,'+1 day') FROM days WHERE day < ?) SELECT day FROM days) d
       ORDER BY d.day`,from,to).map(row=>{
         const dayRevenue = round(row.revenue);
@@ -291,6 +322,8 @@ class PharmacyService {
         orders: Number(sales.orders),
         itemsSold: Number(items.quantity),
         cogs,
+        returnedValue: round(Number(returns.total)),
+        returnedCost: round(Number(returnedCost.cost)),
         averageOrder: sales.orders ? round(Number(sales.total)/Number(sales.orders)) : 0,
         margin: revenue > 0 ? round(grossProfit / revenue * 100) : 0,
         expenseEntries: Number(expenses.entries)
