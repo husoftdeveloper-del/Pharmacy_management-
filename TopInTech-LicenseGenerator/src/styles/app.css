@@ -88,6 +88,14 @@ input::placeholder,textarea::placeholder{color:#6f9298}
 #result-serial{width:100%;height:104px;resize:vertical;font:11.5px/1.7 var(--mono);letter-spacing:.6px;color:#a9f0e2;background:#0b2027;border-color:#1d4149}
 .result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
+/* The short key the customer types into the setup wizard. It sits under the long
+   serial because it is the part that changes hands. */
+.install-key{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)}
+.install-key-head h4{font-size:12.5px}
+.install-key-head p{font-size:11px;color:var(--muted);margin-top:3px}
+.install-key-row{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
+.install-key-row output{font:600 15px var(--mono);letter-spacing:1.5px;color:var(--primary);background:var(--surface-3);border:1px solid var(--border);border-radius:8px;padding:9px 13px}
+
 /* ---- Verify ----------------------------------------------------------- */
 .verify{margin-top:18px;border-top:1px solid var(--border);padding-top:16px}
 .verify h3{font-size:12.5px}

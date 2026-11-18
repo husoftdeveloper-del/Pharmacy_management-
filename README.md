@@ -7,17 +7,36 @@ An offline Windows desktop application built with **pure HTML5, CSS3, Vanilla Ja
 ## Install on Windows
 
 1. Open the repository's **Releases** page and download the installer from the latest successful Windows build:
-   - `Pharmacy-1.0.0-x64.exe`: Setup installer, with Desktop and Start Menu shortcuts.
-   - `Pharmacy-1.0.0-Portable.exe`: portable application.
-2. Run the installer and choose an installation directory. These builds are **unsigned**; verify that you downloaded them from this repository. Windows SmartScreen may warn about an unknown publisher. A production deployment should use the organization's code-signing certificate.
-3. Launch **Pharmacy Management**.
-4. Complete first-run setup: pharmacy name, your name, administrator username, and a password of at least 10 characters. **There is no default password.**
-5. Open Settings to fill in your profile, pharmacy details, receipt footer, notifications, language and theme.
-6. Add categories, manufacturers, suppliers, customers, staff, and medicines.
-7. Open the cash register with its actual opening float.
-8. Receive a purchase to create batch stock. Then use Point of Sale.
+   - `Pharmacy-1.0.1-x64.exe`: Setup installer, with Desktop and Start Menu shortcuts.
+   - `Pharmacy-1.0.1-Portable.exe`: portable application.
+2. Run the installer. These builds are **unsigned**; verify that you downloaded them from this repository. Windows SmartScreen may warn about an unknown publisher. A production deployment should use the organization's code-signing certificate.
+3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish. On the activation page type the install key that the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `WXYZ-1234-5678-9ABC`). A wrong or empty key keeps you on the page with a red message and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
+4. Launch **Pharmacy Management**.
+5. Complete first-run setup: pharmacy name, your name, administrator username, and a password of at least 10 characters. **There is no default password.**
+6. Open Settings to fill in your profile, pharmacy details, receipt footer, notifications, language and theme.
+7. Add categories, manufacturers, suppliers, customers, staff, and medicines.
+8. Open the cash register with its actual opening float.
+9. Receive a purchase to create batch stock. Then use Point of Sale.
 
 The application does not need internet access after installation. Do not delete the application-data directory when upgrading.
+
+## Setup serial key
+
+The Pharmacy setup is gated by a key, so a copied `Pharmacy-Setup.exe` is useless without one.
+
+1. On your own PC, open **Top In Tech License Generator** and sign in (`mynewpharmacy`).
+2. Create the customer's licence: enter the customer name, the plan and the serial is signed with your private key.
+3. The result card shows two things: the **serial key** (the licence, 170 characters, kept in the generator database) and the short **install key** (16 characters, `WXYZ-1234-5678-9ABC`). Press **Copy Install Key**.
+4. Send the customer the setup file and that install key. One licence, one key: the key is derived from the serial, and the same serial always shows the same install key, so you can find it again in the licences table with the ⌨ button.
+5. The customer runs the setup, types the key on the **Pharmacy Management Activation** page and presses **Continue**. The key is accepted with or without the dashes, in lower or upper case.
+
+A wrong or invented key shows *"The key you entered is not valid. Check it and try again."* and the wizard stays on the page; an empty field shows *"Please enter your serial key to continue."* Nothing is written to disk until a key is accepted.
+
+The activation is remembered per laptop: the registry (`HKCU`/`HKLM \Software\Top In Tech\Pharmacy Management`, both registry views) plus marker files in ProgramData and AppData. A repair, a reinstall, an update, or an uninstall followed by a fresh install on the same machine therefore never asks again, and an existing installation counts as activated so current customers are not locked out when they update. Uninstalling never deletes the activation. Silent installs (`setup.exe /S`) prove the key through the `PHARMACY_SETUP_KEY` environment variable and stop with exit code 2 when it is missing or wrong.
+
+The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses mistyped and invented keys. It stops casual copying; the signed 170-character serial remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys.
+
+The **Portable.exe** build is the same application without the setup wizard, so it does not ask for the key. Ship the Setup installer to customers and keep the portable build for your own testing on machines you control.
 
 ## Run the source
 

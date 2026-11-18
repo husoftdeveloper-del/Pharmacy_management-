@@ -148,6 +148,32 @@ backup offline: without `private.pem` no new keys can be made for that key id.
 Every generated key is verified against the public key before it is saved, so a
 damaged key pair can never hand a customer a serial that their app rejects.
 
+## Install key for the Pharmacy setup
+
+The long serial is the licence; it is also 170 characters, so nobody types it
+into a setup wizard. Each license therefore also has a short **install key**:
+
+```
+WXYZ-1234-5678-9ABC        16 characters: 12 data + 4 check
+```
+
+* The 12 data characters are a stable base32 slice of `sha256("install:" + serial)`,
+  so one serial always produces the same key and a second license produces a
+  different one.
+* The 4 check characters come from a small arithmetic fold
+  (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
+  runs exactly the same arithmetic in `build/installer.nsh`.
+* The result card shows the key under **Install key for the setup** with
+  **Copy Install Key**; the licences table has a ⌨ button that copies it again
+  for a key sold earlier.
+* The customer types it on the setup's **Pharmacy Management Activation** page.
+  A typo shows *"The key you entered is not valid. Check it and try again."* and
+  the install does not start. Dashes, spaces and lower case are all accepted.
+
+This check stops casual copying; it is not the security boundary. The signed
+serial is: verify it in the customer app with `public.pem`, as described in
+[`docs/customer-verification.md`](docs/customer-verification.md).
+
 ## Records
 
 Each license row has a status:

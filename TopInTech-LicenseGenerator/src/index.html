@@ -113,6 +113,18 @@
           <button type="button" class="btn btn-ghost" id="copy-plain">Copy without dashes</button>
           <button type="button" class="btn btn-ghost" id="copy-json">Copy as JSON</button>
         </div>
+        <!-- The customer types this short key into the setup wizard; the long
+             serial above stays in this database as the licence record. -->
+        <div class="install-key">
+          <div class="install-key-head">
+            <h4>Install key for the setup</h4>
+            <p>Give this to the customer. The setup asks for it on the activation page: “Enter your serial key”.</p>
+          </div>
+          <div class="install-key-row">
+            <output id="result-install-key" aria-label="Install key for the setup wizard">—</output>
+            <button type="button" class="btn btn-secondary" id="copy-install-key">Copy Install Key</button>
+          </div>
+        </div>
       </section>
 
       <section class="verify" aria-labelledby="verify-title">

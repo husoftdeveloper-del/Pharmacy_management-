@@ -125,6 +125,8 @@ function renderRows() {
     code.title = row.formatted;
     wrap.append(code);
     wrap.append(iconButton('⧉', 'Copy serial key', () => copyText(row.formatted, 'Serial key')));
+    // The short key the customer typed into the setup, for a license sold earlier.
+    wrap.append(iconButton('⌨', 'Copy install key for the setup', () => copyText(row.installKey, 'Install key')));
     serialCell.append(wrap);
 
     const product = document.createElement('td');
@@ -290,6 +292,7 @@ function showResult(license) {
   pillHost.className = `status-pill${license.status === 'unused' ? '' : ` ${license.status}`}`;
   pillHost.textContent = statusLabel(license.status);
   $('#result-serial').scrollTop = 0;
+  $('#result-install-key').textContent = license.installKey || '—';
 }
 
 /* ---- Verify ----------------------------------------------------------- */
@@ -320,6 +323,7 @@ async function verify() {
 function wire() {
   $('#generate-form').addEventListener('submit', generate);
   $('#copy-serial').addEventListener('click', () => copyText($('#result-serial').value, 'Serial key'));
+  $('#copy-install-key').addEventListener('click', () => copyText($('#result-install-key').textContent.trim(), 'Install key'));
   $('#copy-plain').addEventListener('click', () => copyText(plain($('#result-serial').value), 'Serial key'));
   $('#copy-json').addEventListener('click', () => {
     const [productLine, planLine] = ['#result-meta', '#result-status'];

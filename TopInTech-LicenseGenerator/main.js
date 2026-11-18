@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const keys = require('./lib/keys');
 const serial = require('./lib/serial');
+const setupkey = require('./lib/setupkey');
 const store = require('./lib/database');
 const shortcuts = require('./lib/shortcut');
 const account = require('./lib/account');
@@ -72,7 +73,10 @@ function decorate(row) {
     planId,
     planLabel: planId ? serial.PLANS[planId].label : (row.plan || ''),
     formatted: serial.formatSerial(row.serial),
-    plain: row.serial
+    plain: row.serial,
+    // The short key the customer types into the setup wizard: derived from the
+    // serial, so the same row always shows the same key.
+    installKey: setupkey.makeInstallKey(row.serial)
   };
 }
 

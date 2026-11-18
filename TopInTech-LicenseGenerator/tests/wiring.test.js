@@ -184,14 +184,15 @@ test('the fields the table reads exist on a decorated license row', () => {
     .map(match => match[1] || match[2]));
   assert.ok(columns.has('issued_on'), 'the schema must keep issued_on');
   assert.ok(columns.has('expires_on'), 'the schema must keep expires_on');
-  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain']);
+  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey']);
   const referenced = new Set([...renderer.matchAll(/\b(?:row|license)\.([a-z_]+)/gi)].map(match => match[1]));
   assert.ok(referenced.size > 4);
   for (const field of referenced) {
     assert.ok(columns.has(field) || decorated.has(field),
       `the renderer reads row.${field}, which neither the licenses table nor decorate() provides`);
   }
-  // decorate() must actually add the four display fields.
+  // decorate() must actually add the display fields, including the short install
+  // key the customer types into the setup wizard.
   const decorate = main.slice(main.indexOf('function decorate'), main.indexOf('function newLicenseId'));
   for (const field of decorated) {
     assert.match(decorate, new RegExp(`\\b${field}\\s*[:,]`), `decorate() does not add ${field}`);
@@ -412,4 +413,21 @@ test('the include removes the duplicate shortcuts the older builds left behind',
   assert.match(install, /Delete "\$SMPROGRAMS\\Top In Tech License Generator/);
   assert.match(nsh, /!macro customUnInstall/);
   assert.match(nsh, /Delete "\$DESKTOP/);
+});
+
+test('the install key for the Pharmacy setup is shown, copyable and reachable later', () => {
+  // main.js derives it from the serial, using the module the setup also relies on.
+  assert.match(main, /require\('\.\/lib\/setupkey'\)/, 'main.js must load lib/setupkey');
+  assert.match(main, /installKey:\s*setupkey\.makeInstallKey\(/, 'decorate() must add installKey');
+
+  // The result card shows it under the long serial, with its own copy button.
+  assert.match(html, /id="result-install-key"/);
+  assert.match(html, /id="copy-install-key"/);
+  assert.match(html, /Install key for the setup/);
+  assert.match(renderer, /\$\('#result-install-key'\)\.textContent\s*=\s*license\.installKey/,
+    'showResult() must display the install key');
+  assert.match(renderer, /\$\('#copy-install-key'\)\.addEventListener\('click'/,
+    'the copy button must be wired');
+  // A license sold earlier can still be looked up in the table.
+  assert.match(renderer, /copyText\(row\.installKey/, 'the licences table must offer the install key again');
 });
