@@ -240,6 +240,7 @@ async function dispatch(event, request) {
   if(c==='preferences')return service.preferences(user);
   if(c==='dashboard')return service.dashboard(user);
   if(c==='customerAccounts')return service.customerAccounts(user,p);
+  if(c==='customerStatement')return service.customerStatement(user,p);
   if(c==='customerBook')return service.customerBook(user);
   if(c==='medicineBook')return service.medicineBook(user);
   if(c==='inventoryBook')return service.inventoryBook(user);

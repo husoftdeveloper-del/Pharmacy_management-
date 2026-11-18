@@ -341,12 +341,12 @@ app.whenReady().then(async()=>{
   await until(()=>run("return !!document.querySelector('#modal-root .modal')"),'return detail from the returns page');
   await run("document.querySelector('#modal-root [data-close]').click();return true;");
   await until(()=>run("return !document.querySelector('#modal-root .modal')"),'return detail closed');
-  // Customers page: two totals, search and the customer table.
+  // Customers page: the four money totals, search and the customer table.
   await run("document.querySelector('[data-page=customers]').click();return true;");
   await until(()=>run("return !!document.querySelector('#new-customer') && !!document.querySelector('#customer-rows')"),'customers page');
-  assert.equal(await run("return document.querySelectorAll('.customer-stats .stat-value').length"),2,'two customer totals');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Total Customers')"),'total customers label');
-  assert.ok(await run("return document.querySelector('#page-content').innerText.includes('Outstanding Credit')"),'outstanding credit label');
+  assert.equal(await run("return document.querySelectorAll('.customer-stats .stat-value').length"),4,'four customer totals');
+  for(const label of ['Total Paid','Total Credit Sales','Total Returned','Total Owed'])assert.ok(await run(`return document.querySelector('#page-content').innerText.includes('${label}')`),`${label} label`);
+  assert.ok(await run("return /\\d+ customers/.test(document.querySelector('#customer-count').innerText)"),'customer count next to the search');
   await run("await window.pharmacy.invoke('save',{entity:'customers',record:{name:'Email Customer',phone:'0700555666',email:'mail@example.com',opening_balance:0,credit_limit:0,active:1}});document.querySelector('#new-customer').click();return true;");
   await until(()=>run("return !!document.querySelector('#modal-root form')"),'new customer form');
   assert.ok(await run("return !!document.querySelector('#modal-root [name=email]')"),'email field in the customer form');
@@ -368,6 +368,18 @@ app.whenReady().then(async()=>{
   assert.ok(!(await run("return document.querySelector('#customer-rows').innerText.includes('Form Customer')")),'search filters rows');
   await run("document.querySelector('#customer-search').value='';document.querySelector('#customer-search').dispatchEvent(new Event('input'));return true;");
   await pause(250);
+  // A customer with an opening balance: the statement must show it as the first
+  // ledger line, the running balance and the four totals for that one customer.
+  const statementCustomer=await run("const created=await window.pharmacy.invoke('save',{entity:'customers',record:{name:'Statement Customer',phone:'0700999000',opening_balance:50,credit_limit:0,active:1}});return created.id");
+  await run("document.querySelector('[data-page=customers]').click();return true;");
+  await until(()=>run("return !!document.querySelector('[data-statement]')"),'statement buttons');
+  await run(`document.querySelector('[data-statement="${statementCustomer}"]').click();return true;`);
+  await until(()=>run("return !!document.querySelector('#modal-root .statement-table')"),'customer statement opens');
+  assert.equal(await run("return document.querySelectorAll('#modal-root .statement-stats .stat-value').length"),4,'statement shows the four totals');
+  assert.equal(await run("return document.querySelectorAll('#modal-root .statement-table tbody tr').length"),1,'the opening balance is the first ledger line');
+  assert.ok(await run("return document.querySelector('#modal-root .statement-summary').innerText.includes('50.00')"),'the statement shows the opening balance');
+  await run("document.querySelector('#modal-root [data-close]').click();return true;");
+  await until(()=>run("return !document.querySelector('#modal-root .modal')"),'customer statement closed');
   // Medicines (catalogue) and Inventory (batches) are two different pages.
   await run("document.querySelector('[data-page=medicines]').click();return true;");
   await until(()=>run("return !!document.querySelector('#add-medicine') && !!document.querySelector('#medicine-rows')"),'medicines page');

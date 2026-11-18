@@ -1293,25 +1293,132 @@ class PharmacyService {
     };
   }
 
+  /* One customer ledger feeds every customer screen: the four totals on the
+     Customers page, the Balances tab of Customer Payments and the per-customer
+     statement. Money is split the way a shopkeeper reads it —
+       credit sales  the part of an invoice the customer did not pay at the counter
+       paid          cash handed over at the counter plus every later payment
+       returned      the part of a return that cancelled debt (cash refunds are
+                     tracked separately, they never change the balance)
+     so that  opening + creditSales - returned - payments = balance  always holds. */
+  customerLedger(customerId) {
+    const customer = this.get('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers WHERE id=?', id(customerId));
+    if (!customer) fail('Customer not found.');
+    const sales = this.all('SELECT id,invoice_no,date,subtotal,discount,total,paid,payment_method FROM sales WHERE customer_id=? ORDER BY date,id', customer.id);
+    const returns = this.all(`SELECT r.id,r.date,r.total,r.credit_amount,r.reason,r.method,s.invoice_no
+      FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id=? ORDER BY r.date,r.id`, customer.id);
+    const payments = this.all("SELECT id,date,amount,method,reference FROM payments WHERE party_type='customer' AND party_id=? ORDER BY date,id", customer.id);
+    const opening = round(customer.opening_balance);
+    // `total - paid` is exactly what an invoice added to the customer's debt,
+    // whether it was booked as a credit sale or half paid at the counter.
+    const creditSales = round(sales.reduce((sum,row) => sum + Math.max(0,row.total-row.paid),0));
+    const paidAtSale = round(sales.reduce((sum,row) => sum + row.paid,0));
+    const paymentsTotal = round(payments.reduce((sum,row) => sum + row.amount,0));
+    const returned = round(returns.reduce((sum,row) => sum + row.credit_amount,0));
+    const refunded = round(returns.reduce((sum,row) => sum + (row.total-row.credit_amount),0));
+    const paid = round(paidAtSale+paymentsTotal);
+    const balance = round(opening+creditSales-returned-paymentsTotal);
+    return {
+      customer,
+      sales, returns, payments,
+      opening,
+      creditSales,
+      paidAtSale,
+      paymentsTotal,
+      paid,
+      returned,
+      refunded,
+      balance,
+      owed: round(Math.max(0,balance)),
+      lastPayment: payments.length ? payments[payments.length-1].date : null
+    };
+  }
+  /* The statement is the same ledger written as running rows, oldest first. */
+  customerStatement(user, query = {}) {
+    this.require(user, 'customers');
+    const ledger = this.customerLedger(query.customerId ?? query.id);
+    const movements = [];
+    let running = ledger.opening;
+    if (ledger.opening) movements.push({ date:null, kind:'opening', reference:'', credit:ledger.opening, paid:0, balance:running, note:'' });
+    // Each line carries the invoice total and what was paid against it, so the
+    // customer recognises the numbers on their receipt. The sequence keeps the
+    // order stable when several entries share the same timestamp: invoices
+    // first, then returns, then payments.
+    const dated = [];
+    for (const row of ledger.sales) {
+      dated.push({ date:row.date, seq:row.id, kind:'sale', reference:row.invoice_no, credit:round(row.total), paid:round(row.paid), note:row.payment_method });
+    }
+    for (const row of ledger.returns) {
+      dated.push({ date:row.date, seq:1e9+row.id, kind:'return', reference:row.invoice_no, credit:0, paid:round(row.credit_amount), note:row.reason, refund:round(row.total-row.credit_amount) });
+    }
+    for (const row of ledger.payments) {
+      dated.push({ date:row.date, seq:2e9+row.id, kind:'payment', reference:row.reference, credit:0, paid:round(row.amount), note:row.method });
+    }
+    dated.sort((a,b) => String(a.date||'').localeCompare(String(b.date||'')) || a.seq-b.seq);
+    for (const row of dated) {
+      running = round(running+row.credit-row.paid);
+      movements.push({ ...row, balance:running, refund:row.refund||0 });
+    }
+    return {
+      customer: {
+        id: ledger.customer.id,
+        name: ledger.customer.name,
+        phone: ledger.customer.phone,
+        email: ledger.customer.email,
+        address: ledger.customer.address,
+        active: Number(ledger.customer.active) === 1 ? 1 : 0,
+        opening_balance: ledger.opening,
+        credit_limit: round(ledger.customer.credit_limit)
+      },
+      movements,
+      closing: running,
+      totals: {
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paid: ledger.paid,
+        paidAtSale: ledger.paidAtSale,
+        payments: ledger.paymentsTotal,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        owed: ledger.owed,
+        balance: ledger.balance
+      },
+      currency: this.setting('currency'),
+      pharmacyName: this.setting('pharmacy_name')
+    };
+  }
   customerBook(user) {
     this.require(user,'customers');
-    const balance = customer => {
-      const invoices = this.get('SELECT COALESCE(SUM(total-paid),0) AS n FROM sales WHERE customer_id=?',customer.id).n;
-      const returns = this.get('SELECT COALESCE(SUM(r.credit_amount),0) AS n FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id=?',customer.id).n;
-      const payments = this.get('SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE party_type=? AND party_id=?','customer',customer.id).n;
-      return round(customer.opening_balance+invoices-returns-payments);
-    };
-    const rows = this.all('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers ORDER BY name').map(customer => ({
-      ...customer,
-      active: Number(customer.active) === 1 ? 1 : 0,
-      balance: balance(customer)
-    }));
+    const rows = this.all('SELECT id,name,phone,email,address,opening_balance,credit_limit,active FROM customers ORDER BY name').map(customer => {
+      const ledger = this.customerLedger(customer.id);
+      return {
+        ...customer,
+        active: Number(customer.active) === 1 ? 1 : 0,
+        balance: ledger.balance,
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paid: ledger.paid,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        owed: ledger.owed,
+        lastPayment: ledger.lastPayment
+      };
+    });
+    const total = key => round(rows.reduce((sum,row) => sum + row[key],0));
     return {
       rows,
       totals: {
         customers: rows.length,
         active: rows.filter(row => row.active === 1).length,
-        outstanding: round(rows.reduce((sum,row) => sum + Math.max(0,row.balance),0))
+        // Kept for the pages that already read it; `owed` is the same number.
+        outstanding: total('owed'),
+        owed: total('owed'),
+        creditSales: total('creditSales'),
+        paid: total('paid'),
+        returned: total('returned'),
+        refunded: total('refunded'),
+        opening: total('opening'),
+        withDues: rows.filter(row => row.owed > 0).length
       },
       currency: this.setting('currency')
     };
@@ -1321,28 +1428,42 @@ class PharmacyService {
     const from = query.from ? date(query.from) : '0000-01-01';
     const to = query.to ? date(query.to) : '9999-12-31';
     if (from > to) fail('Start date must be before end date.');
-    const byId = rows => new Map(rows.map(row => [row.id, row]));
-    const credit = byId(this.all("SELECT customer_id AS id,SUM(total) AS total FROM sales WHERE payment_method='credit' AND customer_id IS NOT NULL AND date(date) BETWEEN ? AND ? GROUP BY customer_id",from,to));
-    const payments = byId(this.all("SELECT party_id AS id,SUM(amount) AS total,MAX(date) AS last FROM payments WHERE party_type='customer' AND date(date) BETWEEN ? AND ? GROUP BY party_id",from,to));
-    const returns = byId(this.all("SELECT s.customer_id AS id,SUM(r.total) AS total FROM sale_returns r JOIN sales s ON s.id=r.sale_id WHERE s.customer_id IS NOT NULL AND date(r.date) BETWEEN ? AND ? GROUP BY s.customer_id",from,to));
-    const rows = this.all('SELECT id,name,phone,opening_balance FROM customers WHERE active=1 ORDER BY name').map(customer => ({
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      creditSales: round(credit.get(customer.id)?.total||0),
-      paid: round(payments.get(customer.id)?.total||0),
-      returned: round(returns.get(customer.id)?.total||0),
-      balance: this.party('customer',customer.id).balance,
-      lastPayment: payments.get(customer.id)?.last||null
-    }));
+    // The balances come from the shared ledger (opening balance, counter
+    // payments, later payments and debt-cancelling returns), so a half-paid
+    // invoice is counted once and the four totals always add up to the balance.
+    const rows = this.all('SELECT id FROM customers WHERE active=1 ORDER BY name').map(customer => {
+      const ledger = this.customerLedger(customer.id);
+      return {
+        id: ledger.customer.id,
+        name: ledger.customer.name,
+        phone: ledger.customer.phone,
+        opening: ledger.opening,
+        creditSales: ledger.creditSales,
+        paidAtSale: ledger.paidAtSale,
+        payments: ledger.paymentsTotal,
+        paid: ledger.paid,
+        returned: ledger.returned,
+        refunded: ledger.refunded,
+        balance: ledger.balance,
+        owed: ledger.owed,
+        lastPayment: ledger.lastPayment
+      };
+    });
+    const total = key => round(rows.reduce((sum,row)=>sum+row[key],0));
     return {
       rows,
       totals: {
-        creditSales: round(rows.reduce((sum,row)=>sum+row.creditSales,0)),
-        paid: round(rows.reduce((sum,row)=>sum+row.paid,0)),
-        returned: round(rows.reduce((sum,row)=>sum+row.returned,0)),
-        owed: round(rows.reduce((sum,row)=>sum+Math.max(0,row.balance),0))
+        customers: rows.length,
+        creditSales: total('creditSales'),
+        paid: total('paid'),
+        paidAtSale: total('paidAtSale'),
+        payments: total('payments'),
+        returned: total('returned'),
+        refunded: total('refunded'),
+        owed: total('owed'),
+        withDues: rows.filter(row=>row.owed>0).length
       },
+      from, to,
       currency: this.setting('currency')
     };
   }
