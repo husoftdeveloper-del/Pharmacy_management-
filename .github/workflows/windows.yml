@@ -89,9 +89,15 @@ jobs:
             exit 1
           }
 
+          # The order of the pages is a property of the script, not of the
+          # compiled output (makensis expands MUI_PAGE_WELCOME, so its text is
+          # gone from the preprocessed listing).
+          $script = Get-Content 'build\installer.nsh' -Raw
+          $welcome = $script.IndexOf('!insertmacro MUI_PAGE_WELCOME')
+          $activation = $script.IndexOf('Page custom ActivationPageShow ActivationPageLeave')
           $checks = [ordered]@{
             'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
-            'welcome page first'            = $output.Contains('!insertmacro MUI_PAGE_WELCOME')
+            'welcome page before the activation page' = ($welcome -ge 0 -and $welcome -lt $activation)
             'page title'                    = $output.Contains('Pharmacy Management Activation')
             'key label'                     = $output.Contains('Enter your serial key')
             'Continue button'               = $output.Contains('STR:Continue')
