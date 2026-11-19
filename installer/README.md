@@ -15,9 +15,13 @@ Two files matter:
 `latest.yml` belongs to the portable build and is not needed for a manual
 install.
 
-## 1. Download everything into this folder (one command)
+## 1. Download everything into this folder (double-click)
 
-Open PowerShell in this folder and run:
+Open this `installer` folder in File Explorer and **double-click
+`get-latest.bat`**. It downloads the newest Setup, Portable and License
+Generator files right here and shows their sizes.
+
+The same thing from a terminal, if you prefer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\get-latest.ps1
