@@ -19,6 +19,12 @@ const os = require('node:os');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
+
+if (process.versions.electron) {
+  console.error('Run this file with Node, not Electron: node tests/electron-smoke.js');
+  process.exit(2);
+}
+
 const electron = require('electron');
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 60000);
 
@@ -36,6 +42,9 @@ function fail(message, output) {
   }
   process.exit(1);
 }
+
+process.on('uncaughtException', error => fail(`the runner crashed: ${error.message}`, error.stack));
+process.on('unhandledRejection', error => fail(`the runner crashed: ${(error && error.message) || error}`));
 
 // Electron leaves GPU and renderer children behind on Windows, and those keep
 // the stdio pipes open, so 'close' would never fire after a plain kill.

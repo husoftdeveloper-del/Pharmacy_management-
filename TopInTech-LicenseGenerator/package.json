@@ -17,7 +17,7 @@
     "verify": "node tools/cli.js verify",
     "pack": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis --x64 --publish never",
-    "smoke": "electron tests/electron-smoke.js",
+    "smoke": "node tests/electron-smoke.js",
     "dist:portable": "electron-builder --win portable --x64 --publish never"
   },
   "devDependencies": {
