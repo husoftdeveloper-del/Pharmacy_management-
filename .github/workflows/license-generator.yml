@@ -352,6 +352,8 @@ jobs:
       - name: Show build failures in the run summary
         if: failure()
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -f artifacts/smoke-error.txt ]; then
             {
@@ -364,6 +366,11 @@ jobs:
             # the failure text is also surfaced as an annotation.
             summary=$(tr '\n' ' ' < artifacts/smoke-error.txt | tr -s ' ' | head -c 900)
             echo "::error title=Smoke test::${summary}"
+            # The step log is not readable from the runner, so the whole smoke
+            # report is also posted as a commit comment, which is.
+            body=$(head -c 60000 artifacts/smoke-error.txt | sed 's/\r$//')
+            payload=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.stringify({body:"\`\`\`\n"+fs.readFileSync(0,"utf8")+"\n\`\`\`"}))' <<< "$body")
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" --input - <<< "$payload" > /dev/null || echo 'could not post the smoke report as a commit comment'
           fi
           if [ -f build.log ]; then
             tail -c 6000 build.log > failure-tail.txt
