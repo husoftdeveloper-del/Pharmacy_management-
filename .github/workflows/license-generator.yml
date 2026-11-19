@@ -46,6 +46,12 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
+      # A real Electron window on a real Windows desktop: the tool opens, the
+      # Settings window opens from the gear icon, the owner password is changed
+      # through the real form, and the new password signs in again.
+      - name: Real window smoke test, including the Settings window
+        run: npx electron tests/electron-smoke.js
+
       # The tool opens locked. A wrong password must not reveal the tool, and the
       # password itself must never be written into the bundle in clear text.
       - name: Check the owner sign-in screen is wired into the app
