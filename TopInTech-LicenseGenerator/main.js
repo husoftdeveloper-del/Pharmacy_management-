@@ -97,6 +97,9 @@ function newLicenseId() {
    Desktop folder that exists, and can use PowerShell as a fallback.          */
 function desktopCandidates() {
   const os = require('node:os');
+  // An unattended smoke run must not litter the runner's real desktops: it can
+  // only see the throwaway folder it was given.
+  if (SMOKE) return [app.getPath('desktop')];
   const home = os.homedir();
   const list = [];
   // 1. The folder Windows itself reports: this is the one the user sees.
@@ -112,8 +115,8 @@ function desktopCandidates() {
   const publicRoot = process.env.PUBLIC || 'C:\\Users\\Public';
   list.push(path.join(publicRoot, 'Desktop'));
   try { list.push(path.join(app.getPath('appData'), '..', '..', 'Public', 'Desktop')); } catch { /* not reported */ }
-  // 5. The Start menu, so the app can always be found even without an icon.
-  try { list.push(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs')); } catch { /* not reported */ }
+  // The Start menu is deliberately absent: the setup wizard owns that entry, so
+  // the tool must never add a second one next to it.
   // Folders that do not exist are skipped inside ensureDesktopShortcut().
   return list;
 }

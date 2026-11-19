@@ -496,3 +496,15 @@ test('the settings styles are separate rules, not inline styles', () => {
   }
   assert.match(css, /\.modal-backdrop\[hidden\]\{display:none\}/, 'a closed window is really hidden');
 });
+
+test('the tool creates a desktop icon only, never a second Start menu entry', () => {
+  const main = read('main.js');
+  const shortcut = read('lib/shortcut.js');
+  // The setup wizard writes the single Start menu entry for an installed copy;
+  // a shortcut written by the app itself would sit next to it as a duplicate.
+  assert.doesNotMatch(main, /Start Menu/, 'the app must not target the Start menu');
+  assert.doesNotMatch(shortcut, /Start Menu/, 'the shortcut helper must not target the Start menu');
+  // The desktop is still covered, including the all-users desktop.
+  assert.match(main, /OneDrive/);
+  assert.match(main, /'Desktop'/);
+});
