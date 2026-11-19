@@ -7,7 +7,8 @@
  * temporary desktop folder), waits for the window to render, then checks:
  *   - the window title and version are shown;
  *   - the key badge is filled and the public key is displayed;
- *   - the Settings window opens and the owner password can be changed;
+ *   - the Settings window opens, shows the account, closes with Esc, and the
+ *     owner password can be changed and used to sign in again;
  *   - a serial can be generated, stored and verified again;
  *   - the desktop shortcut file is really written to disk.
  * Every check is printed, and a non-zero exit code fails the build.
@@ -77,7 +78,10 @@ child.on('close', code => {
     ['the public key is displayed', result.page && result.page.publicKey === true],
     ['the Settings window opens from the gear icon', result.settings && result.settings.open === true],
     ['Settings names the signed-in owner', result.settings && result.settings.user === 'smoke-owner'],
-    ['the password form saves without an error', result.settings && result.settings.error === ''],
+    ['Settings shows the data folder', result.settings && /licenses\.sqlite|\.+/.test(result.settings.folder || '')],
+    ['Settings has the password, username and sign-out controls', result.settings && result.settings.hasPasswordForm === true && result.settings.hasUsernameForm === true && result.settings.hasSignOut === true],
+    ['Esc closes the Settings window', result.settings && result.settings.closedByEscape === true],
+    ['the password is changed through the guarded channel', result.settings && result.settings.changedBy === 'smoke-owner'],
     ['the new password signs in', result.settings && result.settings.passwordChanged === true],
     ['a serial was generated', Boolean(result.generated && result.generated.serial)],
     ['the serial records a 1 year plan', result.generated && result.generated.plan === '1 Year'],

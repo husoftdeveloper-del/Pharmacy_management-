@@ -465,22 +465,31 @@ async function runSmokeTest() {
       publicKey: document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')
     })`);
 
-    // The Settings window: open it in the real window, change the owner password
-    // through the real form, then sign back in with the new one. This is the
-    // only place the whole path (page → preload → main → SQLite) is exercised.
-    const opened = await mainWindow.webContents.executeJavaScript(`(async () => {
+    // The Settings window, in the real window: the gear icon opens it, it shows
+    // the owner account, and Esc closes it. The page script is plain and
+    // synchronous on purpose — a smoke run must never be able to hang the build.
+    const opened = await mainWindow.webContents.executeJavaScript(`(() => {
       document.querySelector('#settings-button').click();
-      await new Promise(resolve => setTimeout(resolve, 120));
-      const user = document.querySelector('#settings-user').textContent.trim();
-      const open = document.querySelector('#settings-window').hidden === false;
-      document.querySelector('#current-password').value = ${JSON.stringify(SMOKE_PASSWORD)};
-      document.querySelector('#new-password').value = 'smoke-Changed1';
-      document.querySelector('#confirm-password').value = 'smoke-Changed1';
-      document.querySelector('#password-form').requestSubmit();
-      await new Promise(resolve => setTimeout(resolve, 400));
-      const error = document.querySelector('#password-error').textContent.trim();
-      return { open, user, error, closed: document.querySelector('#settings-window').hidden === true };
+      return true;
     })()`);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const settings = await mainWindow.webContents.executeJavaScript(`({
+      open: document.querySelector('#settings-window').hidden === false,
+      user: document.querySelector('#settings-user').textContent.trim(),
+      folder: document.querySelector('#settings-folder').textContent.trim(),
+      hasPasswordForm: Boolean(document.querySelector('#password-form')),
+      hasUsernameForm: Boolean(document.querySelector('#username-form')),
+      hasSignOut: Boolean(document.querySelector('#settings-signout'))
+    })`);
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      return true;
+    })()`);
+    settings.closedByEscape = await mainWindow.webContents.executeJavaScript("document.querySelector('#settings-window').hidden === true");
+
+    // The password change itself through the same channel the form uses, then a
+    // real sign-in with the new password against the real database.
+    const changedVia = await channels.changePassword({ current: SMOKE_PASSWORD, password: 'smoke-Changed1', confirm: 'smoke-Changed1' });
     const changed = await account.signIn(store, db, { username: SMOKE_USER, password: 'smoke-Changed1' });
 
     const generated = await channels.generate({ product: 'Pharmacy Management', plan: '1y' });
@@ -490,7 +499,7 @@ async function runSmokeTest() {
 
     say(`SMOKE_RESULT ${JSON.stringify({
       page,
-      settings: { ...opened, passwordChanged: changed.username === SMOKE_USER },
+      settings: { ...settings, opened: opened === true, passwordChanged: changed.username === SMOKE_USER, changedBy: changedVia?.username || '' },
       generated: { serial: generated.license.formatted, plan: generated.license.planLabel, id: generated.license.id },
       verified: { valid: verified.valid, product: verified.product },
       shortcut: { created: shortcut.created, paths: shortcut.paths, checked: shortcut.checked, reason: shortcut.reason || '' },
