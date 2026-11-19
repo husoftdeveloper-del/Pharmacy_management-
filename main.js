@@ -237,8 +237,30 @@ function licenceFiles(){
   try{files.push(path.join(app.getPath('userData'),licence.FILE_NAME));}catch{}
   return files;
 }
+// The same last valid day, kept inside the pharmacy database. The setup's
+// license.json is easy to delete; the database is not (it holds every sale), so
+// this is what keeps a finished licence finished.
+function rememberedLicence(){
+  if(!db)return null;
+  try{ const row=db.prepare('SELECT value FROM settings WHERE key=?').get('licence_days'); return row?String(row.value):null; }catch{ return null; }
+}
+function rememberLicence(days){
+  if(!db)return;
+  try{
+    if(rememberedLicence()===String(days))return;
+    db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('licence_days',String(days));
+  }catch{}
+}
 function assertLicence(){
-  const state=licence.assertUsable({files:licenceFiles(),logger:message=>console.warn(message)});
+  const found=licence.status({files:licenceFiles(),logger:message=>console.warn(message)});
+  // A licence that checks out is written down once, so a later deletion of
+  // license.json is harmless; a lifetime licence is stored as 0.
+  if(found.found)rememberLicence(found.days);
+  const state=licence.assertUsable({
+    state:found,
+    remembered:found.found?null:rememberedLicence(),
+    logger:message=>console.warn(message)
+  });
   if(state.found)console.log(`[licence] valid${state.expiresOn?` until ${state.expiresOn}`:' for life'}`);
   return state;
 }
@@ -248,7 +270,10 @@ async function dispatch(event, request) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Invalid request payload.');
   if (c==='bootstrap') return service.bootstrap();
   // Public: the sign-in screen and the License tab show when the key ends.
-  if (c==='licence') return licence.status();
+  if (c==='licence') {
+    const found=licence.status({files:licenceFiles()});
+    return licence.resolve(found,found.found?null:rememberedLicence());
+  }
   if (c==='setup') { assertLicence();const result=service.setup(p);return {...result,token:createSession(event,result.user)}; }
   if (c==='login') {
     // A licence that has run out stops here, before the password is checked, so

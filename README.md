@@ -49,9 +49,11 @@ The key is typed once, at install time. The setup then writes a small licence fi
 
 **A licence that runs out stops the sign-in screen.** With a 10-Day plan the customer can sign in for ten days. On the eleventh, sign-in is refused before the password is checked, with:
 
-> Your serial key has expired. Please renew your serial key from the Owner.
+> Your Serial key has expired, please Renew Serial key on the Owner.
 
-Settings → License also shows *Valid until* and the remaining days while the licence is running. A Lifetime licence (`L`) and both older key shapes never expire. A missing or damaged `license.json` (a development run, a portable copy, an installation made before licences carried an expiry) is treated as no restriction, so an update never locks a paying pharmacy out. The check is repeated on every request, so closing and reopening the window does not help once the date has passed.
+Settings → License also shows *Valid until* and the remaining days while the licence is running. A Lifetime licence (`L`) and both older key shapes never expire. Deleting `license.json` does not restart a licence: the first time the application reads a valid licence it copies the same last valid day into its own database (`settings.licence_days`), and that copy decides when the file is gone. Losing the database means losing every sale, so the date cannot be reset without paying the price.
+
+A damaged `license.json`, or a machine that never had one (a development run, a portable copy, an installation made before licences carried an expiry), is treated as no restriction, so an update never locks a paying pharmacy out. The check is repeated on every request, so closing and reopening the window does not help once the date has passed.
 
 Every key shape this project has ever printed is accepted by the setup: the current 9-character key (`ABC-123-456`, which carries the expiry), the 6-character key of versions 2.3.3 – 2.3.5 (`ABC-123`) and the 16-character key that generator 2.3.2 printed (`WXYZ-1234-5678-9ABC`). The two older shapes were issued before keys carried a date, so they are read as lifetime. A key made by an older generator therefore still installs, and `tests/installer.test.js` proves the setup and the generator agree about all three. If the customer pastes the long serial by mistake, the setup still refuses it but adds a line saying the short install key is the one it wants.
 

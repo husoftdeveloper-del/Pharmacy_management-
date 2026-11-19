@@ -48,7 +48,7 @@ test('a 10-day key works on its last day and is refused the day after', () => {
     }
   })();
   assert.ok(thrown, 'an expired licence must throw');
-  assert.equal(thrown.message, 'Your serial key has expired. Please renew your serial key from the Owner.');
+  assert.equal(thrown.message, 'Your Serial key has expired, please Renew Serial key on the Owner.');
   assert.equal(thrown.code, 'LICENSE_EXPIRED');
 });
 
@@ -154,8 +154,8 @@ test('the sign-in screen shows the expiry message and nothing else', () => {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
     assert.doesNotMatch(text, /writeFileSync\([^)]*licen[cs]e\.json/i, `${file} must not write a licence`);
   }
-  assert.match(licence.EXPIRED_MESSAGE, /expired/i);
-  assert.match(licence.EXPIRED_MESSAGE, /renew your serial key from the Owner/i);
+  // The sentence the owner asked for, word for word.
+  assert.equal(licence.EXPIRED_MESSAGE, 'Your Serial key has expired, please Renew Serial key on the Owner.');
   // assertUsable() refuses with the licence code, so main.js can pass it on.
   const expiredKey = setupkey.makeInstallKey(serial, '2026-11-28');
   const expiredFile = writeLicence('ended.json', { version: 1, key: expiredKey });
@@ -164,4 +164,70 @@ test('the sign-in screen shows the expiry message and nothing else', () => {
     error => error.code === 'LICENSE_EXPIRED' && error.message === licence.EXPIRED_MESSAGE
   );
   assert.doesNotThrow(() => licence.assertUsable({ files: [expiredFile], now: new Date('2026-11-28T20:00:00Z') }));
+});
+
+/* ---- The customer's ten days, one day at a time -------------------------
+   The owner sells a 10-Day licence, the customer installs on day 1 and opens
+   the application every day. Days 1-10 sign in; day 11 is refused with the
+   renewal sentence and nothing else works. */
+test('ten days of use, then the sign-in is refused on the eleventh', () => {
+  const sold = '2026-11-19';                                   // issue day
+  const key = setupkey.makeInstallKey(serial, '2026-11-28');   // issue + 9 = 10 days in
+  const file = writeLicence('ten-days.json', { version: 1, key, days: 696 });
+  assert.equal(licence.expiresOn(licence.daysFromKey(key)), '2026-11-28');
+
+  for (let day = 19; day <= 28; day += 1) {
+    const now = new Date(`2026-11-${day}T09:00:00Z`);
+    const state = licence.status({ files: [file], now });
+    assert.equal(state.expired, false, `day ${day} must still sign in`);
+    assert.equal(state.daysLeft, 28 - day);
+    assert.doesNotThrow(() => licence.assertUsable({ files: [file], now }));
+  }
+
+  const eleventh = new Date('2026-11-29T09:00:00Z');
+  const state = licence.status({ files: [file], now: eleventh });
+  assert.equal(state.expired, true);
+  assert.equal(state.daysLeft, -1);
+  assert.throws(() => licence.assertUsable({ files: [file], now: eleventh }), error => {
+    assert.equal(error.code, 'LICENSE_EXPIRED');
+    assert.equal(error.message, 'Your Serial key has expired, please Renew Serial key on the Owner.');
+    return true;
+  });
+  // and it stays refused every later day
+  for (const later of ['2026-11-30', '2027-01-01', '2030-06-15']) {
+    assert.throws(() => licence.assertUsable({ files: [file], now: new Date(`${later}T09:00:00Z`) }), /Renew Serial key on the Owner/);
+  }
+});
+
+test('deleting license.json does not restart a finished licence', () => {
+  const key = setupkey.makeInstallKey(serial, '2026-11-28');
+  const remembered = licence.daysFromKey(key);
+  const after = new Date('2026-12-05T09:00:00Z');
+  // No file at all: the application falls back to the day it wrote in its database.
+  const state = licence.resolve(licence.status({ files: [], now: after }), remembered, { now: after });
+  assert.equal(state.found, true);
+  assert.equal(state.expired, true);
+  assert.equal(state.expiresOn, '2026-11-28');
+  assert.throws(() => licence.assertUsable({ files: [], remembered, now: after }), /Renew Serial key/);
+  // While the licence is still running the same fallback keeps it working.
+  const running = new Date('2026-11-25T09:00:00Z');
+  assert.equal(licence.assertUsable({ files: [], remembered, now: running }).expired, false);
+  // A new key from the owner (a later date, or lifetime) takes over.
+  const renewed = setupkey.makeInstallKey(serial, '2026-12-28');
+  const renewedFile = writeLicence('renewed.json', { version: 1, key: renewed });
+  assert.equal(licence.status({ files: [renewedFile], now: after }).expired, false);
+  // No file and nothing remembered is an ordinary installation: no lockout.
+  assert.equal(licence.resolve(licence.status({ files: [], now: after }), null, { now: after }).found, false);
+  assert.doesNotThrow(() => licence.assertUsable({ files: [], remembered: null, now: after }));
+});
+
+test('the application writes the day down and reads it back', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  // Written once per read of a valid licence, in the pharmacy's own database.
+  assert.match(main, /settings WHERE key=\?'\)\.get\('licence_days'\)/, 'the day is stored in settings');
+  assert.match(main, /INSERT INTO settings\(key,value\) VALUES \(\?,\?\) ON CONFLICT\(key\) DO UPDATE/, 'and written with the usual upsert');
+  assert.match(main, /if\(found\.found\)rememberLicence\(found\.days\)/, 'a valid licence is remembered');
+  assert.match(main, /remembered:found\.found\?null:rememberedLicence\(\)/, 'the fallback is used only when the file is gone');
+  // Nothing can write a licence file back.
+  assert.doesNotMatch(main, /writeFileSync\([^)]*licen[cs]e\.json/i);
 });

@@ -14,7 +14,9 @@
    the key and ignores a hand-edited `days`.
 
    This file only decides whether the sign-in screen is allowed. It never
-   touches the database, and it is read, not written, by the application.
+   touches the database, and it is read, not written, by the application. The
+   application copies the same day into its own settings table
+   (`licence_days`) so that deleting the JSON file cannot restart a licence.
 
    Keep ALPHABET, SALT and MODULUS identical to build/installer.nsh and
    TopInTech-LicenseGenerator/lib/setupkey.js. */
@@ -34,7 +36,9 @@ const EPOCH = Date.UTC(2025, 0, 1); // day 0
 const DAY_MS = 86400000;
 const FILE_NAME = 'license.json';
 
-const EXPIRED_MESSAGE = 'Your serial key has expired. Please renew your serial key from the Owner.';
+// Exactly the sentence the owner asked the customer to see, so nobody has to
+// guess what "expired" means or who can fix it.
+const EXPIRED_MESSAGE = 'Your Serial key has expired, please Renew Serial key on the Owner.';
 
 function normaliseKey(text) {
   return String(text || '').toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
@@ -121,6 +125,17 @@ function readFile(file) {
   }
 }
 
+// The answer for one last valid day (0 = never ends).
+function fromDays(days, options) {
+  const today = todayUtc(options.now || new Date());
+  return {
+    found: true, key: '', days, expiresOn: expiresOn(days),
+    daysLeft: days > 0 ? days - today : null,
+    expired: days > 0 && today > days,
+    file: options.file || ''
+  };
+}
+
 /* { found, key, days, expiresOn, expired, daysLeft, file }
    `found` is false when no setup licence exists (a development run, a portable
    copy, or an installation made before licences carried an expiry). The app
@@ -139,19 +154,29 @@ function status(options = {}) {
       if (options.logger) options.logger(`[licence] ignored ${file}: the key does not check out`);
       continue;
     }
-    const today = todayUtc(now);
-    const expired = days > 0 && today > days;
-    return {
-      found: true, key: record.key, days, file,
-      expiresOn: expiresOn(days), daysLeft: days > 0 ? days - today : null, expired
-    };
+    return { ...fromDays(days, { now, file }), key: record.key };
   }
   return { found: false, key: '', days: 0, expiresOn: '', daysLeft: null, expired: false, file: '' };
 }
 
+/* The licence file is the only thing the setup writes, but a finished licence
+   must not be restarted by deleting it. The application keeps the same last
+   valid day in its own database (`licence_days`) the first time it reads a
+   licence, and falls back to that when the file is gone.
+   `remembered` is null when the database has nothing to say. */
+function resolve(state, remembered, options = {}) {
+  if (state.found) return state;
+  if (remembered === null || remembered === undefined || remembered === '') return state;
+  const days = Number(remembered);
+  if (!Number.isInteger(days) || days < 0) return state;
+  if (options.logger) options.logger('[licence] license.json is missing; using the day stored in the database');
+  return fromDays(days, options);
+}
+
 // Thrown by the sign-in handler; the login screen shows error.message as it is.
 function assertUsable(options = {}) {
-  const state = status(options);
+  const base = options.state || status(options);
+  const state = resolve(base, options.remembered, options);
   if (!state.expired) return state;
   const error = new Error(EXPIRED_MESSAGE);
   error.code = 'LICENSE_EXPIRED';
@@ -163,5 +188,5 @@ module.exports = {
   ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, KEY_LENGTH,
   SHORT_KEY_LENGTH, LEGACY_KEY_LENGTH, LEGACY_DATA_LENGTH,
   EPOCH, DAY_MS, FILE_NAME, EXPIRED_MESSAGE,
-  normaliseKey, fold, daysFromKey, expiresOn, todayUtc, candidateFiles, status, assertUsable
+  normaliseKey, fold, daysFromKey, expiresOn, todayUtc, candidateFiles, status, fromDays, resolve, assertUsable
 };

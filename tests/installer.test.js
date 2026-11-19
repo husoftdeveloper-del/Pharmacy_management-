@@ -268,7 +268,7 @@ test('the application never asks for a key, it only reads the licence', () => {
   assert.ok(!/licen[cs]e.?key|serial.?key/i.test(bridge), 'no key channel is exposed to the page');
   // The expiry sentence lives in one place, and the sign-in path uses it.
   const licenceModule = fs.readFileSync(path.join(root, 'license.js'), 'utf8');
-  assert.match(licenceModule, /Your serial key has expired\. Please renew your serial key from the Owner\./);
+  assert.match(licenceModule, /Your Serial key has expired, please Renew Serial key on the Owner\./);
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   assert.match(main, /const licence = require\('\.\/license'\)/);
   const login = main.slice(main.indexOf("if (c==='login')"), main.indexOf("if (c==='login')") + 700);
