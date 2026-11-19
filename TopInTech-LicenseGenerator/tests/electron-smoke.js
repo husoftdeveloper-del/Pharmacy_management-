@@ -138,16 +138,26 @@ child.on('close', code => {
   ];
 
   let failed = 0;
+  const report = [];
   for (const [name, ok] of checks) {
-    console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`);
+    report.push(`${ok ? 'ok  ' : 'FAIL'} ${name}`);
+    console.log(report[report.length - 1]);
     if (!ok) failed += 1;
+  }
+  // The report is written here, from the checks themselves, so a failure is
+  // always explainable even when the child's console output is not readable.
+  try {
+    fs.mkdirSync(path.join(root, 'artifacts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-report.txt'), `${report.join('\n')}\n`);
+  } catch (error) {
+    console.error('could not write artifacts/smoke-report.txt:', error.message);
   }
   console.log(`\nDesktop folders checked: ${(result.shortcut.checked || []).join(', ')}`);
   console.log(`Shortcut written to    : ${(result.shortcut.paths || []).join(', ')}`);
   console.log(`Renderer version       : ${result.page.version}`);
 
   if (failed || code !== 0) {
-    fail(`${failed} smoke check(s) failed (exit code ${code})`, output);
+    fail(`${failed} smoke check(s) failed (exit code ${code})`, `${report.join('\n')}\n\n${output}`);
   }
   console.log('\nElectron smoke test passed.');
   process.exit(0);
