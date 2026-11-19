@@ -344,7 +344,7 @@ test('the application never asks for a key, it only reads the licence', () => {
   const licenceModule = fs.readFileSync(path.join(root, 'license.js'), 'utf8');
   assert.match(licenceModule, /Your Serial key has expired, please Renew Serial key on the Owner\./);
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
-  assert.match(main, /const licence = require\('\.\/license'\)/);
+  assert.match(main, /const licence = requireLocal\('\.\/license'\)/);
   const login = main.slice(main.indexOf("if (c==='login')"), main.indexOf("if (c==='login')") + 700);
   assert.ok(login.indexOf('assertLicence()') < login.indexOf('service.login(p)'), 'expired wins over the password');
 });

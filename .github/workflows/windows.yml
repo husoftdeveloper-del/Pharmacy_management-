@@ -40,6 +40,45 @@ jobs:
           npm run dist:win 2>&1 | tee artifacts/windows-build.log
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The installed application is one app.asar built from package.json's
+      # "files" list. Reading the source tree passes even when that list forgets
+      # a module, so a release once shipped without license.js and every customer
+      # saw "Cannot find module './license'" on launch. This checks the real
+      # payload, not the source.
+      - name: Check the packaged app contains every module it loads
+        shell: bash
+        run: |
+          set -euo pipefail
+          asar=release/win-unpacked/resources/app.asar
+          if [ ! -f "$asar" ]; then
+            echo "::error title=Missing app.asar::$asar was not produced by the build"
+            exit 1
+          fi
+          # The installed app is one app.asar; reading the source tree passes even
+          # when package.json's "files" list forgets a module, which is how a
+          # release once shipped without license.js and every customer saw
+          # "Cannot find module './license'" on launch. List the real payload.
+          if ! npx --yes @electron/asar@3.2.10 list "$asar" > asar-list.txt 2> asar-error.txt; then
+            echo "::warning title=asar list unavailable::could not list the payload, the unit test still guards build.files"
+            tail -n 5 asar-error.txt || true
+            exit 0
+          fi
+          failed=0
+          for file in /main.js /license.js /preload.js /package.json /database/service.js /database/database.js /src/index.html /src/scripts/app.js /src/styles/base.css; do
+            if grep -qx "$file" asar-list.txt; then
+              echo "ok   $file"
+            else
+              echo "FAIL $file"
+              echo "::error title=Missing from app.asar::$file is loaded at runtime but electron-builder left it out of package.json build.files"
+              failed=$((failed + 1))
+            fi
+          done
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed file(s) missing from the installed payload"
+            exit 1
+          fi
+          echo "The installed payload holds every module the application loads."
+
       # The setup asks the customer for the install key the owner generates in
       # Top In Tech License Generator, and refuses anything else. The page lives
       # inside the compressed installer body, so the real NSIS compiler used by

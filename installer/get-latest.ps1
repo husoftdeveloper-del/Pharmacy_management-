@@ -26,7 +26,7 @@ $base = "https://github.com/$repo/releases/download"
 # Ask the working copy first; fall back to the numbers of the release these
 # files came from.
 $pharmacyVersion = '1.0.1'
-$buildLabel = 'build.84'
+$buildLabel = 'build.85'
 $generatorVersion = '2.3.9'
 
 $versionFile = Join-Path $repoRoot 'src/scripts/version.js'
@@ -39,7 +39,7 @@ $generatorPackage = Join-Path $repoRoot 'TopInTech-LicenseGenerator/package.json
 if (Test-Path $generatorPackage) {
   $generatorVersion = (Get-Content $generatorPackage -Raw | ConvertFrom-Json).version
 }
-# build.84 -> 84, so the file is named like the ones already in this folder.
+# build.85 -> 85, so the file is named like the ones already in this folder.
 $buildNumber = ($buildLabel -replace '^build\.', '')
 
 $files = @(

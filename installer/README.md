@@ -8,7 +8,7 @@ The folder holds exactly two files, named the way it always has:
 
 | File | What it is |
 | --- | --- |
-| `Pharmacy-Setup-build84.exe` | The Pharmacy **setup** the customer installs. Asks for **Enter your Pharmacy Name** and the **six-character serial key**. |
+| `Pharmacy-Setup-build85.exe` | The Pharmacy **setup** the customer installs. Asks for **Enter your Pharmacy Name** and the **six-character serial key**. |
 | `Generator-Setup-2.3.9.exe` | The owner's licence generator. It prints the six-character install key and has the ⚙ Settings window. |
 
 Install the generator first, create the licence, then run the Pharmacy setup. The
@@ -23,8 +23,8 @@ powershell -ExecutionPolicy Bypass -File .\get-latest.ps1 -WithPortable
 Open this `installer` folder in File Explorer and **double-click
 `get-latest.bat`**. It:
 
-* reads the newest build from the repository (`build.84`, generator `2.3.9`),
-* downloads `Pharmacy-Setup-build84.exe` and `Generator-Setup-2.3.9.exe` here,
+* reads the newest build from the repository (`build.85`, generator `2.3.9`),
+* downloads `Pharmacy-Setup-build85.exe` and `Generator-Setup-2.3.9.exe` here,
 * moves any **older** `Pharmacy-Setup-build*.exe` / `Generator-Setup-*.exe` into
   `.\old\` (nothing is deleted),
 * prints the folder listing and the size of each file.
@@ -43,11 +43,11 @@ half file can never be mistaken for an installer.
 Open the two links, save into this folder, and rename the saved files to the two
 names in the table above:
 
-* Setup: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.1-build.84/Pharmacy-1.0.1-x64.exe
+* Setup: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/v1.0.1-build.85/Pharmacy-1.0.1-x64.exe
 * Generator 2.3.9: https://github.com/husoftdeveloper-del/Pharmacy_management-/releases/download/generator-v2.3.9/Top-In-Tech-License-Generator-Setup-2.3.9.exe
 
 ```powershell
-Rename-Item .\Pharmacy-1.0.1-x64.exe                     .\Pharmacy-Setup-build84.exe
+Rename-Item .\Pharmacy-1.0.1-x64.exe                     .\Pharmacy-Setup-build85.exe
 Rename-Item .\Top-In-Tech-License-Generator-Setup-2.3.9.exe .\Generator-Setup-2.3.9.exe
 ```
 
@@ -62,7 +62,7 @@ Every green Windows build also commits the setup into the repository at
 ```powershell
 git -C "C:\Users\HK DEVELOPER\Desktop\Pharmacy_Pro" pull origin main
 Copy-Item "C:\Users\HK DEVELOPER\Desktop\Pharmacy_Pro\src\pages\Pharmacy-Setup.exe" `
-          "C:\Users\HK DEVELOPER\Desktop\Pharmacy_Pro\installer\Pharmacy-Setup-build84.exe"
+          "C:\Users\HK DEVELOPER\Desktop\Pharmacy_Pro\installer\Pharmacy-Setup-build85.exe"
 ```
 
 That file is byte-for-byte the `Pharmacy-1.0.1-x64.exe` from the release: CI
