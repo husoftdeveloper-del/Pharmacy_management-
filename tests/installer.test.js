@@ -78,6 +78,33 @@ function nsisValidate(raw) {
   return { valid: false, days: 0 };
 }
 
+test('the fold is called with a length the macro cannot overwrite', () => {
+  // SetupKeyFold counts in $R3 and folds the first LENGTH characters of $R0.
+  // A call that passed $R3 as LENGTH folded zero characters and refused every
+  // valid key — the setup has to pass a number.
+  const nsh = fs.readFileSync(path.join(__dirname, '..', 'build', 'installer.nsh'), 'utf8');
+  const defines = {};
+  for (const [, name, value] of nsh.matchAll(/^!define (SETUP_[A-Z_]+) (\d+)$/gm)) defines[name] = Number(value);
+  assert.equal(defines.SETUP_FOLD_LENGTH, defines.SETUP_KEY_LENGTH - 1, 'the fold covers every character but the check');
+  assert.equal(defines.SETUP_DATA_LENGTH + defines.SETUP_EXPIRY_LENGTH + 1, defines.SETUP_KEY_LENGTH);
+
+  const body = nsh.slice(nsh.indexOf('!macro SetupKeyFold'), nsh.indexOf('!macroend', nsh.indexOf('!macro SetupKeyFold')));
+  const written = new Set([...body.matchAll(/(?:StrCpy|IntOp|StrLen) \$(R\d)/g)].map(match => match[1]));
+  assert.ok(written.has('R3'), 'the fold uses $R3 for its counter');
+
+  const calls = [...nsh.matchAll(/!insertmacro SetupKeyFold ([^\n]+)/g)].map(match => match[1].trim());
+  assert.equal(calls.length, 3, 'the three key shapes each fold once');
+  for (const call of calls) {
+    const literal = /^\d+$/.test(call);
+    const define = /^\$\{(SETUP_[A-Z_]+)\}$/.exec(call);
+    assert.ok(literal || define, `a call must pass a number, not ${call}`);
+    if (define) assert.equal(typeof defines[define[1]], 'number', `${define[1]} must be a number`);
+  }
+  // The 9-character branch keeps the check position in a register the fold
+  // never writes, so remembering it before the fold is safe.
+  assert.ok(!written.has('R9'), 'the fold must not touch $R9');
+});
+
 test('the setup wizard asks for the serial key before anything is installed', () => {
   assert.equal(pkg.build.nsis.include, 'build/installer.nsh', 'electron-builder must compile the activation page');
   assert.ok(fs.existsSync(path.join(root, 'build/installer.nsh')));

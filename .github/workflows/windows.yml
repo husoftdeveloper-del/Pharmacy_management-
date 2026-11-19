@@ -211,9 +211,12 @@ jobs:
           $licenceOk = @($licenceFiles | Where-Object {
             (Test-Path $_) -and ((Get-Content -Raw $_) -match '"days"\s*:\s*[0-9]+')
           }).Count -ge 1
+          foreach ($path in $licenceFiles) { Write-Host "licence candidate: $path (exists: $(Test-Path $path))" }
           if ($licenceOk) {
             $written = Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json")
             Write-Host "licence written: $written"
+          } else {
+            if ($installDir) { Get-ChildItem $installDir -Filter '*.json' | ForEach-Object { Write-Host "program folder file: $($_.Name) $($_.Length) bytes" } }
           }
 
           $required = [ordered]@{

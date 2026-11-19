@@ -54,6 +54,9 @@
 !define SETUP_DATA_LENGTH 5
 !define SETUP_EXPIRY_LENGTH 3
 !define SETUP_KEY_LENGTH 9
+; The eight characters the check character covers. Written as a literal because
+; SetupKeyFold counts in $R3: passing a register there would be overwritten.
+!define SETUP_FOLD_LENGTH 8
 ; The key generator 2.3.2 printed: twelve of data and four of check, in groups of
 ; four (WXYZ-1234-5678-9ABC). Still accepted; it carries no expiry.
 !define SETUP_LEGACY_DATA_LENGTH 12
@@ -161,13 +164,16 @@
 
   StrLen $R3 $R0
   ${If} $R3 == ${SETUP_KEY_LENGTH}
-    ; ABC-123-456: eight characters covered by one check character.
-    !insertmacro SetupKeyFold $R3
-    IntOp $R3 $R3 - 1
+    ; ABC-123-456: eight characters covered by one check character. $R0 keeps
+    ; the key, the fold sets $R1 (all characters known) and $R2 (the fold), and
+    ; $R9 remembers where the check character is.
+    StrCpy $R9 $R3
+    !insertmacro SetupKeyFold ${SETUP_FOLD_LENGTH}
     ${If} $R1 == 1
+      IntOp $R9 $R9 - 1                    ; position of the check character
       IntOp $R6 $R2 % 32
       StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R5 $R0 1 $R3                 ; the check character the customer typed
+      StrCpy $R5 $R0 1 $R9                 ; the check character the customer typed
       ${If} $R7 == $R5
         StrCpy ${VALID} "1"
         ; The last valid day: ${SETUP_EXPIRY_LENGTH} base32 characters.
