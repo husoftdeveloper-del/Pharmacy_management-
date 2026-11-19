@@ -36,7 +36,13 @@ function fail(message, output) {
   if (output) console.error(output.split('\n').slice(-40).join('\n'));
   try {
     fs.mkdirSync(path.join(root, 'artifacts'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), `${message}\n\n${output || ''}`);
+    // The stored text starts with the reason and the failing check names: the
+    // workflow surfaces only the first part of it as an annotation.
+    const lines = String(output || '').split('\n').filter(line => !line.startsWith('SMOKE_RESULT '));
+    const failedChecks = lines.filter(line => line.startsWith('FAIL '));
+    const tail = lines.slice(-25).join('\n');
+    const body = [message, '', ...failedChecks, '', tail].join('\n');
+    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), body);
   } catch (error) {
     console.error('could not write artifacts/smoke-error.txt:', error.message);
   }
