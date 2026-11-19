@@ -357,6 +357,12 @@ jobs:
           if [ -f artifacts/windows-build.log ]; then
             message=$(tail -c 50000 artifacts/windows-build.log)
             echo "::error title=Windows build failure::${message//$'\n'/%0A}"
+            # The NSIS compiler explains itself on one line, and the step log is
+            # not readable from the runner: surface those lines one by one.
+            grep -n -i -E "error in script|aborting|invalid command|macro named|unknown variable|!insertmacro|line [0-9]+ \(" artifacts/windows-build.log |
+              tail -n 10 | while IFS= read -r line; do
+                echo "::error title=NSIS compiler::${line:0:900}"
+              done
           fi
           if [ -f artifacts/electron-smoke-error.txt ]; then
             message=$(head -c 50000 artifacts/electron-smoke-error.txt)
