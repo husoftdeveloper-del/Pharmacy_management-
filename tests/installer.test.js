@@ -36,6 +36,8 @@ function nsisValidate(raw) {
   const shortLength = Number(value('SETUP_SHORT_KEY_LENGTH'));
   const legacyData = Number(value('SETUP_LEGACY_DATA_LENGTH'));
   const legacyLength = Number(value('SETUP_LEGACY_KEY_LENGTH'));
+  const minuteKeyLength = Number(value('SETUP_MINUTE_KEY_LENGTH'));
+  const minuteFold = Number(value('SETUP_MINUTE_FOLD_LENGTH'));
   const key = String(raw).replace(/ /g, '').replace(/-/g, '').toUpperCase();
   const indexOf = char => {
     for (let i = 0; i < 32; i += 1) {
@@ -63,6 +65,25 @@ function nsisValidate(raw) {
       days = days * 32 + index;
     }
     return { valid: true, days };
+  }
+  if (key.length === minuteKeyLength) {
+    // ABC-123-456-789: the check covers everything before it, and the day is
+    // still the three characters after the data.
+    const a = fold(minuteFold);
+    if (a === null || alphabet[a % 32] !== key[minuteFold]) return { valid: false, days: 0, minutes: null };
+    let days = 0;
+    for (const char of key.slice(dataLength, dataLength + expiryLength)) {
+      const index = indexOf(char);
+      if (index === 32) return { valid: false, days: 0, minutes: null };
+      days = days * 32 + index;
+    }
+    let minutes = 0;
+    for (const char of key.slice(dataLength + expiryLength, minuteFold)) {
+      const index = indexOf(char);
+      if (index === 32) return { valid: false, days: 0, minutes: null };
+      minutes = minutes * 32 + index;
+    }
+    return { valid: true, days, minutes };
   }
   if (key.length === shortLength) {
     const a = fold(dataLength);
@@ -93,7 +114,7 @@ test('the fold is called with a length the macro cannot overwrite', () => {
   assert.ok(written.has('R3'), 'the fold uses $R3 for its counter');
 
   const calls = [...nsh.matchAll(/!insertmacro SetupKeyFold ([^\n]+)/g)].map(match => match[1].trim());
-  assert.equal(calls.length, 3, 'the three key shapes each fold once');
+  assert.equal(calls.length, 4, 'the four key shapes each fold once');
   for (const call of calls) {
     const literal = /^\d+$/.test(call);
     const define = /^\$\{(SETUP_[A-Z_]+)\}$/.exec(call);
@@ -142,6 +163,36 @@ test('the installer and the generator run the same arithmetic', () => {
   ];
   for (const line of lines) {
     assert.ok(nsh.includes(line), `the installer is missing: ${line}`);
+  }
+});
+
+test('a 10-minute key is accepted and carries its exact minute', () => {
+  // The generator's 10 Minutes plan ends at a time, so its key is
+  // ABC-123-456-789: the day plus the minute of that day.
+  const key = setupkey.makeInstallKey('TIT1CI-VERIFY.SERIAL-0001', '2026-11-19T07:40:00Z');
+  assert.equal(key.replace(/-/g, '').length, 12);
+  assert.equal(key.split('-').length, 4, 'four groups of three');
+  const wizard = nsisValidate(key);
+  assert.equal(wizard.valid, true, 'the setup accepts the key');
+  const app = setupkey.verifyInstallKey(key);
+  assert.equal(app.valid, true);
+  assert.equal(wizard.days, app.days, 'both read the same last day');
+  assert.equal(wizard.minutes, app.minutes, 'and the same minute');
+  assert.equal(app.expiresOn, '2026-11-19');
+  assert.equal(app.expiresAt, '2026-11-19T07:40:00Z');
+  // Typed by hand, in every tolerated form.
+  for (const typed of [key.toLowerCase(), key.replace(/-/g, ''), key.replace(/-/g, ' '), ` ${key} `]) {
+    assert.equal(nsisValidate(typed).valid, true, `accepted: ${typed}`);
+    assert.equal(setupkey.verifyInstallKey(typed).valid, true);
+  }
+  // One character changed is refused by both, at any position.
+  for (let i = 0; i < key.length; i += 1) {
+    const char = key[i];
+    if (char === '-') continue;
+    const replacement = char === 'A' ? 'B' : 'A';
+    const typo = key.slice(0, i) + replacement + key.slice(i + 1);
+    assert.equal(nsisValidate(typo).valid, false, `the wizard refuses ${typo}`);
+    assert.equal(setupkey.verifyInstallKey(typo).valid, false, `the generator refuses ${typo}`);
   }
 });
 

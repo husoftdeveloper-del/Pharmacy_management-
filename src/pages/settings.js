@@ -590,8 +590,12 @@ export async function render(root,params={}){
         const until=body.querySelector('#license-until'), status=body.querySelector('#license-status');
         if(!until||!status||!info||!info.found) return;
         if(!info.days){ status.textContent=t('licenseLifetime'); until.textContent='—'; return; }
-        until.textContent=info.expiresOn||'—';
-        status.textContent=info.expired?t('expired'):`${info.daysLeft} ${t('daysLeft')}`;
+        // A licence measured in minutes (the 10 Minutes plan) ends at a time,
+        // so the card shows the clock too instead of only the date.
+        const withTime=info.minutes!==null&&info.minutes!==undefined&&info.expiresAt;
+        until.textContent=withTime?info.expiresAt.replace('T',' ').replace(/\.000Z$/,' UTC').replace(/Z$/,' UTC'):(info.expiresOn||'—');
+        if(info.expired){ status.textContent=t('expired'); return; }
+        status.textContent=withTime?`${info.minutesLeft} ${t('minutesLeft')}`:`${info.daysLeft} ${t('daysLeft')}`;
       }).catch(()=>{});
     }else if(tab==='profile'){
       body.innerHTML=paintProfile();

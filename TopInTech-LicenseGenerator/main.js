@@ -78,7 +78,11 @@ function decorate(row) {
     // so the same row always shows the same key, and carrying the licence's last
     // valid day so the application can stop at sign-in once it has passed.
     installKey: setupkey.makeInstallKey(row.serial, row.expires_on),
-    installKeyExpires: row.expires_on || ''
+    // A moment (a 10-minute licence) is shown as a moment; a date stays a date.
+    installKeyExpires: setupkey.expiryOfKey(row.expires_on),
+    // The table and the CSV show the same reading as the card.
+    expiresLabel: setupkey.expiryOfKey(row.expires_on),
+    installKeyMoment: String(row.expires_on || '').includes('T')
   };
 }
 

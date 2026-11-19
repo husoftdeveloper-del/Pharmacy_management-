@@ -224,10 +224,76 @@ test('deleting license.json does not restart a finished licence', () => {
 test('the application writes the day down and reads it back', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   // Written once per read of a valid licence, in the pharmacy's own database.
-  assert.match(main, /settings WHERE key=\?'\)\.get\('licence_days'\)/, 'the day is stored in settings');
+  assert.match(main, /licenceSetting\('licence_days'\)/, 'the day is stored in settings');
+  assert.match(main, /licenceSetting\('licence_minutes'\)/, 'and the minute, for a licence that ends at a time');
   assert.match(main, /INSERT INTO settings\(key,value\) VALUES \(\?,\?\) ON CONFLICT\(key\) DO UPDATE/, 'and written with the usual upsert');
-  assert.match(main, /if\(found\.found\)rememberLicence\(found\.days\)/, 'a valid licence is remembered');
+  assert.match(main, /if\(found\.found\)rememberLicence\(found\)/, 'a valid licence is remembered');
   assert.match(main, /remembered:found\.found\?null:rememberedLicence\(\)/, 'the fallback is used only when the file is gone');
   // Nothing can write a licence file back.
   assert.doesNotMatch(main, /writeFileSync\([^)]*licen[cs]e\.json/i);
+});
+
+/* ---- A licence measured in minutes -------------------------------------
+   The generator's 10 Minutes plan exists so the whole chain can be tried in
+   ten minutes instead of ten days. Its key is ABC-123-456-789: the same key
+   with the minute of the day added, so the application stops at the minute. */
+test('a 10-minute key lasts exactly ten minutes', () => {
+  const issued = '2026-11-19T07:30:00Z';
+  const ends = '2026-11-19T07:40:00Z';
+  const key = setupkey.makeInstallKey(serial, ends);
+  assert.equal(key.replace(/-/g, '').length, 12);
+  const file = writeLicence('ten-minutes.json', { version: 1, key });
+
+  const at = moment => licence.status({ files: [file], now: new Date(moment) });
+  // Signed in from the moment it is installed (07:30) ...
+  for (const moment of ['2026-11-19T07:30:00Z', '2026-11-19T07:35:00Z', '2026-11-19T07:39:59Z']) {
+    const state = at(moment);
+    assert.equal(state.found, true, moment);
+    assert.equal(state.expired, false, `${moment} must still sign in`);
+    assert.equal(state.expiresOn, '2026-11-19');
+    assert.equal(state.expiresAt, ends);
+    assert.equal(state.minutes, 460);
+    assert.doesNotThrow(() => licence.assertUsable({ files: [file], now: new Date(moment) }), moment);
+  }
+  // ... refused at the tenth minute and onwards, with the renewal sentence.
+  for (const moment of ['2026-11-19T07:40:00Z', '2026-11-19T07:40:01Z', '2026-11-20T00:00:00Z']) {
+    const state = at(moment);
+    assert.equal(state.expired, true, moment);
+    assert.throws(
+      () => licence.assertUsable({ files: [file], now: new Date(moment) }),
+      error => error.code === 'LICENSE_EXPIRED' && error.message === licence.EXPIRED_MESSAGE,
+      moment
+    );
+  }
+  // The clock does not tick backwards into a working licence.
+  assert.equal(at('2026-11-19T06:00:00Z').expired, false, 'an earlier clock still reads the key');
+  // Ten minutes, not "until midnight": at 07:41 the same day it is over.
+  assert.equal(at('2026-11-19T07:41:00Z').expired, true);
+});
+
+test('the ten-minute licence is remembered to the minute as well', () => {
+  const key = setupkey.makeInstallKey(serial, '2026-11-19T07:40:00Z');
+  const parsed = licence.parseKey(key);
+  assert.deepEqual(parsed, { days: 687, minutes: 460 });
+  // With license.json deleted, the database copy keeps the same minute.
+  const after = new Date('2026-11-19T07:41:00Z');
+  const state = licence.resolve(licence.status({ files: [], now: after }), parsed, { now: after });
+  assert.equal(state.expired, true, 'deleting the file does not add a day');
+  assert.equal(state.expiresAt, '2026-11-19T07:40:00Z');
+  const before = new Date('2026-11-19T07:35:00Z');
+  assert.equal(licence.resolve(licence.status({ files: [], now: before }), parsed, { now: before }).expired, false);
+  // A number, as written by an older build, still means a whole day.
+  const dayOnly = licence.resolve(licence.status({ files: [], now: after }), 687, { now: after });
+  assert.equal(dayOnly.expired, false, 'a day-only memory keeps the licence through that day');
+});
+
+test('the whole-day keys keep their meaning', () => {
+  // 10 Days still ends with its last day, not at the minute it was made.
+  const key = setupkey.makeInstallKey(serial, '2026-11-28');
+  const file = writeLicence('whole-day.json', { version: 1, key });
+  const late = licence.status({ files: [file], now: new Date('2026-11-28T23:59:59Z') });
+  assert.equal(late.expired, false, 'the last day is usable to its end');
+  assert.equal(late.minutes, null);
+  assert.equal(late.expiresAt, '2026-11-29T00:00:00Z');
+  assert.equal(late.minutesLeft, null);
 });

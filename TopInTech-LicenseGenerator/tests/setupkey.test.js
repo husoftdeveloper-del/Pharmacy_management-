@@ -25,6 +25,33 @@ test('an install key is 9 characters: ABC-123-456, carrying the expiry', () => {
   assert.equal(key.slice(0, 5), later.slice(0, 5), 'the same serial keeps the same data characters');
 });
 
+test('a licence measured in minutes gets a 12-character key with the minute', () => {
+  const key = keys.makeInstallKey('TIT1CI-VERIFY.SERIAL-0001', '2026-11-19T07:40:00Z');
+  assert.match(key, /^[0-9A-Z]{3}-[0-9A-Z]{3}-[0-9A-Z]{3}-[0-9A-Z]{3}$/);
+  assert.equal(key.replace(/-/g, '').length, 12);
+  const result = keys.verifyInstallKey(key);
+  assert.equal(result.valid, true);
+  assert.equal(result.days, keys.dayNumber('2026-11-19'));
+  assert.equal(result.minutes, 7 * 60 + 40, 'the minute of the day, in UTC');
+  assert.equal(result.expiresOn, '2026-11-19');
+  assert.equal(result.expiresAt, '2026-11-19T07:40:00Z');
+  // The same serial still starts with the same five data characters.
+  const dayKey = keys.makeInstallKey('TIT1CI-VERIFY.SERIAL-0001', '2026-11-19');
+  assert.equal(key.slice(0, 3), dayKey.slice(0, 3));
+  assert.notEqual(key, dayKey, 'the two shapes are different keys');
+  // The card prints the moment, not just the date.
+  assert.equal(keys.expiryOfKey('2026-11-19T07:40:00Z'), '2026-11-19 07:40:00 UTC');
+  assert.equal(keys.expiryOfKey('2026-11-28'), '2026-11-28');
+  assert.equal(keys.expiryOfKey(''), '');
+  // 23:59 is the last minute a key can say, and 00:00 the first.
+  assert.equal(keys.verifyInstallKey(keys.makeInstallKey('TIT1X.Y', '2026-11-19T23:59:00Z')).minutes, 1439);
+  assert.equal(keys.verifyInstallKey(keys.makeInstallKey('TIT1X.Y', '2026-11-19T00:00:00Z')).minutes, 0);
+  // A whole-day key still reads as a whole day, and never claims a minute.
+  const whole = keys.verifyInstallKey(dayKey);
+  assert.equal(whole.minutes, null);
+  assert.equal(whole.expiresAt, '2026-11-20T00:00:00Z');
+});
+
 test('the expiry in the key is the licence expiry', () => {
   for (const expires of ['', '2026-11-28', '2026-12-03', '2027-05-18', '2113-12-31']) {
     const key = keys.makeInstallKey('TIT1AAA.BBB', expires);

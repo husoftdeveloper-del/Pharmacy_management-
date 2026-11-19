@@ -8,7 +8,10 @@
 ; owner generates in Top In Tech License Generator. A key is 9 characters in
 ; three groups, ABC-123-456: five characters from the license serial, three that
 ; hold the last valid day, and one check character. Every customer therefore
-; gets their own key, and the key says when the licence ends.
+; gets their own key, and the key says when the licence ends. A licence shorter
+; than a day (the 10 Minutes plan) uses four groups, ABC-123-456-789, where the
+; third group is the minute of that day, so the customer gets the exact ten
+; minutes instead of "until midnight".
 ;
 ; After the key is accepted the setup writes the licence next to the application
 ; and in the user's application-data folder, so the application itself can stop
@@ -64,6 +67,12 @@
 ; The 6-character key of versions 2.3.3 - 2.3.5 (ABC-123). Still accepted; it
 ; carries no expiry.
 !define SETUP_SHORT_KEY_LENGTH 6
+; A licence shorter than a day (the generator's 10 Minutes plan) ends at a time,
+; so its key adds the minute of that day: ABC-123-456-789, five data characters,
+; three for the day, three for the minute and one check character.
+!define SETUP_MINUTE_LENGTH 3
+!define SETUP_MINUTE_KEY_LENGTH 12
+!define SETUP_MINUTE_FOLD_LENGTH 11
 ; Where the licence is remembered, so the application can read it back.
 !define SETUP_LICENSE_FILE "license.json"
 !define SETUP_LICENSE_DIR "Pharmacy Management"
@@ -186,6 +195,44 @@
           IntOp $R7 $R5 + ${SETUP_DATA_LENGTH}
           StrCpy $R4 $R0 1 $R7
           ; Its alphabet index -> $R8.
+          StrCpy $R8 "0"
+          ${Do}
+            ${If} $R8 >= 32
+              ${ExitDo}
+            ${EndIf}
+            StrCpy $R9 "${SETUP_ALPHABET}" 1 $R8
+            ${If} $R9 == $R4
+              ${ExitDo}
+            ${EndIf}
+            IntOp $R8 $R8 + 1
+          ${Loop}
+          IntOp $R6 $R6 * 32
+          IntOp $R6 $R6 + $R8
+          IntOp $R5 $R5 + 1
+        ${Loop}
+        StrCpy ${DAYS} $R6
+      ${EndIf}
+    ${EndIf}
+  ${ElseIf} $R3 == ${SETUP_MINUTE_KEY_LENGTH}
+    ; ABC-123-456-789: the same as the nine-character key plus the minute of the
+    ; day it ends. The setup only has to accept it; the application reads the
+    ; day and the minute back out of the key itself.
+    !insertmacro SetupKeyFold ${SETUP_MINUTE_FOLD_LENGTH}
+    ${If} $R1 == 1
+      IntOp $R6 $R2 % 32
+      StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
+      StrCpy $R5 $R0 1 ${SETUP_MINUTE_FOLD_LENGTH}  ; the check character typed
+      ${If} $R7 == $R5
+        StrCpy ${VALID} "1"
+        ; The last valid day still goes into the licence file for readability.
+        StrCpy $R6 "0"
+        StrCpy $R5 "0"
+        ${Do}
+          ${If} $R5 >= ${SETUP_EXPIRY_LENGTH}
+            ${ExitDo}
+          ${EndIf}
+          IntOp $R7 $R5 + ${SETUP_DATA_LENGTH}
+          StrCpy $R4 $R0 1 $R7
           StrCpy $R8 "0"
           ${Do}
             ${If} $R8 >= 32

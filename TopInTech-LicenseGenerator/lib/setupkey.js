@@ -37,6 +37,13 @@ const DATA_LENGTH = 5; // characters taken from the serial
 const EXPIRY_LENGTH = 3; // characters holding the last valid day
 const CHECK_LENGTH = 1; // characters that prove the rest was typed correctly
 const GROUPS = 3; // ABC-123-456, so nine characters read as three small pieces
+// A licence shorter than a day ends at a time, so its key adds a third piece:
+// the minute of that day. ABC-123-456-789: five data, three day, three minute,
+// one check. Day and minute together are the exact moment the licence ends.
+const MINUTE_LENGTH = 3;
+const MINUTE_KEY_LENGTH = DATA_LENGTH + EXPIRY_LENGTH + MINUTE_LENGTH + CHECK_LENGTH;
+const MINUTE_GROUPS = 4;
+const MINUTES_PER_DAY = 1440;
 const EPOCH = Date.UTC(2025, 0, 1); // day 0 of the expiry counter
 const DAY_MS = 86400000;
 
@@ -130,12 +137,36 @@ function isoFromDays(days) {
   return days > 0 ? new Date(EPOCH + days * DAY_MS).toISOString().slice(0, 10) : '';
 }
 
+// The minute of the day (UTC) an expiry timestamp falls on, or null for a
+// plain date (lifetime, or a plan measured in whole days).
+function minuteOfDay(expiresOn) {
+  const text = String(expiresOn || '').trim();
+  if (!text.includes('T')) return null;
+  const parsed = Date.parse(text);
+  if (!Number.isFinite(parsed)) throw new Error('The expiry time is not a moment in time.');
+  return Math.floor((((parsed % DAY_MS) + DAY_MS) % DAY_MS) / 60000) % MINUTES_PER_DAY;
+}
+
+function encodeMinutes(minutes) {
+  const value = Math.max(0, Math.min(32767, Math.round(Number(minutes) || 0)));
+  return ALPHABET[Math.floor(value / 1024) % 32] + ALPHABET[Math.floor(value / 32) % 32] + ALPHABET[value % 32];
+}
+
+function decodeMinutes(text) {
+  return decodeDays(text);
+}
+
+// The exact moment a day + minute pair ends, as an ISO timestamp.
+function momentFromParts(days, minutes) {
+  return new Date(EPOCH + days * DAY_MS + minutes * 60000).toISOString().replace('.000Z', 'Z');
+}
+
 function daysFromIso(expiresOn) {
   return dayNumber(expiresOn);
 }
 
-function group(text) {
-  return String(text || '').replace(new RegExp(`(.{${GROUPS}})(?=.)`, 'g'), '$1-');
+function group(text, size = GROUPS) {
+  return String(text || '').replace(new RegExp(`(.{${size}})(?=.)`, 'g'), '$1-');
 }
 
 /* The key the owner copies and the customer types: ABC-123-456.
@@ -143,8 +174,16 @@ function group(text) {
    know the last day the customer may use the software. No date = lifetime. */
 function makeInstallKey(serial, expiresOn) {
   const data = dataFor(serial);
-  const body = data + encodeDays(dayNumber(expiresOn));
-  return group(body + checkGroups(body));
+  const minutes = minuteOfDay(expiresOn);
+  if (minutes === null) {
+    // Whole-day (or lifetime) licence: ABC-123-456.
+    const body = data + encodeDays(dayNumber(expiresOn));
+    return group(body + checkGroups(body));
+  }
+  // A licence that ends at a time: ABC-123-456-789, day and minute together.
+  const day = dayNumber(String(expiresOn).slice(0, 10));
+  const body = data + encodeDays(day) + encodeMinutes(minutes);
+  return group(body + checkGroups(body)); // ABC-123-456-789
 }
 
 // The whole key exactly as version 2.3.2 printed it, for a customer who still
@@ -175,17 +214,35 @@ function verifyInstallKey(key) {
       const body = clean.slice(0, DATA_LENGTH + EXPIRY_LENGTH);
       if (checkGroups(body) !== clean.slice(DATA_LENGTH + EXPIRY_LENGTH)) return refuse;
       const days = decodeDays(body.slice(DATA_LENGTH));
-      return { valid: true, reason: '', days, expiresOn: isoFromDays(days) };
+      return {
+        valid: true, reason: '', days, minutes: null,
+        expiresOn: isoFromDays(days),
+        // A whole-day licence is valid through the end of its last day.
+        expiresAt: days > 0 ? momentFromParts(days + 1, 0) : ''
+      };
+    }
+    if (clean.length === MINUTE_KEY_LENGTH) {
+      // ABC-123-456-789: a licence that ends at a time of day.
+      const body = clean.slice(0, MINUTE_KEY_LENGTH - CHECK_LENGTH);
+      if (checkGroups(body) !== clean.slice(MINUTE_KEY_LENGTH - CHECK_LENGTH)) return refuse;
+      const days = decodeDays(clean.slice(DATA_LENGTH, DATA_LENGTH + EXPIRY_LENGTH));
+      const minutes = decodeMinutes(clean.slice(DATA_LENGTH + EXPIRY_LENGTH, DATA_LENGTH + EXPIRY_LENGTH + MINUTE_LENGTH));
+      if (minutes >= MINUTES_PER_DAY) return refuse;
+      return {
+        valid: true, reason: '', days, minutes,
+        expiresOn: isoFromDays(days),
+        expiresAt: momentFromParts(days, minutes)
+      };
     }
     if (clean.length === SHORT_DATA_LENGTH + SHORT_CHECK_LENGTH) {
       const data = clean.slice(0, SHORT_DATA_LENGTH);
       if (checkGroups(data) !== clean.slice(SHORT_DATA_LENGTH)) return refuse;
-      return { valid: true, reason: '', days: 0, expiresOn: '' };
+      return { valid: true, reason: '', days: 0, minutes: null, expiresOn: '', expiresAt: '' };
     }
     if (clean.length === LEGACY_DATA_LENGTH + LEGACY_CHECK_LENGTH) {
       const data = clean.slice(0, LEGACY_DATA_LENGTH);
       if (legacyCheckGroups(data) === clean.slice(LEGACY_DATA_LENGTH)) {
-        return { valid: true, reason: '', days: 0, expiresOn: '' };
+        return { valid: true, reason: '', days: 0, minutes: null, expiresOn: '', expiresAt: '' };
       }
       return refuse;
     }
@@ -202,11 +259,23 @@ function expiryOfInstallKey(key) {
   return result.valid ? result.expiresOn : '';
 }
 
+// The moment a licence ends, as the card should print it: "2026-11-28" for a
+// whole-day plan, "2026-11-19 07:40 UTC" for one measured in minutes, and ""
+// for a lifetime licence.
+function expiryOfKey(expiresOn) {
+  const text = String(expiresOn || '').trim();
+  if (!text) return '';
+  if (!text.includes('T')) return text;
+  return text.replace('T', ' ').replace(/(:\d\d)(\.\d+)?(Z)?$/, '$1 UTC');
+}
+
 module.exports = {
   ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, CHECK_LENGTH, GROUPS,
+  MINUTE_LENGTH, MINUTE_KEY_LENGTH, MINUTE_GROUPS, MINUTES_PER_DAY,
   EPOCH, DAY_MS, LEGACY_DATA_LENGTH, LEGACY_CHECK_LENGTH,
   indexOf, fold, checkGroups, legacyCheckGroups, dataFor, dataSlice, group,
   dayNumber, encodeDays, decodeDays, isoFromDays, daysFromIso,
+  minuteOfDay, encodeMinutes, decodeMinutes, momentFromParts,
   makeInstallKey, legacyMakeInstallKey, shortMakeInstallKey,
-  verifyInstallKey, expiryOfInstallKey, normalise
+  verifyInstallKey, expiryOfInstallKey, expiryOfKey, normalise
 };

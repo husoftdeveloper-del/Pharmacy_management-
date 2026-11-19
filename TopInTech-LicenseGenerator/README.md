@@ -141,7 +141,11 @@ backup offline: without `private.pem` no new keys can be made for that key id.
   `I`/`L` read as `1` when someone types a key by hand.
 * Payload: `{v, k, id, pr, d, i, x}` — version, key id, license id, product,
   duration (`L` lifetime / `Y` 1 year / `H` 6 months / `M` 1 month / `F` 15
-  days / `T` 10 days), issue date, expiry date.
+  days / `T` 10 days / `Q` 10 minutes), issue date, expiry.
+* `x` is a date (`2026-11-28`) for every plan measured in days or months — the
+  licence is valid through that whole day — and a full moment
+  (`2026-11-19T07:40:00Z`) for **10 Minutes**, so the short plan really ends
+  ten minutes after it was issued instead of at midnight.
 * Signature: Ed25519 over the exact payload bytes. Editing one character breaks
   the signature; a key signed by another pair fails the key-id check.
 * A serial issued as *Lifetime* has an empty expiry and never expires.
@@ -155,8 +159,13 @@ The long serial is the licence; it is also 170 characters, so nobody types it
 into a setup wizard. Each license therefore also has a short **install key**:
 
 ```
-ABC-123-456    9 characters: 5 data + 3 expiry + 1 check
+ABC-123-456        9 characters: 5 data + 3 expiry day + 1 check
+ABC-123-456-789   12 characters: 5 data + 3 day + 3 minute + 1 check
 ```
+
+The fourth group appears only for a licence that ends at a time — the **10
+Minutes** plan — and holds the minute of that day (UTC), so the customer gets
+exactly ten minutes rather than the rest of the day.
 
 * The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
   so one serial always produces the same key and a second license produces a

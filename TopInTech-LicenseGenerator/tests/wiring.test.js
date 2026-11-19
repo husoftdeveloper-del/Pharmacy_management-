@@ -184,7 +184,7 @@ test('the fields the table reads exist on a decorated license row', () => {
     .map(match => match[1] || match[2]));
   assert.ok(columns.has('issued_on'), 'the schema must keep issued_on');
   assert.ok(columns.has('expires_on'), 'the schema must keep expires_on');
-  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey', 'installKeyExpires']);
+  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey', 'installKeyExpires', 'expiresLabel', 'installKeyMoment']);
   const referenced = new Set([...renderer.matchAll(/\b(?:row|license)\.([a-z_]+)/gi)].map(match => match[1]));
   assert.ok(referenced.size > 4);
   for (const field of referenced) {
@@ -442,7 +442,7 @@ test('the duration menu offers every plan the signer knows', () => {
     assert.ok(serial.PLANS[planId], `the page offers ${planId}, which lib/serial.js does not know`);
   }
   // The short durations the owner asked for are there, in order, with their labels.
-  for (const [planId, label] of [['1m', '1 Month'], ['15d', '15 Days'], ['10d', '10 Days']]) {
+  for (const [planId, label] of [['1m', '1 Month'], ['15d', '15 Days'], ['10d', '10 Days'], ['10min', '10 Minutes']]) {
     assert.match(select, new RegExp(`<option value="${planId}">${label}</option>`));
   }
 });

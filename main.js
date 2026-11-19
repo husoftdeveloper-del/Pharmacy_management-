@@ -240,22 +240,33 @@ function licenceFiles(){
 // The same last valid day, kept inside the pharmacy database. The setup's
 // license.json is easy to delete; the database is not (it holds every sale), so
 // this is what keeps a finished licence finished.
-function rememberedLicence(){
+function licenceSetting(key){
   if(!db)return null;
-  try{ const row=db.prepare('SELECT value FROM settings WHERE key=?').get('licence_days'); return row?String(row.value):null; }catch{ return null; }
+  try{ const row=db.prepare('SELECT value FROM settings WHERE key=?').get(key); return row?String(row.value):null; }catch{ return null; }
 }
-function rememberLicence(days){
+// The day, plus the minute of that day when the licence ends at a time (the
+// 10 Minutes plan). Stored when a valid licence is read, so deleting the JSON
+// file cannot restart a finished licence.
+function rememberedLicence(){
+  const days=licenceSetting('licence_days');
+  if(days===null||days==='')return null;
+  const minutes=licenceSetting('licence_minutes');
+  return {days:Number(days),minutes:minutes===null||minutes===''?null:Number(minutes)};
+}
+function rememberLicence(state){
   if(!db)return;
   try{
-    if(rememberedLicence()===String(days))return;
-    db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('licence_days',String(days));
+    const save=(key,value)=>db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,String(value));
+    if(licenceSetting('licence_days')!==String(state.days))save('licence_days',state.days);
+    const minutes=state.minutes===null||state.minutes===undefined?'':state.minutes;
+    if(licenceSetting('licence_minutes')!==String(minutes))save('licence_minutes',minutes);
   }catch{}
 }
 function assertLicence(){
   const found=licence.status({files:licenceFiles(),logger:message=>console.warn(message)});
   // A licence that checks out is written down once, so a later deletion of
   // license.json is harmless; a lifetime licence is stored as 0.
-  if(found.found)rememberLicence(found.days);
+  if(found.found)rememberLicence(found);
   const state=licence.assertUsable({
     state:found,
     remembered:found.found?null:rememberedLicence(),

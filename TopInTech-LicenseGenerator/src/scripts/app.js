@@ -145,7 +145,7 @@ function renderRows() {
 
     const expires = document.createElement('td');
     expires.className = 'muted';
-    expires.textContent = row.expires_on || 'Never';
+    expires.textContent = row.expiresLabel || row.expires_on || 'Never';
 
     const status = document.createElement('td');
     const select = document.createElement('select');
@@ -286,7 +286,7 @@ async function generate(event) {
 function showResult(license) {
   $('#result').hidden = false;
   $('#result-serial').value = license.formatted;
-  const expiry = license.expires_on ? `expires ${license.expires_on}` : 'never expires';
+  const expiry = license.expires_on ? `expires ${license.expiresLabel || license.expires_on}` : 'never expires';
   $('#result-meta').textContent = `${license.product} · ${license.planLabel} · ${expiry}`;
   const pillHost = $('#result-status');
   pillHost.className = `status-pill${license.status === 'unused' ? '' : ` ${license.status}`}`;
@@ -295,6 +295,8 @@ function showResult(license) {
   $('#result-install-key').textContent = license.installKey || '—';
   // The key carries the last valid day: say it plainly, because this is when the
   // customer's application will stop signing in until the licence is renewed.
+  // A minute licence prints its clock time too (2026-11-19 07:40 UTC), so
+  // nobody has to work out what "10 Minutes" means in their own time zone.
   $('#result-install-expiry').textContent = license.installKeyExpires
     ? `The application stops at sign-in after ${license.installKeyExpires}.`
     : 'Lifetime key: the application never stops at sign-in.';
