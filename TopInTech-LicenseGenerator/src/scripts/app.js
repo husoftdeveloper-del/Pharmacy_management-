@@ -293,6 +293,11 @@ function showResult(license) {
   pillHost.textContent = statusLabel(license.status);
   $('#result-serial').scrollTop = 0;
   $('#result-install-key').textContent = license.installKey || '—';
+  // The key carries the last valid day: say it plainly, because this is when the
+  // customer's application will stop signing in until the licence is renewed.
+  $('#result-install-expiry').textContent = license.installKeyExpires
+    ? `The application stops at sign-in after ${license.installKeyExpires}.`
+    : 'Lifetime key: the application never stops at sign-in.';
 }
 
 /* ---- Verify ----------------------------------------------------------- */

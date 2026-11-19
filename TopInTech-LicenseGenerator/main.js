@@ -74,9 +74,11 @@ function decorate(row) {
     planLabel: planId ? serial.PLANS[planId].label : (row.plan || ''),
     formatted: serial.formatSerial(row.serial),
     plain: row.serial,
-    // The short key the customer types into the setup wizard: derived from the
-    // serial, so the same row always shows the same key.
-    installKey: setupkey.makeInstallKey(row.serial)
+    // The key the customer types into the setup wizard: derived from the serial,
+    // so the same row always shows the same key, and carrying the licence's last
+    // valid day so the application can stop at sign-in once it has passed.
+    installKey: setupkey.makeInstallKey(row.serial, row.expires_on),
+    installKeyExpires: row.expires_on || ''
   };
 }
 

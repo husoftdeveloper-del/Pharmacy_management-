@@ -184,7 +184,7 @@ test('the fields the table reads exist on a decorated license row', () => {
     .map(match => match[1] || match[2]));
   assert.ok(columns.has('issued_on'), 'the schema must keep issued_on');
   assert.ok(columns.has('expires_on'), 'the schema must keep expires_on');
-  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey']);
+  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey', 'installKeyExpires']);
   const referenced = new Set([...renderer.matchAll(/\b(?:row|license)\.([a-z_]+)/gi)].map(match => match[1]));
   assert.ok(referenced.size > 4);
   for (const field of referenced) {

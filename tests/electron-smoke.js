@@ -101,6 +101,11 @@ app.whenReady().then(async()=>{
     const tabText=await run("return document.querySelector('#settings-body').innerText");
     assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
+  // License tab: the app reads the key the setup wrote and shows when it ends.
+  await run("document.querySelector('[data-tab=license]').click();return true;");
+  await pause(220);
+  assert.equal(await run("return document.querySelectorAll('.license-grid > div').length"),7,'the license card lists seven rows, expiry included');
+  assert.ok(await run("return document.querySelector('#license-until').textContent.length>0"),'the licence expiry row is filled');
   // Appearance tab: three theme cards and three language rows.
   await run("document.querySelector('[data-tab=appearance]').click();return true;");
   await pause(220);

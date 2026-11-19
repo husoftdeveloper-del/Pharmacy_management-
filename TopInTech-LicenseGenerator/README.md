@@ -155,15 +155,22 @@ The long serial is the licence; it is also 170 characters, so nobody types it
 into a setup wizard. Each license therefore also has a short **install key**:
 
 ```
-ABC-123        6 characters: 5 data + 1 check
+ABC-123-456    9 characters: 5 data + 3 expiry + 1 check
 ```
 
 * The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
   so one serial always produces the same key and a second license produces a
   different one.
-* The 1 check character comes from a small arithmetic fold
+* The 3 middle characters are the last valid day, counted from 2025-01-01 (UTC)
+  in base32. `000` means a lifetime licence. The line under the key spells the
+  date out: *The application stops at sign-in after 28 November 2026.*
+* The last character comes from a small arithmetic fold
   (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
-  runs exactly the same arithmetic in `build/installer.nsh`.
+  runs exactly the same arithmetic in `build/installer.nsh`, and the customer
+  application re-reads the same number in `license.js` — the three agree.
+* A key issued before 2.3.6 has 6 characters (`ABC-123`) and a 2.3.2 key has 16
+  (`WXYZ-1234-5678-9ABC`). Neither carries a date, so both are read as lifetime
+  and still install.
 * The result card shows the key under **Install key for the setup** with
   **Copy Install Key**; the licences table has a ⌨ button that copies it again
   for a key sold earlier.
@@ -174,6 +181,10 @@ ABC-123        6 characters: 5 data + 1 check
 * The setup asks on **every** run: a repair, a reinstall, an upgrade or an
   install after an uninstall on the same computer all need the key again. The
   installer stores no activation record, so an old installation cannot open it.
+* The setup writes the accepted key to `license.json` next to the program and in
+  `%APPDATA%\Pharmacy Management`. The customer application reads it at sign-in
+  and, after the last valid day, refuses to sign anyone in until you issue a new
+  key. Selling a 10-Day licence therefore really ends after ten days.
 
 This check stops casual copying; it is not the security boundary. The signed
 serial is: verify it in the customer app with `public.pem`, as described in

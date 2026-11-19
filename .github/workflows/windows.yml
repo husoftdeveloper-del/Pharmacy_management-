@@ -158,8 +158,9 @@ jobs:
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
           if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
 
-          # Exactly what the generator's "Copy Install Key" button produces.
-          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          # Exactly what the generator's "Copy Install Key" button produces: a
+          # 9-character key whose last group carries the expiry day.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001','2026-12-31'))")
           Write-Host "install key: $env:PHARMACY_SETUP_KEY"
           $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $process.WaitForExit(180000)
@@ -201,8 +202,23 @@ jobs:
             (Test-Path (Join-Path $env:LOCALAPPDATA 'Top In Tech\Pharmacy Management\activated.txt'))
           ) -contains $true
 
+          # The setup writes the licence beside the app and in the roaming folder,
+          # so the application can read its expiry without asking for the key.
+          $licenceFiles = @(
+            $(if ($installDir) { Join-Path $installDir 'license.json' }),
+            (Join-Path $env:APPDATA "$appName\license.json")
+          ) | Where-Object { $_ }
+          $licenceOk = @($licenceFiles | Where-Object {
+            (Test-Path $_) -and ((Get-Content -Raw $_) -match '"days"\s*:\s*[0-9]+')
+          }).Count -ge 1
+          if ($licenceOk) {
+            $written = Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json")
+            Write-Host "licence written: $written"
+          }
+
           $required = [ordered]@{
             'the application is installed' = [bool]$exe
+            'licence file written'         = $licenceOk
             'desktop shortcut'             = ($links.Count -ge 1)
             'single desktop shortcut'      = ($links.Count -eq 1)
             'start menu shortcut'          = ($startLinks.Count -ge 1)

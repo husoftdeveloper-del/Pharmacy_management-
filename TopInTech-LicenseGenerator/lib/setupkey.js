@@ -3,21 +3,27 @@
 
    The owner generates a serial in this tool and hands the customer a short key
    to type into the setup wizard. Typing the full 170-character serial would be
-   impractical, so the wizard takes a 6-character key:
+   impractical, so the wizard takes a 9-character key:
 
-       ABC-123          5 data characters + 1 check character
+       ABC-123-456
+
+       ABC 12   five characters derived from the serial (which license)
+       3 45     three characters holding the expiry day (when it ends)
+       6        one check character (proves the rest was typed correctly)
+
+   The expiry is counted in whole days from 2025-01-01 (UTC); 000 means a
+   lifetime licence that never expires. 999 base32 is 32767 days, so a key can
+   say "valid until" any day before 2114.
 
    The installer has no cryptography available (NSIS ships no crypto library),
    so the check is the same small arithmetic both sides run:
 
-       a = fold(data)          (alphabet index, a secret salt and the position
-                                of every character, folded into a small number)
+       a = fold(everything before the check character)
        check = alphabet[a % 32]
 
-   build/installer.nsh in the Pharmacy app implements exactly these lines, which
-   is what lets the wizard refuse a mistyped or invented key straight away with
-   "Invalid Serial Key!". The data characters are derived from the serial, so
-   every license gets its own key.
+   build/installer.nsh in the Pharmacy app implements exactly these lines, and
+   the Pharmacy application reads the same number again in license.js to lock
+   its sign-in screen when the day has passed.
 
    The signed serial stays the real licence: the wizard only unlocks the
    installation, and the serial in this database is still the record of what was
@@ -28,12 +34,17 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32: no I, 
 const SALT = '7Q2M9K4X1B8T'; // identical in build/installer.nsh
 const MODULUS = 100003;
 const DATA_LENGTH = 5; // characters taken from the serial
+const EXPIRY_LENGTH = 3; // characters holding the last valid day
 const CHECK_LENGTH = 1; // characters that prove the rest was typed correctly
-const GROUPS = 3; // ABC-123, so six characters read as two small pieces
-// The shape version 2.3.2 printed (WXYZ-1234-5678-9ABC). Keys issued then are
-// still accepted by the setup, so nobody has to ask for a new key.
-const LEGACY_DATA_LENGTH = 12;
+const GROUPS = 3; // ABC-123-456, so nine characters read as three small pieces
+const EPOCH = Date.UTC(2025, 0, 1); // day 0 of the expiry counter
+const DAY_MS = 86400000;
+
+// Older keys are still accepted by the setup, so they are still recognised here.
+const LEGACY_DATA_LENGTH = 12; // version 2.3.2: WXYZ-1234-5678-9ABC
 const LEGACY_CHECK_LENGTH = 4;
+const SHORT_DATA_LENGTH = 5; // versions 2.3.3 - 2.3.5: ABC-123, no expiry
+const SHORT_CHECK_LENGTH = 1;
 
 // Alphabet index of one character; accepts the lower-case form and the usual
 // Crockford confusions (O -> 0, I/L -> 1) so a key read over the phone works.
@@ -53,10 +64,9 @@ function fold(data) {
   return value;
 }
 
-// The check characters for a block of data characters. One character here.
+// The single check character for the eight characters in front of it.
 function checkGroups(data) {
-  const a = fold(data);
-  return ALPHABET[a % 32];
+  return ALPHABET[fold(data) % 32];
 }
 
 // The four check characters of the 2.3.2 layout, kept so an older key can still
@@ -93,19 +103,59 @@ function dataFor(serial) {
   return dataSlice(serial, DATA_LENGTH);
 }
 
-// The whole key exactly as version 2.3.2 printed it, for a customer who still
-// holds the old paper slip.
-function legacyMakeInstallKey(serial) {
-  const data = dataSlice(serial, LEGACY_DATA_LENGTH);
-  return (data + legacyCheckGroups(data)).replace(/(.{4})(?=.)/g, '$1-');
+// Days between 2025-01-01 and an ISO date (YYYY-MM-DD). 0 means "never ends".
+function dayNumber(expiresOn) {
+  const text = String(expiresOn || '').trim().slice(0, 10);
+  if (!text) return 0;
+  const parsed = Date.parse(`${text}T00:00:00Z`);
+  if (!Number.isFinite(parsed)) throw new Error('The expiry date is not a date.');
+  const days = Math.round((parsed - EPOCH) / DAY_MS);
+  if (days < 0) throw new Error('The expiry date is before 2025-01-01.');
+  if (days > 32767) throw new Error('The expiry date is too far in the future.');
+  return days;
+}
+
+function encodeDays(days) {
+  const value = Math.max(0, Math.min(32767, Math.round(Number(days) || 0)));
+  return ALPHABET[Math.floor(value / 1024) % 32] + ALPHABET[Math.floor(value / 32) % 32] + ALPHABET[value % 32];
+}
+
+function decodeDays(text) {
+  let days = 0;
+  for (const char of String(text || '')) days = days * 32 + indexOf(char);
+  return days;
+}
+
+function isoFromDays(days) {
+  return days > 0 ? new Date(EPOCH + days * DAY_MS).toISOString().slice(0, 10) : '';
+}
+
+function daysFromIso(expiresOn) {
+  return dayNumber(expiresOn);
 }
 
 function group(text) {
   return String(text || '').replace(new RegExp(`(.{${GROUPS}})(?=.)`, 'g'), '$1-');
 }
 
-// The key the owner copies and the customer types: ABC-123.
-function makeInstallKey(serial) {
+/* The key the owner copies and the customer types: ABC-123-456.
+   Pass the licence expiry (YYYY-MM-DD) so the setup, and then the application,
+   know the last day the customer may use the software. No date = lifetime. */
+function makeInstallKey(serial, expiresOn) {
+  const data = dataFor(serial);
+  const body = data + encodeDays(dayNumber(expiresOn));
+  return group(body + checkGroups(body));
+}
+
+// The whole key exactly as version 2.3.2 printed it, for a customer who still
+// holds the old paper slip. Those keys carry no expiry.
+function legacyMakeInstallKey(serial) {
+  const data = dataSlice(serial, LEGACY_DATA_LENGTH);
+  return (data + legacyCheckGroups(data)).replace(/(.{4})(?=.)/g, '$1-');
+}
+
+// The key exactly as versions 2.3.3 - 2.3.5 printed it: ABC-123, no expiry.
+function shortMakeInstallKey(serial) {
   const data = dataFor(serial);
   return group(data + checkGroups(data));
 }
@@ -114,21 +164,29 @@ function normalise(key) {
   return String(key || '').toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
 }
 
-// Returns { valid, reason }. Never throws, because the wizard calls it on
-// whatever the customer typed.
+/* { valid, reason, days, expiresOn }. Never throws, because the wizard and the
+   application call it on whatever was typed. */
 function verifyInstallKey(key) {
   const clean = normalise(key);
   if (!clean) return { valid: false, reason: 'Please enter your serial key to continue.' };
   const refuse = { valid: false, reason: 'The key you entered is not valid. Check it and try again.' };
   try {
-    if (clean.length === DATA_LENGTH + CHECK_LENGTH) {
-      const data = clean.slice(0, DATA_LENGTH);
-      if (checkGroups(data) === clean.slice(DATA_LENGTH)) return { valid: true, reason: '' };
-      return refuse;
+    if (clean.length === DATA_LENGTH + EXPIRY_LENGTH + CHECK_LENGTH) {
+      const body = clean.slice(0, DATA_LENGTH + EXPIRY_LENGTH);
+      if (checkGroups(body) !== clean.slice(DATA_LENGTH + EXPIRY_LENGTH)) return refuse;
+      const days = decodeDays(body.slice(DATA_LENGTH));
+      return { valid: true, reason: '', days, expiresOn: isoFromDays(days) };
+    }
+    if (clean.length === SHORT_DATA_LENGTH + SHORT_CHECK_LENGTH) {
+      const data = clean.slice(0, SHORT_DATA_LENGTH);
+      if (checkGroups(data) !== clean.slice(SHORT_DATA_LENGTH)) return refuse;
+      return { valid: true, reason: '', days: 0, expiresOn: '' };
     }
     if (clean.length === LEGACY_DATA_LENGTH + LEGACY_CHECK_LENGTH) {
       const data = clean.slice(0, LEGACY_DATA_LENGTH);
-      if (legacyCheckGroups(data) === clean.slice(LEGACY_DATA_LENGTH)) return { valid: true, reason: '' };
+      if (legacyCheckGroups(data) === clean.slice(LEGACY_DATA_LENGTH)) {
+        return { valid: true, reason: '', days: 0, expiresOn: '' };
+      }
       return refuse;
     }
   } catch {
@@ -137,9 +195,18 @@ function verifyInstallKey(key) {
   return refuse;
 }
 
+// The last valid day of a key, as YYYY-MM-DD (empty for lifetime and for the
+// older keys that never carried an expiry).
+function expiryOfInstallKey(key) {
+  const result = verifyInstallKey(key);
+  return result.valid ? result.expiresOn : '';
+}
+
 module.exports = {
-  ALPHABET, SALT, MODULUS, DATA_LENGTH, CHECK_LENGTH, GROUPS,
-  LEGACY_DATA_LENGTH, LEGACY_CHECK_LENGTH,
+  ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, CHECK_LENGTH, GROUPS,
+  EPOCH, DAY_MS, LEGACY_DATA_LENGTH, LEGACY_CHECK_LENGTH,
   indexOf, fold, checkGroups, legacyCheckGroups, dataFor, dataSlice, group,
-  makeInstallKey, legacyMakeInstallKey, verifyInstallKey, normalise
+  dayNumber, encodeDays, decodeDays, isoFromDays, daysFromIso,
+  makeInstallKey, legacyMakeInstallKey, shortMakeInstallKey,
+  verifyInstallKey, expiryOfInstallKey, normalise
 };

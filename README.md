@@ -10,7 +10,7 @@ An offline Windows desktop application built with **pure HTML5, CSS3, Vanilla Ja
    - `Pharmacy-1.0.1-x64.exe`: Setup installer, with Desktop and Start Menu shortcuts.
    - `Pharmacy-1.0.1-Portable.exe`: portable application.
 2. Run the installer. These builds are **unsigned**; verify that you downloaded them from this repository. Windows SmartScreen may warn about an unknown publisher. A production deployment should use the organization's code-signing certificate.
-3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish, and it asks on every run, including a reinstall or an upgrade. Type the install key the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `ABC-123`). A wrong or empty key keeps you on the page with the message *Invalid Serial Key! / Application Not Installed.* and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
+3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish, and it asks on every run, including a reinstall or an upgrade. Type the install key the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `ABC-123-456`). A wrong or empty key keeps you on the page with the message *Invalid Serial Key! / Application Not Installed.* and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
 4. Launch **Pharmacy Management**.
 5. Complete first-run setup: pharmacy name, your name, administrator username, and a password of at least 10 characters. **There is no default password.**
 6. Open Settings to fill in your profile, pharmacy details, receipt footer, notifications, language and theme.
@@ -26,7 +26,7 @@ The Pharmacy setup is gated by a key, so a copied `Pharmacy-Setup.exe` is useles
 
 1. On your own PC, open **Top In Tech License Generator** and sign in (`mynewpharmacy`).
 2. Create the customer's licence: enter the customer name, the plan and the serial is signed with your private key.
-3. The result card shows two things: the **serial key** (the licence, 170 characters, kept in the generator database) and the short **install key** (6 characters, `ABC-123`, shown first, right under the button). Press **Copy Install Key**.
+3. The result card shows two things: the **serial key** (the licence, 170 characters, kept in the generator database) and the short **install key** (9 characters, `ABC-123-456`, shown first, right under the button). Press **Copy Install Key**. The line under the key says the last day the customer may use the application: *The application stops at sign-in after 28 November 2026.* A Lifetime licence says it never stops.
 4. Send the customer the setup file and that install key. One licence, one key: the key is derived from the serial, and the same serial always shows the same install key, so you can find it again in the licences table with the ⌨ button.
 5. The customer runs the setup, types the key on the **Pharmacy Management Activation** page and presses **Continue**. The key is accepted with or without the dashes, in lower or upper case.
 
@@ -37,13 +37,25 @@ A wrong, invented or empty key shows
 
 and the wizard stays on the same page: nothing is installed, nothing is written to the disk and the application folder is never created. **Cancel** closes the setup without installing anything.
 
-**Every run of `Setup.exe` asks for the key** — the first installation, a repair, a reinstall, an upgrade, and an installation after the app was uninstalled on the same computer. The setup keeps no activation record anywhere (no registry value, no marker file), so an earlier installation can never be used to skip the page; there is no "already activated on this machine" shortcut to abuse. Silent installs (`setup.exe /S`) prove the key through the `PHARMACY_SETUP_KEY` environment variable and stop with exit code 2 when it is missing, wrong, or when the machine already has the application but no key is given.
+**Every run of `Setup.exe` asks for the key** — the first installation, a repair, a reinstall, an upgrade, and an installation after the app was uninstalled on the same computer. The setup keeps no activation record anywhere (no registry value, no marker file, nothing readable that says "already activated"), so an earlier installation can never be used to skip the page. The only thing it writes is the licence file described below, which the application reads and a later setup never looks at. Silent installs (`setup.exe /S`) prove the key through the `PHARMACY_SETUP_KEY` environment variable and stop with exit code 2 when it is missing, wrong, or when the machine already has the application but no key is given.
 
-The key is checked once, at install time. The application itself never asks for it again and keeps no key state: opening Pharmacy Management is unchanged.
+The key is typed once, at install time. The setup then writes a small licence file next to the program and in `%APPDATA%\Pharmacy Management`:
 
-Both key shapes this project has ever printed are accepted by the setup: the current 6-character key (`ABC-123`) and the 16-character key that generator 2.3.2 printed (`WXYZ-1234-5678-9ABC`). A key made by an older generator therefore still installs, and `tests/installer.test.js` proves the setup and the generator agree about both. If the customer pastes the long serial by mistake, the setup still refuses it but adds a line saying the short install key is the one it wants.
+```json
+{ "version": 1, "key": "ABC-123-456", "days": 696 }
+```
 
-The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses a mistyped key. A 6-character key is short by design — about one random six-character guess in thirty-two passes the check — so it stops copying, not a determined person. Use the Setup installer together with the signed serial if you need a real gate. It stops casual copying; the signed 170-character serial in the generator remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys. If you want the setup to verify the Ed25519 signature of the full serial instead, that needs a cryptographic verifier shipped with the installer — say so and it can be added as a small helper executable.
+`days` is the last valid day counted from 2025-01-01 in UTC (the last three characters of the key carry the same number, so a hand-edited `days` cannot extend anything). The application reads that file and nothing else; it never shows a key prompt.
+
+**A licence that runs out stops the sign-in screen.** With a 10-Day plan the customer can sign in for ten days. On the eleventh, sign-in is refused before the password is checked, with:
+
+> Your serial key has expired. Please renew your serial key from the Owner.
+
+Settings → License also shows *Valid until* and the remaining days while the licence is running. A Lifetime licence (`L`) and both older key shapes never expire. A missing or damaged `license.json` (a development run, a portable copy, an installation made before licences carried an expiry) is treated as no restriction, so an update never locks a paying pharmacy out. The check is repeated on every request, so closing and reopening the window does not help once the date has passed.
+
+Every key shape this project has ever printed is accepted by the setup: the current 9-character key (`ABC-123-456`, which carries the expiry), the 6-character key of versions 2.3.3 – 2.3.5 (`ABC-123`) and the 16-character key that generator 2.3.2 printed (`WXYZ-1234-5678-9ABC`). The two older shapes were issued before keys carried a date, so they are read as lifetime. A key made by an older generator therefore still installs, and `tests/installer.test.js` proves the setup and the generator agree about all three. If the customer pastes the long serial by mistake, the setup still refuses it but adds a line saying the short install key is the one it wants.
+
+The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh`, `license.js` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses a mistyped key. A 9-character key is short by design — about one random nine-character guess in thirty-two passes the check — so it stops copying, not a determined person. Use the Setup installer together with the signed serial if you need a real gate. It stops casual copying; the signed 170-character serial in the generator remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys. If you want the setup to verify the Ed25519 signature of the full serial instead, that needs a cryptographic verifier shipped with the installer — say so and it can be added as a small helper executable.
 
 The **Portable.exe** build is the same application without the setup wizard, so it does not ask for the key. Ship the Setup installer to customers and keep the portable build for your own testing on machines you control.
 

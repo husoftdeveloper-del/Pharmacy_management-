@@ -25,36 +25,57 @@ const value = name => {
 // lookup, a folded sum in 32-bit integers, then two five-bit slices of a mixed
 // value. Written from the .nsh, not from setupkey.js, so a change on either side
 // breaks this test instead of the customer's install.
+// returns { valid, days } — days is the last valid day counted from 2025-01-01
 function nsisValidate(raw) {
   const alphabet = value('SETUP_ALPHABET');
   const salt = value('SETUP_SALT');
   const modulus = Number(value('SETUP_MODULUS'));
-  const shapes = [
-    { data: Number(value('SETUP_DATA_LENGTH')), length: Number(value('SETUP_KEY_LENGTH')), legacy: false },
-    { data: Number(value('SETUP_LEGACY_DATA_LENGTH')), length: Number(value('SETUP_LEGACY_KEY_LENGTH')), legacy: true }
-  ];
+  const dataLength = Number(value('SETUP_DATA_LENGTH'));
+  const expiryLength = Number(value('SETUP_EXPIRY_LENGTH'));
+  const keyLength = Number(value('SETUP_KEY_LENGTH'));
+  const shortLength = Number(value('SETUP_SHORT_KEY_LENGTH'));
+  const legacyData = Number(value('SETUP_LEGACY_DATA_LENGTH'));
+  const legacyLength = Number(value('SETUP_LEGACY_KEY_LENGTH'));
   const key = String(raw).replace(/ /g, '').replace(/-/g, '').toUpperCase();
-  const shape = shapes.find(entry => entry.length === key.length);
-  if (!shape) return false;
   const indexOf = char => {
     for (let i = 0; i < 32; i += 1) {
       if (alphabet[i] === char) return i;
     }
     return 32;
   };
-  let a = 0;
-  for (let i = 0; i < shape.data; i += 1) {
-    const index = indexOf(key[i]);
-    if (index === 32) return false;
-    a = (a * 33 + index + indexOf(salt[i]) + i * 7) % modulus;
-    a = a < 0 ? a + modulus : a;
+  const fold = length => {
+    let a = 0;
+    for (let i = 0; i < length; i += 1) {
+      const index = indexOf(key[i]);
+      if (index === 32) return null;
+      a = (a * 33 + index + indexOf(salt[i]) + i * 7) % modulus;
+      a = a < 0 ? a + modulus : a;
+    }
+    return a;
+  };
+  if (key.length === keyLength) {
+    const a = fold(keyLength - 1);
+    if (a === null || alphabet[a % 32] !== key[keyLength - 1]) return { valid: false, days: 0 };
+    let days = 0;
+    for (const char of key.slice(dataLength, dataLength + expiryLength)) {
+      const index = indexOf(char);
+      if (index === 32) return { valid: false, days: 0 };
+      days = days * 32 + index;
+    }
+    return { valid: true, days };
   }
-  // IntOp truncates towards zero, and every value here is positive.
-  const b = (a * 37 + 11) % modulus;
-  const expected = shape.legacy
-    ? [alphabet[a % 32], alphabet[Math.trunc(a / 32) % 32], alphabet[b % 32], alphabet[Math.trunc(b / 32) % 32]]
-    : [alphabet[a % 32]];
-  return expected.join('') === key.slice(shape.data);
+  if (key.length === shortLength) {
+    const a = fold(dataLength);
+    return { valid: a !== null && alphabet[a % 32] === key[dataLength], days: 0 };
+  }
+  if (key.length === legacyLength) {
+    const a = fold(legacyData);
+    if (a === null) return { valid: false, days: 0 };
+    const b = (a * 37 + 11) % modulus;
+    const expected = [alphabet[a % 32], alphabet[Math.trunc(a / 32) % 32], alphabet[b % 32], alphabet[Math.trunc(b / 32) % 32]].join('');
+    return { valid: expected === key.slice(legacyData), days: 0 };
+  }
+  return { valid: false, days: 0 };
 }
 
 test('the setup wizard asks for the serial key before anything is installed', () => {
@@ -105,12 +126,12 @@ test('every key the owner generates is accepted by the wizard', () => {
     ''
   ]) {
     const key = setupkey.makeInstallKey(serial);
-    assert.equal(nsisValidate(key), true, `accepted: ${key}`);
+    assert.equal(nsisValidate(key).valid, true, `accepted: ${key}`);
     assert.equal(setupkey.verifyInstallKey(key).valid, true);
     // Typed by hand: lower case, without the dashes, or with spaces instead.
-    assert.equal(nsisValidate(key.toLowerCase()), true);
-    assert.equal(nsisValidate(key.replace(/-/g, '')), true);
-    assert.equal(nsisValidate(key.replace(/-/g, ' ')), true);
+    assert.equal(nsisValidate(key.toLowerCase()).valid, true);
+    assert.equal(nsisValidate(key.replace(/-/g, '')).valid, true);
+    assert.equal(nsisValidate(key.replace(/-/g, ' ')).valid, true);
   }
 });
 
@@ -128,7 +149,7 @@ test('a mistyped or invented key is refused', () => {
     'neat but unissued': '123-456'
   };
   for (const [name, typed] of Object.entries(cases)) {
-    assert.equal(nsisValidate(typed), false, `refused: ${name}`);
+    assert.equal(nsisValidate(typed).valid, false, `refused: ${name}`);
   }
   // And the two implementations agree on a large sample of random strings.
   let seed = 7;
@@ -140,7 +161,7 @@ test('a mistyped or invented key is refused', () => {
     let text = '';
     for (let c = 0; c < 6; c += 1) text += setupkey.ALPHABET[next() % 32];
     if (next() % 2) text = text.slice(0, 5) + setupkey.checkGroups(text.slice(0, 5));
-    assert.equal(nsisValidate(text), setupkey.verifyInstallKey(text).valid,
+    assert.equal(nsisValidate(text).valid, setupkey.verifyInstallKey(text).valid,
       `the installer and the generator disagree about ${text}`);
   }
 });
@@ -157,14 +178,14 @@ test('a key printed by the older generator (16 characters) still installs', () =
     // four old check characters.
     const legacy = setupkey.legacyMakeInstallKey(serial);
     assert.equal(legacy.replace(/-/g, '').length, 16);
-    assert.equal(nsisValidate(legacy), true, `the setup must accept the old key ${legacy}`);
+    assert.equal(nsisValidate(legacy).valid, true, `the setup must accept the old key ${legacy}`);
     assert.equal(setupkey.verifyInstallKey(legacy).valid, true, `the generator must accept the old key ${legacy}`);
     // Typed by hand, without dashes or in lower case, it is still the same key.
-    assert.equal(nsisValidate(legacy.replace(/-/g, '')), true);
-    assert.equal(nsisValidate(legacy.toLowerCase()), true);
+    assert.equal(nsisValidate(legacy.replace(/-/g, '')).valid, true);
+    assert.equal(nsisValidate(legacy.toLowerCase()).valid, true);
     // A damaged old key is still refused.
     const broken = (legacy[0] === 'A' ? 'B' : 'A') + legacy.slice(1);
-    assert.equal(nsisValidate(broken), false);
+    assert.equal(nsisValidate(broken).valid, false);
     assert.equal(setupkey.verifyInstallKey(broken).valid, false);
   }
 });
@@ -175,9 +196,9 @@ test('a pasted serial gets a hint about the short key', () => {
   assert.match(nsh, /That looks like the serial key/);
   assert.match(nsh, /The setup needs the short install key/);
   const leave = nsh.slice(nsh.indexOf('Function ActivationPageLeave'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageLeave')));
-  assert.match(leave, /StrCpy \$5 \$4 4/, 'the first four characters are compared');
-  assert.match(leave, /\$5 == "TIT1"/, 'a serial starts with TIT1');
-  assert.match(leave, /\$6 > 20/, 'anything longer than a key is a serial');
+  assert.match(leave, /StrCpy \$6 \$5 4/, 'the first four characters are compared');
+  assert.match(leave, /\$6 == "TIT1"/, 'a serial starts with TIT1');
+  assert.match(leave, /\$7 > 20/, 'anything longer than a key is a serial');
   assert.equal((leave.match(/Abort/g) || []).length, 1, 'either way the install is blocked');
 });
 
@@ -191,8 +212,11 @@ test('every run asks for the key and no earlier install can skip it', () => {
   for (const remembered of ['ReadRegStr', 'WriteRegStr', 'activated.txt', 'SETUP_MARKER', 'SetupKnownCheck', 'SetupRemember']) {
     assert.ok(!nsh.includes(remembered), `the installer must not remember an activation: found ${remembered}`);
   }
-  // Nothing is written at install time that a later setup could read back.
-  assert.doesNotMatch(nsh, /!macro customInstall\b/, 'customInstall would be the place to write such a flag');
+  // The install step writes the licence for the application, never an activation
+  // flag a later setup could read back to skip the key page.
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
+  assert.match(install, /SetupWriteLicence/);
+  assert.doesNotMatch(install, /WriteRegStr|activated/i, 'no activation flag may be written');
   assert.doesNotMatch(nsh, /customUnInstall/, 'the wizard never touches an activation record');
   // The silent path has no exemption for a machine that already has the app:
   // one branch only, straight to the environment variable and the same check.
@@ -204,14 +228,24 @@ test('every run asks for the key and no earlier install can skip it', () => {
   assert.match(init, /!insertmacro SetupKeyValidate \$0 \$1/);
 });
 
-test('the application itself is left alone', () => {
-  // The key is checked once, by the setup. No application file may grow a check.
-  const appFiles = ['main.js', 'preload.js', 'src/scripts/app.js', 'src/scripts/version.js'];
-  for (const file of appFiles) {
+test('the application never asks for a key, it only reads the licence', () => {
+  // The key is typed once, in the setup. The application has no key prompt and
+  // no key arithmetic of its own: it reads license.json through license.js and
+  // shows the expiry sentence at sign-in.
+  for (const file of ['main.js', 'preload.js', 'src/scripts/app.js', 'src/scripts/version.js']) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
-    assert.ok(!/SetupKeyValidate|verifyInstallKey|makeInstallKey|serial key/i.test(text),
+    assert.ok(!/SetupKeyValidate|verifyInstallKey|makeInstallKey|prompt\(/i.test(text),
       `${file} must not ask for a serial key`);
   }
+  const bridge = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
+  assert.ok(!/licen[cs]e.?key|serial.?key/i.test(bridge), 'no key channel is exposed to the page');
+  // The expiry sentence lives in one place, and the sign-in path uses it.
+  const licenceModule = fs.readFileSync(path.join(root, 'license.js'), 'utf8');
+  assert.match(licenceModule, /Your serial key has expired\. Please renew your serial key from the Owner\./);
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  assert.match(main, /const licence = require\('\.\/license'\)/);
+  const login = main.slice(main.indexOf("if (c==='login')"), main.indexOf("if (c==='login')") + 700);
+  assert.ok(login.indexOf('assertLicence()') < login.indexOf('service.login(p)'), 'expired wins over the password');
 });
 
 test('the wizard still owns the shortcuts and files', () => {

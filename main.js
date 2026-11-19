@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { openDatabase, transaction, audit, backupDatabase, validateBackup } = require('./database/database');
 const { PharmacyService } = require('./database/service');
 const autoBackup = require('./database/autobackup');
+const licence = require('./license');
 const { escapeXml } = require('./database/barcode');
 const { renderPDF } = require('./database/pdf');
 const rendererTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.ico':'image/x-icon'};
@@ -208,6 +209,7 @@ function senderWindow(event) {
   return win;
 }
 function currentUser(event, token) {
+  assertLicence();
   const session = sessions.get(event.sender.id);
   if (!session || !token || token.length !== 64 || !crypto.timingSafeEqual(Buffer.from(session.token,'hex'),Buffer.from(token,'hex'))) { const e = new Error('Your session has expired. Please sign in again.'); e.code='SESSION_EXPIRED'; throw e; }
   if (Date.now() > session.expires) { sessions.delete(event.sender.id); const e=new Error('Session expired after inactivity.');e.code='SESSION_EXPIRED';throw e; }
@@ -221,13 +223,37 @@ function createSession(event,user) {
   sessions.set(event.sender.id,{token,userId:user.id,expires:Date.now()+lockSeconds*1000});
   return token;
 }
+/* ---- Licence written by the Windows setup --------------------------------
+   The setup asked for the serial key and wrote license.json beside the program
+   and in %APPDATA%\Pharmacy Management. It carries the last valid day, so the
+   sign-in screen can refuse a licence that has run out. Nothing here asks the
+   user for a key: the app never shows a key prompt. */
+function licenceFiles(){
+  const files=[];
+  // The setup writes the same file in both places; the program folder always
+  // exists, and the roaming folder survives a reinstall into a new folder.
+  try{files.push(path.join(path.dirname(process.execPath),licence.FILE_NAME));}catch{}
+  try{files.push(path.join(app.getPath('appData'),'Pharmacy Management',licence.FILE_NAME));}catch{}
+  try{files.push(path.join(app.getPath('userData'),licence.FILE_NAME));}catch{}
+  return files;
+}
+function assertLicence(){
+  const state=licence.assertUsable({files:licenceFiles(),logger:message=>console.warn(message)});
+  if(state.found)console.log(`[licence] valid${state.expiresOn?` until ${state.expiresOn}`:' for life'}`);
+  return state;
+}
 async function dispatch(event, request) {
   if (!request || typeof request.channel !== 'string' || !/^[a-zA-Z]{1,30}$/.test(request.channel)) throw new Error('Invalid request.');
   const c=request.channel,p=request.payload;
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Invalid request payload.');
   if (c==='bootstrap') return service.bootstrap();
-  if (c==='setup') { const result=service.setup(p);return {...result,token:createSession(event,result.user)}; }
+  // Public: the sign-in screen and the License tab show when the key ends.
+  if (c==='licence') return licence.status();
+  if (c==='setup') { assertLicence();const result=service.setup(p);return {...result,token:createSession(event,result.user)}; }
   if (c==='login') {
+    // A licence that has run out stops here, before the password is checked, so
+    // the customer sees "expired" instead of "wrong password".
+    assertLicence();
     const key=String(p.username||'').toLowerCase().slice(0,40),now=Date.now(),attempt=attempts.get(key)||{count:0,until:0};
     if(attempt.until>now)throw new Error('Too many sign-in attempts. Try again in one minute.');
     try { const result=service.login(p);attempts.delete(key);return {...result,token:createSession(event,result.user)}; }
