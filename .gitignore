@@ -11,3 +11,7 @@ out/
 .env
 .env.*
 artifacts/
+
+# Downloaded installer files live here, never in git (each one is ~100 MB).
+/installer/*.exe
+/installer/*.yml
