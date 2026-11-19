@@ -40,6 +40,27 @@ jobs:
           npm run dist:win 2>&1 | tee artifacts/windows-build.log
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The installed application is one app.asar built from package.json's
+      # "files" list. Reading the source tree passes even when that list forgets
+      # a module, so a release once shipped without license.js and every customer
+      # saw "Cannot find module './license'" on launch. This checks the real
+      # payload, not the source.
+      # The installed application is one app.asar built from package.json's
+      # "files" list. Reading the source tree passes even when that list forgets a
+      # module, so a release once shipped without license.js and every customer
+      # saw "Cannot find module './license'" on launch. This opens the real
+      # payload and compares it with the modules the application loads.
+      - name: Check the packaged app contains every module it loads
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=release/win-unpacked/resources/app.asar
+          if [ ! -f "$payload" ]; then
+            echo "::error title=Missing app.asar::$payload was not produced by the build"
+            exit 1
+          fi
+          node scripts/payload-check.js "$payload"
+
       # The setup asks the customer for the install key the owner generates in
       # Top In Tech License Generator, and refuses anything else. The page lives
       # inside the compressed installer body, so the real NSIS compiler used by

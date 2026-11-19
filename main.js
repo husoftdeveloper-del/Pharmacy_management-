@@ -3,12 +3,36 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, Notification
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { openDatabase, transaction, audit, backupDatabase, validateBackup } = require('./database/database');
-const { PharmacyService } = require('./database/service');
-const autoBackup = require('./database/autobackup');
-const licence = require('./license');
-const { escapeXml } = require('./database/barcode');
-const { renderPDF } = require('./database/pdf');
+// The application ships as one app.asar, built from the "files" list in
+// package.json. If a module is missing from that list the app would otherwise
+// die before its window exists, and the customer would see Electron's raw
+// "A JavaScript error occurred in the main process" box with no explanation.
+// This helper keeps that from ever being the first thing someone reads: it says
+// what happened and what fixes it. tests/packaging.test.js proves the list and
+// these require() calls agree, so the message should never be reached.
+function requireLocal(id) {
+  try {
+    return require(id);
+  } catch (error) {
+    const name = String(id).replace('./', '');
+    // Keep the technical detail (it is the only clue for support) but lead with
+    // the sentence a pharmacy owner can act on.
+    process.stderr.write(`[startup] cannot load ${name}: ${error.message}\n`);
+    try {
+      require('electron').dialog.showErrorBox(
+        'Pharmacy Management could not start',
+        `A file of the application is missing (${name}).\n\nThe installation is incomplete. Please reinstall Pharmacy Management with the setup file, and keep your data: it stays in %APPDATA%\\Pharmacy Management and is never deleted by the setup.`
+      );
+    } catch { /* no window system yet: the stderr line above is the record */ }
+    process.exit(1);
+  }
+}
+const { openDatabase, transaction, audit, backupDatabase, validateBackup } = requireLocal('./database/database');
+const { PharmacyService } = requireLocal('./database/service');
+const autoBackup = requireLocal('./database/autobackup');
+const licence = requireLocal('./license');
+const { escapeXml } = requireLocal('./database/barcode');
+const { renderPDF } = requireLocal('./database/pdf');
 const rendererTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.ico':'image/x-icon'};
 function rendererType(filename){return rendererTypes[path.extname(filename).toLowerCase()]||'application/octet-stream';}
 let db, service, mainWindow;
