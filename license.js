@@ -188,6 +188,12 @@ function status(options = {}) {
   const env = options.env || process.env;
   const now = options.now || new Date();
   const files = options.files || candidateFiles(env);
+  // The setup writes the same licence in two places, and a machine can collect
+  // more than one over time (an older folder, a portable copy, a renewal). The
+  // licence that lasts longest is the one the customer paid for, so read them
+  // all and keep the best instead of trusting the order of the list: an
+  // exhausted copy must never outvote the renewed key beside it.
+  let best = null;
   for (const file of files) {
     const record = readFile(file);
     if (!record) continue;
@@ -198,9 +204,19 @@ function status(options = {}) {
       if (options.logger) options.logger(`[licence] ignored ${file}: the key does not check out`);
       continue;
     }
-    return { ...fromDays(parsed.days, { now, file, minutes: parsed.minutes }), key: record.key };
+    const candidate = { ...fromDays(parsed.days, { now, file, minutes: parsed.minutes }), key: record.key };
+    if (!best || lastsLonger(candidate, best)) best = candidate;
   }
-  return { found: false, key: '', days: 0, minutes: null, expiresOn: '', expiresAt: '', daysLeft: null, minutesLeft: null, expired: false, file: '' };
+  return best || { found: false, key: '', days: 0, minutes: null, expiresOn: '', expiresAt: '', daysLeft: null, minutesLeft: null, expired: false, file: '' };
+}
+
+/* Which licence wins when two files disagree: the one that ends later.
+   `days` 0 is a lifetime licence, so it beats every dated one. */
+function lastsLonger(a, b) {
+  if (!a.days) return true;
+  if (!b.days) return false;
+  const endOf = state => Date.parse(state.expiresAt);
+  return endOf(a) > endOf(b);
 }
 
 /* The licence file is the only thing the setup writes, but a finished licence
@@ -237,6 +253,6 @@ module.exports = {
   MINUTE_LENGTH, MINUTE_KEY_LENGTH, MINUTES_PER_DAY,
   SHORT_KEY_LENGTH, LEGACY_KEY_LENGTH, LEGACY_DATA_LENGTH,
   EPOCH, DAY_MS, FILE_NAME, EXPIRED_MESSAGE,
-  normaliseKey, fold, parseKey, daysFromKey, endsAt, expiresOn, todayUtc,
+  normaliseKey, fold, parseKey, daysFromKey, endsAt, lastsLonger, expiresOn, todayUtc,
   candidateFiles, status, fromDays, resolve, assertUsable
 };

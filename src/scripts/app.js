@@ -73,8 +73,25 @@ export async function navigate(page,params={}){
 window.addEventListener('session-expired',()=>authScreen(false));
 document.addEventListener('keydown',ev=>{if((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ev.preventDefault();app.querySelector('#global-search')?.focus();}if(ev.key==='F2'&&state.user)navigate('pos');});
 /* The setup's key has run out: back to the sign-in screen, where nothing can be
-   typed until the owner issues a new key. The date was written at install. */
-async function licenceEnded(message){await authScreen(false);const slot=app.querySelector('#auth-form .form-error');if(slot)slot.textContent=message||'Your Serial key has expired, please Renew Serial key on the Owner.';}
+   typed until the owner issues a new key. The moment it ended is shown under
+   the sentence, so "expired" is never mistaken for a broken program: a 10
+   Minutes key really does end ten minutes after it was issued. */
+async function licenceEnded(message){
+  await authScreen(false);
+  const slot=app.querySelector('#auth-form .form-error');
+  if(!slot)return;
+  slot.textContent=message||'Your Serial key has expired, please Renew Serial key on the Owner.';
+  try{
+    const info=await api('licence');
+    if(!info||!info.found||!info.expiresAt)return;
+    const when=info.expiresAt.replace('T',' ').replace(/\.000Z$/,'').replace(/Z$/,'');
+    const line=document.createElement('small');
+    line.className='licence-ended';
+    // The key that expired, so the owner can match it to the licence record.
+    line.textContent=`${t('licenceEndedAt')} ${when} UTC${info.key?` · ${t('licenceKeyUsed')} ${info.key}`:''}`;
+    slot.after(line);
+  }catch{}
+}
 async function boot(){try{const info=await api('bootstrap');if(!info.initialized){await authScreen(true);return;}try{const session=await api('session');await startSession(session);}catch(error){if(error.code==='LICENSE_EXPIRED'){await licenceEnded(error.message);return;}await authScreen(false);}}catch(error){app.innerHTML=`<main class="auth-panel"><div class="auth-form-wrap"><h2>Pharmacy Management</h2><p>${e(error.message)}</p><p>Install dependencies with npm install, then launch with npm start.</p></div></main>`;}}
 boot();
 window.addEventListener('navigate',event=>{const detail=event.detail;if(detail&&typeof detail==='object'&&detail.page)navigate(detail.page,detail.params||{});else navigate(detail);});

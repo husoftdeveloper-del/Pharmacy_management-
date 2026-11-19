@@ -54,7 +54,9 @@ licence, the minute) out of it.
 
 > Your Serial key has expired, please Renew Serial key on the Owner.
 
-Settings → License also shows *Valid until* — a date for day plans, a date and time (UTC) for the 10 Minutes plan — with the days or minutes left while the licence is running. A Lifetime licence (`L`) and both older key shapes never expire. Deleting `license.json` does not restart a licence: the first time the application reads a valid licence it copies the same last valid day into its own database (`settings.licence_days`), and that copy decides when the file is gone. Losing the database means losing every sale, so the date cannot be reset without paying the price.
+Settings → License also shows the **install key this computer holds** and *Valid until* — a date for day plans, a date and time (UTC) for the 10 Minutes plan — with the days or minutes left while the licence is running. A Lifetime licence (`L`) and both older key shapes never expire. The sign-in screen tells you *when* it ended and *which key* it was, under the message, so a 10 Minutes key that has simply run its course is never mistaken for a fault. When a machine holds more than one licence file (an older folder, a portable copy, a renewal), the app uses the one that lasts longest: a renewed key is never outvoted by an exhausted copy beside it.
+
+Deleting `license.json` does not restart a licence: the first time the application reads a valid licence it copies the same last valid day into its own database (`settings.licence_days`), and that copy decides when the file is gone. Losing the database means losing every sale, so the date cannot be reset without paying the price.
 
 A damaged `license.json`, or a machine that never had one (a development run, a portable copy, an installation made before licences carried an expiry), is treated as no restriction, so an update never locks a paying pharmacy out. The check is repeated on every request, so closing and reopening the window does not help once the date has passed.
 

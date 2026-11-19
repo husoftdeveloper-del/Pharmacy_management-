@@ -359,6 +359,7 @@ export async function render(root,params={}){
         <div><span>${e(t('registeredTo'))}</span><strong>${e(state.preferences.pharmacy_name||'')}</strong></div>
         <div><span>${e(t('licenseStatus'))}</span><strong id="license-status">${e(t('singleInstallation'))}</strong></div>
         <div><span>${e(t('licenseValidUntil'))}</span><strong id="license-until" class="mono">—</strong></div>
+        <div><span>${e(t('licenseKeyUsed'))}</span><strong id="license-key" class="mono">—</strong></div>
         <div><span>${e(t('signInAs'))}</span><strong>${e(state.user.name)}</strong></div>
       </div>
       <p class="settings-note">${e(t('licenseNote'))}</p>
@@ -587,8 +588,11 @@ export async function render(root,params={}){
       body.innerHTML=paintLicense();
       // The setup writes the key; the app only reads it back to show the date.
       api('licence').then(info=>{
-        const until=body.querySelector('#license-until'), status=body.querySelector('#license-status');
+        const until=body.querySelector('#license-until'), status=body.querySelector('#license-status'), keyRow=body.querySelector('#license-key');
         if(!until||!status||!info||!info.found) return;
+        // The key this computer holds, so support can match it to the licence
+        // record without opening any file.
+        if(keyRow) keyRow.textContent=info.key||'—';
         if(!info.days){ status.textContent=t('licenseLifetime'); until.textContent='—'; return; }
         // A licence measured in minutes (the 10 Minutes plan) ends at a time,
         // so the card shows the clock too instead of only the date.

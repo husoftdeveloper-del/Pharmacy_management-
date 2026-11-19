@@ -145,7 +145,8 @@ test('the sign-in screen shows the expiry message and nothing else', () => {
   const app = fs.readFileSync(path.join(root, 'src', 'scripts', 'app.js'), 'utf8');
   // The message the customer reads is the one from license.js, word for word.
   assert.ok(app.includes(licence.EXPIRED_MESSAGE), 'the sign-in screen quotes the licence message');
-  assert.match(app, /function licenceEnded\(message\)\{await authScreen\(false\)/, 'an expired licence returns to the sign-in screen');
+  assert.match(app, /async function licenceEnded\(message\)\{/, 'an expired licence returns to the sign-in screen');
+  assert.match(app, /await authScreen\(false\)/, 'the sign-in screen is drawn again');
   assert.match(app, /error\.code==='LICENSE_EXPIRED'/, 'the app reacts to the licence code');
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
   assert.match(preload, /result\.code === 'LICENSE_EXPIRED'/, 'the session token is dropped');
@@ -296,4 +297,59 @@ test('the whole-day keys keep their meaning', () => {
   assert.equal(late.minutes, null);
   assert.equal(late.expiresAt, '2026-11-29T00:00:00Z');
   assert.equal(late.minutesLeft, null);
+});
+
+/* ---- One machine, more than one licence file ---------------------------
+   The setup writes the same licence in two places, and a machine can collect
+   more than one over time: an older folder, a portable copy, a renewal. If an
+   exhausted copy could outvote the renewed key beside it, a paying customer
+   who renewed would still be locked out. The licence that lasts longest wins,
+   whatever order the files come in. */
+test('a renewed key beats an exhausted copy, in any file order', () => {
+  const used = setupkey.makeInstallKey(serial, '2026-11-19T07:40:00Z'); // finished 10 minutes
+  const renewed = setupkey.makeInstallKey(serial, '2026-11-29');       // ten more days
+  const first = writeLicence('old-copy.json', { version: 1, key: used });
+  const second = writeLicence('renewed-copy.json', { version: 1, key: renewed });
+  const now = new Date('2026-11-20T09:00:00Z');
+  for (const files of [[first, second], [second, first]]) {
+    const state = licence.status({ files, now });
+    assert.equal(state.found, true);
+    assert.equal(state.expired, false, 'the renewal must win');
+    assert.equal(state.expiresOn, '2026-11-29');
+    assert.doesNotThrow(() => licence.assertUsable({ files, now }));
+  }
+  // A lifetime key beats every dated one, even an expired one.
+  const lifetimeFile = writeLicence('life-copy.json', { version: 1, key: setupkey.makeInstallKey(serial, '') });
+  const withLife = licence.status({ files: [first, lifetimeFile], now });
+  assert.equal(withLife.expiresOn, '');
+  assert.equal(withLife.expired, false);
+  // Both expired: the later end still decides, and the gate refuses.
+  const older = writeLicence('older.json', { version: 1, key: setupkey.makeInstallKey(serial, '2026-11-10') });
+  const later = writeLicence('later.json', { version: 1, key: setupkey.makeInstallKey(serial, '2026-11-28') });
+  const both = licence.status({ files: [older, later], now: new Date('2026-12-01T09:00:00Z') });
+  assert.equal(both.expiresOn, '2026-11-28');
+  assert.equal(both.expired, true);
+  assert.throws(() => licence.assertUsable({ files: [older, later], now: new Date('2026-12-01T09:00:00Z') }), /Renew Serial key on the Owner/);
+  // A damaged file never wins, even when it is listed first.
+  const damaged = path.join(tempDir, 'damaged.json');
+  fs.writeFileSync(damaged, '{"version":1,"key":"NOT-A-KEY"}');
+  assert.equal(licence.status({ files: [damaged, second], now }).expiresOn, '2026-11-29');
+});
+
+test('the useful sentence stays first, the detail comes second', () => {
+  const root = path.join(__dirname, '..');
+  const app = fs.readFileSync(path.join(root, 'src', 'scripts', 'app.js'), 'utf8');
+  // The exact message, then a quiet line with the moment and the key used.
+  assert.ok(app.includes(licence.EXPIRED_MESSAGE), 'the sentence the owner asked for comes first');
+  assert.match(app, /t\('licenceEndedAt'\)/, 'the moment it ended is shown under it');
+  assert.match(app, /t\('licenceKeyUsed'\)/, 'with the key this computer used');
+  assert.match(app, /line\.className='licence-ended'/);
+  // Settings -> License shows the key from the licence file, read-only.
+  const settings = fs.readFileSync(path.join(root, 'src', 'pages', 'settings.js'), 'utf8');
+  assert.match(settings, /id="license-key"/);
+  assert.match(settings, /keyRow\.textContent=info\.key/);
+  for (const key of ['licenceEndedAt', 'licenseKeyUsed']) {
+    const i18n = fs.readFileSync(path.join(root, 'src', 'scripts', 'i18n.js'), 'utf8');
+    assert.equal((i18n.match(new RegExp(`${key}:'`, 'g')) || []).length, 3, `${key} in all three languages`);
+  }
 });

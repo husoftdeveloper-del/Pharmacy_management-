@@ -104,8 +104,11 @@ app.whenReady().then(async()=>{
   // License tab: the app reads the key the setup wrote and shows when it ends.
   await run("document.querySelector('[data-tab=license]').click();return true;");
   await pause(220);
-  assert.equal(await run("return document.querySelectorAll('.license-grid > div').length"),7,'the license card lists seven rows, expiry included');
+  assert.equal(await run("return document.querySelectorAll('.license-grid > div').length"),8,'the license card lists eight rows, expiry and key included');
   assert.ok(await run("return document.querySelector('#license-until').textContent.length>0"),'the licence expiry row is filled');
+  // The key this computer holds is shown, so "which key is used" is answerable
+  // from inside the app. A smoke run has no setup licence, so it stays "—".
+  assert.ok(await run("return document.querySelector('#license-key').textContent.length>0"),'the install-key row is filled');
   // Appearance tab: three theme cards and three language rows.
   await run("document.querySelector('[data-tab=appearance]').click();return true;");
   await pause(220);
