@@ -20,13 +20,36 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const electron = require('electron');
-const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 90000);
+const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 60000);
 
+// A hung child must never hang the build: the process tree is killed first and
+// the failure is reported from the error file (the step log is not readable
+// from the runner while a job is still running).
 function fail(message, output) {
   console.error(`\nFAILED: ${message}`);
   if (output) console.error(output.split('\n').slice(-40).join('\n'));
-  fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), `${message}\n\n${output || ''}`);
+  try {
+    fs.mkdirSync(path.join(root, 'artifacts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), `${message}\n\n${output || ''}`);
+  } catch (error) {
+    console.error('could not write artifacts/smoke-error.txt:', error.message);
+  }
   process.exit(1);
+}
+
+// Electron leaves GPU and renderer children behind on Windows, and those keep
+// the stdio pipes open, so 'close' would never fire after a plain kill.
+function killTree(child) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      require('node:child_process').execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      return;
+    } catch (error) {
+      console.error('taskkill failed:', error.message);
+    }
+  }
+  try { child.kill('SIGKILL'); } catch (error) { /* already gone */ }
 }
 
 const child = spawn(electron, ['.'], {
@@ -42,11 +65,17 @@ const child = spawn(electron, ['.'], {
 
 let stdout = '';
 let stderr = '';
-child.stdout.on('data', chunk => { stdout += chunk.toString(); });
-child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+child.stdout.on('data', chunk => {
+  stdout += chunk.toString();
+  process.stdout.write(chunk);
+});
+child.stderr.on('data', chunk => {
+  stderr += chunk.toString();
+  process.stderr.write(chunk);
+});
 
 const timer = setTimeout(() => {
-  child.kill();
+  killTree(child);
   fail(`the app did not finish its smoke run in ${timeoutMs} ms`, `${stdout}\n${stderr}`);
 }, timeoutMs);
 
