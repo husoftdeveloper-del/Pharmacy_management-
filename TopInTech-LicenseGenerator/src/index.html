@@ -55,10 +55,22 @@
         <p>Offline serial keys · owner tool · never shipped to customers</p>
       </div>
     </div>
-    <div class="key-badge" id="key-badge" title="Signing key in use">
-      <span class="dot"></span>
-      <span>Key</span>
-      <strong id="key-id">…</strong>
+    <div class="topbar-tools">
+      <div class="key-badge" id="key-badge" title="Signing key in use">
+        <span class="dot"></span>
+        <span>Key</span>
+        <strong id="key-id">…</strong>
+      </div>
+      <button type="button" class="icon-btn" id="settings-button" title="Settings (Ctrl ,)" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+        </svg>
+      </button>
+      <button type="button" class="account-chip" id="account-chip" title="Signed in owner — open settings">
+        <span class="account-dot" aria-hidden="true"></span>
+        <span id="account-name">Owner</span>
+      </button>
     </div>
   </header>
 
@@ -216,6 +228,121 @@
       </details>
     </section>
   </main>
+
+  <!-- Settings: owner account, data locations and the running version. It is a
+       plain dialog, drawn by the renderer; every change goes through the main
+       process, which checks the current password itself. -->
+  <div class="modal-backdrop" id="settings-window" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="modal-head">
+        <div>
+          <h2 id="settings-title">Settings</h2>
+          <p id="settings-lead">Owner account, data and version — all on this computer.</p>
+        </div>
+        <button type="button" class="icon-btn" id="settings-close" aria-label="Close settings" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="modal-body">
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div>
+              <h3>Owner account</h3>
+              <p>Signed in as <strong id="settings-user">—</strong> <span id="settings-created"></span></p>
+            </div>
+          </div>
+          <form class="form" id="password-form" novalidate>
+            <div class="field-row">
+              <label class="field">
+                <span>Current password <b>*</b></span>
+                <input id="current-password" type="password" maxlength="128" autocomplete="current-password" placeholder="The one you sign in with" required>
+              </label>
+              <label class="field">
+                <span>New password <b>*</b></span>
+                <input id="new-password" type="password" maxlength="128" autocomplete="new-password" placeholder="At least 6 characters" required>
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span>Confirm new password <b>*</b></span>
+                <input id="confirm-password" type="password" maxlength="128" autocomplete="new-password" placeholder="Repeat the new password" required>
+              </label>
+              <div class="field field-hint">
+                <span>&nbsp;</span>
+                <small id="password-hint">6–128 characters, and not the same as the username.</small>
+              </div>
+            </div>
+            <p class="form-error" id="password-error" role="alert"></p>
+            <div class="settings-actions">
+              <button type="submit" class="btn btn-primary" id="save-password">Change password</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div>
+              <h3>Username</h3>
+              <p>The name the sign-in screen asks for. Your password is required to change it.</p>
+            </div>
+          </div>
+          <form class="form" id="username-form" novalidate>
+            <div class="field-row">
+              <label class="field">
+                <span>New username <b>*</b></span>
+                <input id="new-username" maxlength="40" autocomplete="username" spellcheck="false" placeholder="Owner username" required>
+              </label>
+              <label class="field">
+                <span>Your password <b>*</b></span>
+                <input id="username-password" type="password" maxlength="128" autocomplete="current-password" placeholder="To confirm the change" required>
+              </label>
+            </div>
+            <p class="form-error" id="username-error" role="alert"></p>
+            <div class="settings-actions">
+              <button type="submit" class="btn btn-secondary" id="save-username">Change username</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div>
+              <h3>Data and keys</h3>
+              <p>The licenses and the signing key never leave this computer.</p>
+            </div>
+          </div>
+          <dl class="settings-list">
+            <div><dt>Data folder</dt><dd class="mono" id="settings-folder">—</dd></div>
+            <div><dt>Database</dt><dd class="mono" id="settings-database">—</dd></div>
+            <div><dt>Licenses</dt><dd id="settings-counts">—</dd></div>
+            <div><dt>Signing key</dt><dd class="mono" id="settings-key">—</dd></div>
+          </dl>
+          <div class="settings-actions">
+            <button type="button" class="btn btn-ghost" id="settings-open-folder">Open data folder</button>
+            <button type="button" class="btn btn-ghost" id="settings-backup-keys">Back up keys</button>
+            <button type="button" class="btn btn-ghost" id="settings-shortcut">Desktop shortcut</button>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div>
+              <h3>About</h3>
+              <p>Version and the libraries this build runs on.</p>
+            </div>
+          </div>
+          <dl class="settings-list">
+            <div><dt>Version</dt><dd id="settings-version">—</dd></div>
+            <div><dt>Platform</dt><dd id="settings-platform">—</dd></div>
+          </dl>
+          <div class="settings-actions">
+            <button type="button" class="btn btn-ghost" id="settings-signout">Sign out</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <footer class="statusbar">

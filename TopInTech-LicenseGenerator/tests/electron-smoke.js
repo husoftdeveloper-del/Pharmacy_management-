@@ -7,6 +7,7 @@
  * temporary desktop folder), waits for the window to render, then checks:
  *   - the window title and version are shown;
  *   - the key badge is filled and the public key is displayed;
+ *   - the Settings window opens and the owner password can be changed;
  *   - a serial can be generated, stored and verified again;
  *   - the desktop shortcut file is really written to disk.
  * Every check is printed, and a non-zero exit code fails the build.
@@ -74,6 +75,10 @@ child.on('close', code => {
     ['the version badge shows 1.1.0', result.page && /^\d+\.\d+\.\d+$/.test(result.page.version)],
     ['the key id is shown', result.page && result.page.keyId.length >= 6],
     ['the public key is displayed', result.page && result.page.publicKey === true],
+    ['the Settings window opens from the gear icon', result.settings && result.settings.open === true],
+    ['Settings names the signed-in owner', result.settings && result.settings.user === 'smoke-owner'],
+    ['the password form saves without an error', result.settings && result.settings.error === ''],
+    ['the new password signs in', result.settings && result.settings.passwordChanged === true],
     ['a serial was generated', Boolean(result.generated && result.generated.serial)],
     ['the serial records a 1 year plan', result.generated && result.generated.plan === '1 Year'],
     ['the serial verifies again', result.verified && result.verified.valid === true],

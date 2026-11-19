@@ -134,6 +134,28 @@ backup offline: without `private.pem` no new keys can be made for that key id.
 > git repository, or e-mailed. Only `public.pem` may travel.
 > `.gitignore` blocks `*.pem` as a second line of defence.
 
+## Settings
+
+The gear icon in the top bar (or **Ctrl ,**) opens **Settings**. Everything in
+it is local to this computer:
+
+| Section | What you can do |
+| --- | --- |
+| Owner account | See which account is open and when it was created; **change the password** — current password, new password, confirmation; the new password needs 6–128 characters, must differ from the old one and from the username |
+| Username | Rename the account. Your password is required, because the username is half of the credentials the sign-in screen asks for |
+| Data and keys | See exactly where the licenses and the signing key live, how many licenses of each status exist, open the data folder, back up the keys, re-create the desktop icon |
+| About | Version, Electron and Node of this build, and **Sign out** |
+
+Both changes require the **current password**, so an already-unlocked window on
+an unattended desk is not enough to take the tool over. The password is stored
+only as a fresh scrypt hash; changing it also clears any lockout left by wrong
+attempts, and every change is written to the license_events audit trail (without
+the password). **Sign out** locks the window again immediately.
+
+Losing the owner password means editing the generator's SQLite database by hand
+(delete `owner_password_hash` and restart to create the account again) — the
+tool never stores a second copy of it anywhere.
+
 ## Serial keys
 
 * Format: `TIT1<payload>.<signature>`, shown in groups of five.

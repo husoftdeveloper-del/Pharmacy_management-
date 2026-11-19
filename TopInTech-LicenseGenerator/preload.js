@@ -7,7 +7,8 @@ const ALLOWED = new Set([
   'status', 'licenses', 'events', 'generate', 'verify',
   'setStatus', 'saveNote', 'removeLicense', 'export',
   'openDataFolder', 'copyPublicKey', 'backupKeys', 'createShortcut', 'showShortcut',
-  'authState', 'signIn', 'register', 'signOut'
+  'authState', 'signIn', 'register', 'signOut',
+  'settingsInfo', 'changePassword', 'changeUsername'
 ]);
 
 contextBridge.exposeInMainWorld('generator', {

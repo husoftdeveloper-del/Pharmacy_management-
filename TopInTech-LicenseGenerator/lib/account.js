@@ -160,8 +160,74 @@ async function signIn(store, db, payload) {
   return { username: storedUser, locked: false };
 }
 
+/* ---- Settings ---------------------------------------------------------- */
+
+/* What the Settings window shows. The password hash never leaves this process,
+   and the username and creation date are not secrets. */
+function info(store, db) {
+  return {
+    username: store.getSetting(db, SETTING_USER, ''),
+    createdAt: store.getSetting(db, SETTING_CREATED, ''),
+    maxAttempts: MAX_FAILURES,
+    passwordMin: PASSWORD_MIN,
+    passwordMax: PASSWORD_MAX
+  };
+}
+
+/* Change the owner password. The current password is required even though the
+   window is already unlocked: an unattended computer must not be enough to take
+   the tool over. The new password gets a fresh salt, so the old hash is useless
+   even if the database was copied before the change. */
+async function changePassword(store, db, payload) {
+  const storedUser = store.getSetting(db, SETTING_USER, '');
+  if (!storedUser) throw new Error('No owner account exists yet.');
+  const current = String(payload?.current == null ? '' : payload.current);
+  if (!current) throw new Error('Enter your current password.');
+  if (!(await matches(current, store.getSetting(db, SETTING_HASH, '')))) {
+    store.event(db, null, 'password_change_failed', 'wrong current password');
+    throw new Error('The current password is not correct.');
+  }
+  const username = String(payload?.username == null ? storedUser : payload.username).trim();
+  const password = checkPassword(payload?.password, username || storedUser);
+  const confirmation = String(payload?.confirm == null ? password : payload.confirm);
+  if (password !== confirmation) throw new Error('The two new passwords do not match.');
+  if (await matches(password, store.getSetting(db, SETTING_HASH, ''))) {
+    throw new Error('The new password must be different from the current one.');
+  }
+  store.setSetting(db, SETTING_HASH, await hash(password));
+  // A password change also clears any leftover lockout.
+  store.setSetting(db, SETTING_FAILURES, '0');
+  store.setSetting(db, SETTING_LOCKED_UNTIL, '0');
+  store.event(db, null, 'password_changed', storedUser);
+  return { username: storedUser, changed: true };
+}
+
+/* Rename the owner account. Requires the password, because the username is half
+   of the credentials the sign-in screen asks for. */
+async function changeUsername(store, db, payload) {
+  const storedUser = store.getSetting(db, SETTING_USER, '');
+  if (!storedUser) throw new Error('No owner account exists yet.');
+  const password = String(payload?.password == null ? '' : payload.password);
+  if (!password) throw new Error('Enter your password to change the username.');
+  if (!(await matches(password, store.getSetting(db, SETTING_HASH, '')))) {
+    store.event(db, null, 'username_change_failed', 'wrong password');
+    throw new Error('The password is not correct.');
+  }
+  const username = checkUsername(payload?.username);
+  if (!USERNAME_PATTERN.test(username)) {
+    throw new Error('The username must be 3–40 characters: letters, numbers, dot, dash or underscore.');
+  }
+  if (normalize(username) === normalize(storedUser)) return { username: storedUser, changed: false };
+  // Changing the username also changes the password rule ("not the same as the
+  // username"), so refuse a rename that would make the current password invalid.
+  if (normalize(password) === normalize(username)) throw new Error('The password cannot be the same as the username.');
+  store.setSetting(db, SETTING_USER, username);
+  store.event(db, null, 'username_changed', `${storedUser} → ${username}`);
+  return { username, previous: storedUser, changed: true };
+}
+
 module.exports = {
-  register, signIn, state, matches, hash,
+  register, signIn, state, info, changePassword, changeUsername, matches, hash,
   SETTING_USER, SETTING_HASH, SETTING_CREATED,
   MAX_FAILURES, PASSWORD_MIN
 };

@@ -48,12 +48,23 @@ class Element {
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   getAttribute(name) { return this.attributes.get(name); }
   focus() { this.focused = true; }
+  select() { this.selectedText = true; }
   remove() { this.removed = true; }
 }
 
 function buildDocument() {
   const elements = new Map();
-  for (const match of html.matchAll(/\bid="([^"]+)"/g)) elements.set(match[1], new Element('div'));
+  // Every opening tag that carries an id becomes one element, with its real tag
+  // name and any boolean attribute the page set (hidden matters: the settings
+  // window and the sign-in form both start hidden on purpose).
+  for (const match of html.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g)) {
+    const id = /\bid="([^"]+)"/.exec(match[2]);
+    if (!id) continue;
+    const element = new Element(match[1]);
+    element.hidden = /(^|\s)hidden(\s|=|$)/.test(match[2]);
+    if (/(^|\s)disabled(\s|=|$)/.test(match[2])) element.disabled = true;
+    elements.set(id[1], element);
+  }
   // A browser select uses its first option as the value until the user picks.
   for (const select of html.matchAll(/<select id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
     const first = select[2].match(/<option value="([^"]*)"/);
@@ -73,8 +84,8 @@ function buildDocument() {
       if (!documentListeners.has(type)) documentListeners.set(type, []);
       documentListeners.get(type).push(handler);
     },
-    dispatch(type) {
-      for (const handler of documentListeners.get(type) || []) handler({ type });
+    dispatch(type, extra = {}) {
+      for (const handler of documentListeners.get(type) || []) handler({ type, preventDefault() {}, ...extra });
     },
     execCommand() { return true; }
   };
@@ -153,6 +164,27 @@ function createApp() {
           return respond(shortcut.result);
         case 'showShortcut':
           return respond({ shown: true, path: payload.path });
+        case 'settingsInfo':
+          if (this.rejectSettingsInfo) return Promise.reject(new Error(this.rejectSettingsInfo));
+          return respond({
+            // After a rename the main process reads the new name from the
+            // database, so the fake does the same.
+            username: this.username || 'mynewpharmacy', createdAt: '2026-11-01T06:30:00.000Z', maxAttempts: 5,
+            passwordMin: 6, passwordMax: 128, signedInAs: this.username || 'mynewpharmacy',
+            version: '2.3.8', dataFolder: 'C:\\Data', databaseFile: 'C:\\Data\\licenses.sqlite',
+            databaseBytes: 40960, keyId: 'KID1234567',
+            counts: { total: 2, unused: 1, assigned: 1, used: 0 },
+            platform: 'win32 x64', electron: '39.8.10', node: '22.22.3'
+          });
+        case 'changePassword':
+          if (this.rejectPassword === true) return Promise.reject(new Error(this.rejectPasswordMessage || 'The current password is not correct.'));
+          return respond({ username: 'mynewpharmacy', changed: true, signedIn: true, signedInAs: 'mynewpharmacy', configured: true, locked: false });
+        case 'changeUsername':
+          if (this.rejectUsername === true) return Promise.reject(new Error(this.rejectUsernameMessage || 'The password is not correct.'));
+          this.username = payload.username;
+          return respond({ username: payload.username, changed: true, signedIn: true, signedInAs: payload.username, configured: true, locked: false });
+        case 'signOut':
+          return respond({ signedIn: false });
         default:
           return respond({});
       }
@@ -489,4 +521,155 @@ test('the Desktop shortcut button explains what happened and opens the folder', 
   const failure = messages.find(text => text.startsWith('Windows refused'));
   assert.ok(failure, JSON.stringify(messages));
   assert.match(failure, /Checked: .*OneDrive/);
+});
+
+/* ---- Settings ---------------------------------------------------------- */
+async function signedInApp() {
+  const app = createApp();
+  app.document.dispatch('DOMContentLoaded');
+  await app.settle();
+  return app;
+}
+
+test('the settings window opens from the gear button and shows the owner account', async () => {
+  const app = await signedInApp();
+  assert.equal(app.elements.get('settings-window').hidden, true, 'it starts closed');
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+
+  assert.equal(app.elements.get('settings-window').hidden, false, 'the gear opens it');
+  assert.equal(app.elements.get('settings-user').textContent, 'mynewpharmacy');
+  assert.match(app.elements.get('settings-created').textContent, /2026-11-01/);
+  assert.equal(app.elements.get('settings-folder').textContent, 'C:\\Data');
+  assert.match(app.elements.get('settings-database').textContent, /licenses\.sqlite/);
+  assert.match(app.elements.get('settings-database').textContent, /40 KB/);
+  assert.match(app.elements.get('settings-counts').textContent, /2 total/);
+  assert.equal(app.elements.get('settings-key').textContent, 'KID1234567');
+  assert.match(app.elements.get('settings-version').textContent, /2\.3\.8/);
+  assert.equal(app.elements.get('new-username').value, 'mynewpharmacy', 'the current name is filled in');
+  assert.equal(app.elements.get('current-password').focused, true, 'the password field is ready');
+});
+
+test('the account chip opens settings too, and Esc closes it', async () => {
+  const app = await signedInApp();
+  assert.equal(app.elements.get('account-name').textContent, 'mynewpharmacy', 'the top bar names the owner');
+  app.elements.get('account-chip').dispatch('click');
+  await app.settle();
+  assert.equal(app.elements.get('settings-window').hidden, false);
+
+  app.document.dispatch('keydown', { key: 'Escape' });
+  assert.equal(app.elements.get('settings-window').hidden, true, 'Esc closes it');
+  // The close button does the same.
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('settings-close').dispatch('click');
+  assert.equal(app.elements.get('settings-window').hidden, true);
+});
+
+test('changing the password sends the three fields and clears them', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('current-password').value = 'HKDEVELOPER2';
+  app.elements.get('new-password').value = 'newSecret-2026';
+  app.elements.get('confirm-password').value = 'newSecret-2026';
+  app.elements.get('password-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+
+  const sent = app.calls.find(call => call.channel === 'changePassword');
+  assert.ok(sent, 'the change goes through the main process');
+  assert.deepEqual({ ...sent.payload }, { current: 'HKDEVELOPER2', password: 'newSecret-2026', confirm: 'newSecret-2026' });
+  assert.equal(app.elements.get('password-error').textContent, '', 'no error');
+  assert.equal(app.elements.get('current-password').value, '', 'the fields are cleared');
+  assert.equal(app.elements.get('new-password').value, '');
+  assert.equal(app.elements.get('confirm-password').value, '');
+});
+
+test('the password form refuses an empty or mismatched change before any call', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  const before = app.calls.filter(call => call.channel === 'changePassword').length;
+
+  app.elements.get('password-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+  assert.match(app.elements.get('password-error').textContent, /current password/i);
+
+  app.elements.get('current-password').value = 'HKDEVELOPER2';
+  app.elements.get('new-password').value = 'newSecret-2026';
+  app.elements.get('confirm-password').value = 'different-2026';
+  app.elements.get('password-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+  assert.match(app.elements.get('password-error').textContent, /do not match/i);
+  assert.equal(app.calls.filter(call => call.channel === 'changePassword').length, before, 'nothing was sent');
+});
+
+test('a refused password change keeps the window open and shows the reason', async () => {
+  const app = await signedInApp();
+  app.bridge.rejectPassword = true;
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('current-password').value = 'wrong-one';
+  app.elements.get('new-password').value = 'newSecret-2026';
+  app.elements.get('confirm-password').value = 'newSecret-2026';
+  app.elements.get('password-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+  assert.equal(app.elements.get('password-error').textContent, 'The current password is not correct.');
+  assert.equal(app.elements.get('settings-window').hidden, false, 'settings stays open for another try');
+});
+
+test('the username can be changed from settings, with the password', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('new-username').value = 'kabul-owner';
+  app.elements.get('username-password').value = 'HKDEVELOPER2';
+  app.elements.get('username-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+
+  const sent = app.calls.find(call => call.channel === 'changeUsername');
+  assert.ok(sent);
+  assert.deepEqual({ ...sent.payload }, { username: 'kabul-owner', password: 'HKDEVELOPER2' });
+  assert.equal(app.elements.get('username-password').value, '', 'the password field is cleared');
+  assert.equal(app.elements.get('username-error').textContent, '');
+  assert.equal(app.elements.get('settings-user').textContent, 'kabul-owner', 'the window shows the new name');
+});
+
+test('an empty username or missing password is stopped locally', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('new-username').value = '';
+  app.elements.get('username-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+  assert.match(app.elements.get('username-error').textContent, /Enter a username/i);
+  app.elements.get('new-username').value = 'something';
+  app.elements.get('username-form').dispatch('submit', { preventDefault() {} });
+  await app.settle();
+  assert.match(app.elements.get('username-error').textContent, /password/i);
+  assert.equal(app.calls.some(call => call.channel === 'changeUsername'), false);
+});
+
+test('signing out from settings locks the window again', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  app.elements.get('settings-signout').dispatch('click');
+  await app.settle();
+
+  assert.ok(app.calls.some(call => call.channel === 'signOut'), 'the main process ends the session');
+  assert.equal(app.elements.get('settings-window').hidden, true, 'settings closes');
+  assert.equal(app.elements.get('login-screen').hidden, false, 'the sign-in form is back');
+  assert.equal(app.elements.get('app-main').hidden, true, 'the tool is hidden');
+});
+
+test('the settings buttons reach the same operations as the main window', async () => {
+  const app = await signedInApp();
+  app.elements.get('settings-button').dispatch('click');
+  await app.settle();
+  for (const [button, channel] of [['settings-open-folder', 'openDataFolder'], ['settings-backup-keys', 'backupKeys'], ['settings-shortcut', 'createShortcut']]) {
+    app.elements.get(button).dispatch('click');
+    await app.settle();
+    assert.ok(app.calls.some(call => call.channel === channel), `${button} calls ${channel}`);
+  }
 });

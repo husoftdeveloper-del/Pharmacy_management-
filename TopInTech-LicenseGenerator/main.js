@@ -305,8 +305,44 @@ const inner = {
   signOut: () => {
     session = { signedIn: false, username: '' };
     return { signedIn: false };
+  },
+
+  /* --- Settings -------------------------------------------------------- */
+  /* Everything the Settings window needs in one call: the owner account, the
+     places the tool keeps its data, and the build that is running. */
+  settingsInfo: () => ({
+    ...account.info(store, db),
+    signedInAs: session.username,
+    version: app.getVersion(),
+    dataFolder,
+    databaseFile: dbFile,
+    databaseBytes: (() => { try { return fs.statSync(dbFile).size; } catch { return 0; } })(),
+    keyId: keys.describe(keyFolder).keyId,
+    counts: counts(),
+    platform: `${process.platform} ${process.arch}`,
+    electron: process.versions.electron,
+    node: process.versions.node
+  }),
+
+  // Both of these require the current password, so an unlocked window is not
+  // enough to take the tool over.
+  changePassword: async payload => {
+    const result = await account.changePassword(store, db, payload || {});
+    return { ...settingsResult(), ...result };
+  },
+
+  changeUsername: async payload => {
+    const result = await account.changeUsername(store, db, payload || {});
+    // Keep the session and the window title in step with the new name.
+    if (result.changed) session = { signedIn: true, username: result.username };
+    return { ...settingsResult(), ...result };
   }
 };
+
+// The account after a change, in the shape the Settings window already renders.
+function settingsResult() {
+  return { ...account.state(store, db), signedIn: session.signedIn, signedInAs: session.username };
+}
 
 // Every other operation goes through this guard.
 const channels = new Proxy(inner, {
@@ -429,6 +465,24 @@ async function runSmokeTest() {
       publicKey: document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')
     })`);
 
+    // The Settings window: open it in the real window, change the owner password
+    // through the real form, then sign back in with the new one. This is the
+    // only place the whole path (page → preload → main → SQLite) is exercised.
+    const opened = await mainWindow.webContents.executeJavaScript(`(async () => {
+      document.querySelector('#settings-button').click();
+      await new Promise(resolve => setTimeout(resolve, 120));
+      const user = document.querySelector('#settings-user').textContent.trim();
+      const open = document.querySelector('#settings-window').hidden === false;
+      document.querySelector('#current-password').value = ${JSON.stringify(SMOKE_PASSWORD)};
+      document.querySelector('#new-password').value = 'smoke-Changed1';
+      document.querySelector('#confirm-password').value = 'smoke-Changed1';
+      document.querySelector('#password-form').requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const error = document.querySelector('#password-error').textContent.trim();
+      return { open, user, error, closed: document.querySelector('#settings-window').hidden === true };
+    })()`);
+    const changed = await account.signIn(store, db, { username: SMOKE_USER, password: 'smoke-Changed1' });
+
     const generated = await channels.generate({ product: 'Pharmacy Management', plan: '1y' });
     const verified = await channels.verify({ serial: generated.license.formatted });
     const shortcut = ensureDesktopShortcut();
@@ -436,6 +490,7 @@ async function runSmokeTest() {
 
     say(`SMOKE_RESULT ${JSON.stringify({
       page,
+      settings: { ...opened, passwordChanged: changed.username === SMOKE_USER },
       generated: { serial: generated.license.formatted, plan: generated.license.planLabel, id: generated.license.id },
       verified: { valid: verified.valid, product: verified.product },
       shortcut: { created: shortcut.created, paths: shortcut.paths, checked: shortcut.checked, reason: shortcut.reason || '' },
