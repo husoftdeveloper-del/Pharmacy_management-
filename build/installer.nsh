@@ -4,14 +4,21 @@
 ;
 ;   Welcome -> Software Activation -> Installation Location -> Install -> Finish
 ;
-; The activation page asks for the install key ("Enter your serial key") that the
-; owner generates in Top In Tech License Generator. A key is 9 characters in
-; three groups, ABC-123-456: five characters from the license serial, three that
-; hold the last valid day, and one check character. Every customer therefore
-; gets their own key, and the key says when the licence ends. A licence shorter
-; than a day (the 10 Minutes plan) uses four groups, ABC-123-456-789, where the
-; third group is the minute of that day, so the customer gets the exact ten
-; minutes instead of "until midnight".
+; The page asks for two things:
+;
+;   1. "Enter your Pharmacy Name"  - the customer's own pharmacy name, written
+;      into the licence so the application opens with it already filled in.
+;   2. "Enter your serial key"     - the key the owner generates in Top In Tech
+;      License Generator.
+;
+; The key is SIX characters, letters and digits mixed: 7M2K4X. Two characters
+; come from the license serial (which license), three hold the last valid day
+; and one is a check character that proves the rest was typed correctly. Every
+; customer therefore gets their own key, and the key says when the licence ends.
+; A licence shorter than a day (the 10 Minutes plan) cannot hold a moment in six
+; characters, so it keeps the older twelve-character shape, ABC-123-456-789:
+; five data, three day, three minute, one check. The older nine-character
+; ABC-123-456 and sixteen-character WXYZ-1234-5678-9ABC keys are still accepted.
 ;
 ; After the key is accepted the setup writes the licence next to the application
 ; and in the user's application-data folder, so the application itself can stop
@@ -52,21 +59,23 @@
 ; Must equal SALT in TopInTech-LicenseGenerator/lib/setupkey.js.
 !define SETUP_SALT "7Q2M9K4X1B8T"
 !define SETUP_MODULUS 100003
-; Key shape: five characters of data, three of expiry and one of check, shown as
-; ABC-123-456.
+; The key handed out today: six characters, 7M2K4X. Two characters of data,
+; three of expiry (the last valid day) and one of check.
+!define SETUP_SHORT_DATA_LENGTH 2
+!define SETUP_SHORT_KEY_LENGTH 6
+; The five characters its check character covers. Written as a literal because
+; SetupKeyFold counts in $R3: passing a register there would be overwritten.
+!define SETUP_SHORT_FOLD_LENGTH 5
+; The nine-character key of versions 2.3.6 - 2.3.8: five of data, three of
+; expiry and one of check, shown as ABC-123-456. Still accepted.
 !define SETUP_DATA_LENGTH 5
 !define SETUP_EXPIRY_LENGTH 3
 !define SETUP_KEY_LENGTH 9
-; The eight characters the check character covers. Written as a literal because
-; SetupKeyFold counts in $R3: passing a register there would be overwritten.
 !define SETUP_FOLD_LENGTH 8
 ; The key generator 2.3.2 printed: twelve of data and four of check, in groups of
 ; four (WXYZ-1234-5678-9ABC). Still accepted; it carries no expiry.
 !define SETUP_LEGACY_DATA_LENGTH 12
 !define SETUP_LEGACY_KEY_LENGTH 16
-; The 6-character key of versions 2.3.3 - 2.3.5 (ABC-123). Still accepted; it
-; carries no expiry.
-!define SETUP_SHORT_KEY_LENGTH 6
 ; A licence shorter than a day (the generator's 10 Minutes plan) ends at a time,
 ; so its key adds the minute of that day: ABC-123-456-789, five data characters,
 ; three for the day, three for the minute and one check character.
@@ -79,7 +88,7 @@
 ; The one message a refused key shows, word for word.
 !define SETUP_REFUSED "Invalid Serial Key!$\r$\nApplication Not Installed."
 ; Shown when the customer pastes the long serial instead of the short key.
-!define SETUP_REFUSED_SERIAL "Invalid Serial Key!$\r$\nApplication Not Installed.$\r$\n$\r$\nThat looks like the serial key. The setup needs the short install key, for example ABC-123-456, shown in the key generator."
+!define SETUP_REFUSED_SERIAL "Invalid Serial Key!$\r$\nApplication Not Installed.$\r$\n$\r$\nThat looks like the serial key. The setup needs the short install key, for example 7M2K4X, shown in the key generator."
 
 ; ---------------------------------------------------------------------------
 ; Folds the first ${LENGTH} characters of $R0 into $R2 and remembers in $R1
@@ -281,15 +290,40 @@
       ${EndIf}
     ${EndIf}
   ${ElseIf} $R3 == ${SETUP_SHORT_KEY_LENGTH}
-    ; ABC-123, the key 2.3.3 - 2.3.5 printed: five data characters and one
-    ; check character. These keys carry no expiry.
-    !insertmacro SetupKeyFold ${SETUP_DATA_LENGTH}
+    ; 7M2K4X, the six-character key handed out today: two data characters, the
+    ; three of the last valid day and one check character.
+    !insertmacro SetupKeyFold ${SETUP_SHORT_FOLD_LENGTH}
     ${If} $R1 == 1
       IntOp $R6 $R2 % 32
       StrCpy $R7 "${SETUP_ALPHABET}" 1 $R6
-      StrCpy $R5 $R0 1 ${SETUP_DATA_LENGTH}
+      StrCpy $R5 $R0 1 ${SETUP_SHORT_FOLD_LENGTH}  ; the check character typed
       ${If} $R7 == $R5
         StrCpy ${VALID} "1"
+        ; The last valid day sits right after the two data characters.
+        StrCpy $R6 "0"
+        StrCpy $R5 "0"
+        ${Do}
+          ${If} $R5 >= ${SETUP_EXPIRY_LENGTH}
+            ${ExitDo}
+          ${EndIf}
+          IntOp $R7 $R5 + ${SETUP_SHORT_DATA_LENGTH}
+          StrCpy $R4 $R0 1 $R7
+          StrCpy $R8 "0"
+          ${Do}
+            ${If} $R8 >= 32
+              ${ExitDo}
+            ${EndIf}
+            StrCpy $R9 "${SETUP_ALPHABET}" 1 $R8
+            ${If} $R9 == $R4
+              ${ExitDo}
+            ${EndIf}
+            IntOp $R8 $R8 + 1
+          ${Loop}
+          IntOp $R6 $R6 * 32
+          IntOp $R6 $R6 + $R8
+          IntOp $R5 $R5 + 1
+        ${Loop}
+        StrCpy ${DAYS} $R6
       ${EndIf}
     ${EndIf}
   ${EndIf}
@@ -302,11 +336,35 @@
 
 Var ActivationDialog
 Var ActivationField
+Var ActivationNameField
 Var ActivationError
 Var ActivationHeading
-; The accepted key and its last valid day, handed from the page to the install step.
+; The name and key the customer typed, handed from the page to the install step.
 Var LicenceKey
 Var LicenceDays
+Var LicenceName
+
+; A name the licence writer cannot carry: a double quote or a backslash would
+; break the JSON, and a dollar sign would be read as a variable name. Those
+; three characters are dropped; every other byte (Pashto, Dari, English) stays.
+!macro SetupNameClean SOURCE
+  StrCpy $R0 ""
+  StrCpy $R9 ${SOURCE}
+  StrLen $R3 $R9
+  StrCpy $R4 "0"
+  ${Do}
+    ${If} $R4 >= $R3
+      ${ExitDo}
+    ${EndIf}
+    StrCpy $R5 $R9 1 $R4
+    ${If} $R5 != '"'
+    ${AndIf} $R5 != '\'
+    ${AndIf} $R5 != '$$'
+      StrCpy $R0 "$R0$R5"
+    ${EndIf}
+    IntOp $R4 $R4 + 1
+  ${Loop}
+!macroend
 
 ; This file is parsed before MUI2, so MUI macros must not be used here: the page
 ; draws its own title, like the screen the owner asked for.
@@ -324,14 +382,26 @@ Function ActivationPageShow
   Pop $ActivationHeading
   SetCtlColors $ActivationHeading 0x1F2A44 transparent
 
-  ${NSD_CreateLabel} 0 30u 100% 14u "Enter your serial key"
+  ; First the customer's own pharmacy name: the application opens with it, so
+  ; nobody types it twice.
+  ${NSD_CreateLabel} 0 30u 100% 12u "Enter your Pharmacy Name"
   Pop $0
 
-  ${NSD_CreateText} 0 46u 100% 14u ""
-  Pop $ActivationField
-  ${NSD_SetFocus} $ActivationField
+  ${NSD_CreateText} 0 43u 100% 14u ""
+  Pop $ActivationNameField
+  ${NSD_SetFocus} $ActivationNameField
 
-  ${NSD_CreateLabel} 0 66u 100% 48u ""
+  ${NSD_CreateLabel} 0 64u 100% 12u "Enter your serial key"
+  Pop $0
+
+  ${NSD_CreateText} 0 77u 100% 14u ""
+  Pop $ActivationField
+
+  ${NSD_CreateLabel} 0 96u 100% 12u "Example: 7M2K4X (six characters, letters and digits)"
+  Pop $0
+  SetCtlColors $0 0x5A6B80 transparent
+
+  ${NSD_CreateLabel} 0 112u 100% 40u ""
   Pop $ActivationError
   SetCtlColors $ActivationError 0xB00020 transparent
 
@@ -347,6 +417,19 @@ FunctionEnd
 ; Runs when Continue is pressed. Leaving the page is what lets the install start,
 ; so refusing to leave is exactly how a wrong key is blocked.
 Function ActivationPageLeave
+  ; The pharmacy name: required, because the application shows it on every
+  ; receipt and report. The three characters the licence file cannot carry are
+  ; dropped before it is written.
+  ${NSD_GetText} $ActivationNameField $1
+  !insertmacro SetupNameClean $1
+  StrCpy $LicenceName $R0
+  StrLen $4 $LicenceName
+  ${If} $4 < 2
+    ${NSD_SetText} $ActivationError "Enter your pharmacy name.$$
+Application Not Installed."
+    Abort
+  ${EndIf}
+
   ${NSD_GetText} $ActivationField $0
 
   ; $4 = "1" when the key is good, $2 = its last valid day. Both are filled in
@@ -404,6 +487,11 @@ FunctionEnd
     ${EndIf}
     StrCpy $LicenceKey $0
     StrCpy $LicenceDays $2
+    ; The name is optional for an unattended run: an empty one simply means the
+    ; first-run screen asks for it.
+    ReadEnvStr $3 "PHARMACY_SETUP_NAME"
+    !insertmacro SetupNameClean $3
+    StrCpy $LicenceName $R0
   ${EndIf}
 !macroend
 
@@ -418,14 +506,14 @@ FunctionEnd
   ${If} $LicenceKey != ""
     FileOpen $9 "$INSTDIR\${SETUP_LICENSE_FILE}" w
     ${If} $9 != ""
-      FileWrite $9 '{"version":1,"key":"$LicenceKey","days":$LicenceDays}'
+      FileWrite $9 '{"version":1,"key":"$LicenceKey","days":$LicenceDays,"pharmacy":"$LicenceName"}'
       FileClose $9
     ${EndIf}
     ClearErrors
     CreateDirectory "$APPDATA\${SETUP_LICENSE_DIR}"
     FileOpen $9 "$APPDATA\${SETUP_LICENSE_DIR}\${SETUP_LICENSE_FILE}" w
     ${If} $9 != ""
-      FileWrite $9 '{"version":1,"key":"$LicenceKey","days":$LicenceDays}'
+      FileWrite $9 '{"version":1,"key":"$LicenceKey","days":$LicenceDays,"pharmacy":"$LicenceName"}'
       FileClose $9
     ${EndIf}
   ${EndIf}

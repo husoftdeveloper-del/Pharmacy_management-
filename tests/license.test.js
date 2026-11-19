@@ -61,12 +61,49 @@ test('the key decides the date, not the number in the file', () => {
 });
 
 test('an older key without an expiry keeps working', () => {
-  for (const key of [setupkey.shortMakeInstallKey(serial), setupkey.legacyMakeInstallKey(serial)]) {
-    const file = writeLicence(`old-${key.replace(/[^A-Z0-9]/g, '').slice(0, 6)}.json`, { version: 1, key });
-    const state = status(file, '2035-01-01');
-    assert.equal(state.found, true);
-    assert.equal(state.expired, false, `${key} has no expiry and must not lock anyone out`);
+  // The 16-character key of version 2.3.2 never carried a date, so it must never
+  // lock anyone out.
+  const key = setupkey.legacyMakeInstallKey(serial);
+  const file = writeLicence(`old-${key.replace(/[^A-Z0-9]/g, '').slice(0, 6)}.json`, { version: 1, key });
+  const state = status(file, '2035-01-01');
+  assert.equal(state.found, true);
+  assert.equal(state.expired, false, `${key} has no expiry and must not lock anyone out`);
+});
+
+test('the six-character key carries the same expiry as the nine-character one', () => {
+  // 7M2K4X is what the owner hands out now: two data characters, the three of
+  // the last valid day and one check character.
+  for (const expires of ['', '2026-11-28', '2027-05-18', '2113-12-31']) {
+    const key = setupkey.makeInstallKey(serial, expires);
+    assert.equal(key.length, 6, `six characters: ${key}`);
+    assert.match(key, /^[0-9A-Z]{6}$/);
+    const parsed = licence.parseKey(key);
+    assert.ok(parsed, `the application reads ${key}`);
+    assert.equal(parsed.minutes, null);
+    assert.equal(licence.expiresOn(parsed.days), expires);
+    // Two licences that end on different days get different keys.
+    const other = licence.parseKey(setupkey.makeInstallKey('TIT1OTHER.SERIAL', '2027-05-18'));
+    assert.ok(other, 'another license still produces a readable key');
   }
+  // A nine-character key from 2.3.6 - 2.3.8 is still read, with the same rule:
+  // five data characters, then the day.
+  const nine = 'ABCDE' + setupkey.encodeDays(setupkey.dayNumber('2026-11-28'));
+  const nineKey = nine + setupkey.checkGroups(nine);
+  assert.equal(nineKey.length, 9);
+  assert.equal(licence.expiresOn(licence.parseKey(nineKey).days), '2026-11-28');
+});
+
+test('the pharmacy name the customer typed into the setup is offered to the app', () => {
+  const key = setupkey.makeInstallKey(serial, '2026-11-28');
+  const file = writeLicence('named.json', { version: 1, key, days: 1, pharmacy: '  Kabul   Care Pharmacy ' });
+  assert.equal(licence.status({ files: [file] }).pharmacy, 'Kabul Care Pharmacy');
+  // A file without a name, or with junk in it, never breaks the sign-in screen.
+  const plain = writeLicence('plain.json', { version: 1, key });
+  assert.equal(licence.status({ files: [plain] }).pharmacy, '');
+  const junk = writeLicence('junk.json', { version: 1, key, pharmacy: 'A\u0000B\u0007C'.repeat(40) });
+  const cleaned = licence.status({ files: [junk] }).pharmacy;
+  assert.ok(cleaned.length <= 120, 'a long name is cut, not passed through');
+  assert.doesNotMatch(cleaned, /[\u0000-\u001F]/, 'control characters are removed');
 });
 
 test('no licence file means business as usual', () => {
@@ -123,7 +160,7 @@ test('the setup writes the licence where the app looks for it', () => {
   assert.match(nsh, /!define SETUP_LICENSE_DIR "Pharmacy Management"/);
   assert.match(nsh, /FileOpen \$9 "\$INSTDIR\\\$\{SETUP_LICENSE_FILE\}"/, 'next to the program');
   assert.match(nsh, /FileOpen \$9 "\$APPDATA\\\$\{SETUP_LICENSE_DIR\}\\\$\{SETUP_LICENSE_FILE\}"/, 'in the app-data folder');
-  assert.match(nsh, /'{"version":1,"key":"\$LicenceKey","days":\$LicenceDays}'/, 'the same fields this module reads');
+  assert.match(nsh, /'{"version":1,"key":"\$LicenceKey","days":\$LicenceDays,"pharmacy":"\$LicenceName"}'/, 'the same fields this module reads');
   // And the application reads exactly those two places.
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   assert.match(main, /path\.join\(path\.dirname\(process\.execPath\),licence\.FILE_NAME\)/);
@@ -138,6 +175,23 @@ test('the setup writes the licence where the app looks for it', () => {
   assert.match(main, /const user=currentUser\(event,request\.token\);/);
   const guard = main.slice(main.indexOf('function currentUser('), main.indexOf('function currentUser(') + 500);
   assert.match(guard, /assertLicence\(\)/, 'every request re-checks the licence');
+});
+
+test('the first-run screen opens with the name typed into the setup', () => {
+  const root = path.join(__dirname, '..');
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  // bootstrap() is the public call the sign-in screen makes before it knows
+  // anything, so the name travels with it.
+  assert.match(main, /if \(c==='bootstrap'\) return \{\.\.\.service\.bootstrap\(\),installerPharmacy:installerPharmacy\(\)\}/);
+  assert.match(main, /function installerPharmacy\(\)/);
+  assert.match(main, /licence\.status\(\{files:licenceFiles\(\)\}\)/);
+  const app = fs.readFileSync(path.join(root, 'src', 'scripts', 'app.js'), 'utf8');
+  assert.match(app, /async function authScreen\(setup=false,suggestedPharmacy=''\)/);
+  assert.match(app, /await authScreen\(true,info\.installerPharmacy\|\|''\)/);
+  // The value is only a suggestion: the field stays editable, and the name the
+  // owner confirms is the one the database keeps.
+  assert.match(app, /if\(nameField&&suggestedPharmacy\)nameField\.value=suggestedPharmacy;/);
+  assert.ok(app.includes('name=\"pharmacyName\" required maxlength=\"120\"'), 'the name field is still required and editable');
 });
 
 test('the sign-in screen shows the expiry message and nothing else', () => {

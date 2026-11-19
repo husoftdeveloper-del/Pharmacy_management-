@@ -10,9 +10,9 @@ An offline Windows desktop application built with **pure HTML5, CSS3, Vanilla Ja
    - `Pharmacy-1.0.1-x64.exe`: Setup installer, with Desktop and Start Menu shortcuts.
    - `Pharmacy-1.0.1-Portable.exe`: portable application.
 2. Run the installer. These builds are **unsigned**; verify that you downloaded them from this repository. Windows SmartScreen may warn about an unknown publisher. A production deployment should use the organization's code-signing certificate.
-3. **Enter your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish, and it asks on every run, including a reinstall or an upgrade. Type the install key the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (it looks like `ABC-123-456`). A wrong or empty key keeps you on the page with the message *Invalid Serial Key! / Application Not Installed.* and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
+3. **Enter your Pharmacy Name and your serial key.** The setup opens with Welcome → Software Activation → Installation Location → Install → Finish, and it asks on every run, including a reinstall or an upgrade. Type your pharmacy name, then the install key the seller generated in **Top In Tech License Generator** and copied with **Copy Install Key** (six characters, letters and digits, for example `7M2K4X`). A wrong or empty key keeps you on the page with the message *Invalid Serial Key! / Application Not Installed.* and nothing is installed. See [Setup serial key](#setup-serial-key) for the whole flow.
 4. Launch **Pharmacy Management**.
-5. Complete first-run setup: pharmacy name, your name, administrator username, and a password of at least 10 characters. **There is no default password.**
+5. Complete first-run setup: the pharmacy name you typed into the setup is already filled in (editable), so add your name, the administrator username, and a password of at least 10 characters. **There is no default password.**
 6. Open Settings to fill in your profile, pharmacy details, receipt footer, notifications, language and theme.
 7. Add categories, manufacturers, suppliers, customers, staff, and medicines.
 8. Open the cash register with its actual opening float.
@@ -26,9 +26,9 @@ The Pharmacy setup is gated by a key, so a copied `Pharmacy-Setup.exe` is useles
 
 1. On your own PC, open **Top In Tech License Generator** and sign in (`mynewpharmacy`).
 2. Create the customer's licence: enter the customer name, the plan and the serial is signed with your private key.
-3. The result card shows two things: the **serial key** (the licence, 170 characters, kept in the generator database) and the short **install key** (9 characters, `ABC-123-456`, shown first, right under the button). Press **Copy Install Key**. The line under the key says the last day the customer may use the application: *The application stops at sign-in after 28 November 2026.* A Lifetime licence says it never stops.
+3. The result card shows two things: the **serial key** (the licence, 170 characters, kept in the generator database) and the short **install key** (six characters, letters and digits mixed, `7M2K4X`, shown first, right under the button). Press **Copy Install Key**. The line under the key says the last day the customer may use the application: *The application stops at sign-in after 28 November 2026.* A Lifetime licence says it never stops. A **10 Minutes** licence prints the longer 12-character key (`ABC-123-456-789`), because six characters cannot hold a time of day.
 4. Send the customer the setup file and that install key. One licence, one key: the key is derived from the serial, and the same serial always shows the same install key, so you can find it again in the licences table with the ⌨ button.
-5. The customer runs the setup, types the key on the **Pharmacy Management Activation** page and presses **Continue**. The key is accepted with or without the dashes, in lower or upper case.
+5. The customer runs the setup, types their pharmacy name and the key on the **Pharmacy Management Activation** page and presses **Continue**. The key is accepted with or without the dashes, in lower or upper case.
 
 A wrong, invented or empty key shows
 
@@ -42,11 +42,14 @@ and the wizard stays on the same page: nothing is installed, nothing is written 
 The key is typed once, at install time. The setup then writes a small licence file next to the program and in `%APPDATA%\Pharmacy Management`:
 
 ```json
-{ "version": 1, "key": "ABC-123-456", "days": 696 }
+{ "version": 1, "key": "7M2K4X", "days": 696, "pharmacy": "Kabul Care Pharmacy" }
 ```
 
 The key itself is the truth: the application reads the day (and, for a 10 Minute
-licence, the minute) out of it.
+licence, the minute) out of it. `pharmacy` is the name the customer typed into
+the setup; the first-run screen offers it so nobody types the same name twice.
+It is only a suggestion — the name is stored in the database when the owner
+finishes the setup, and Settings → Pharmacy can change it at any time.
 
 `days` is the last valid day counted from 2025-01-01 in UTC (the last three characters of the key carry the same number, so a hand-edited `days` cannot extend anything). The application reads that file and nothing else; it never shows a key prompt.
 
@@ -60,9 +63,24 @@ Deleting `license.json` does not restart a licence: the first time the applicati
 
 A damaged `license.json`, or a machine that never had one (a development run, a portable copy, an installation made before licences carried an expiry), is treated as no restriction, so an update never locks a paying pharmacy out. The check is repeated on every request, so closing and reopening the window does not help once the date has passed.
 
-Every key shape this project has ever printed is accepted by the setup: the 9-character key (`ABC-123-456`, which carries the last valid day), the 12-character key of the **10 Minutes** plan (`ABC-123-456-789`, which adds the minute of that day), the 6-character key of versions 2.3.3 – 2.3.5 (`ABC-123`) and the 16-character key that generator 2.3.2 printed (`WXYZ-1234-5678-9ABC`). The two oldest shapes were issued before keys carried a date, so they are read as lifetime. A key made by an older generator therefore still installs, and `tests/installer.test.js` proves the setup and the generator agree about every shape. If the customer pastes the long serial by mistake, the setup still refuses it but adds a line saying the short install key is the one it wants.
+Every key shape this project has ever printed is accepted by the setup:
 
-The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh`, `license.js` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses a mistyped key. A 9-character key is short by design — about one random nine-character guess in thirty-two passes the check — so it stops copying, not a determined person. Use the Setup installer together with the signed serial if you need a real gate. It stops casual copying; the signed 170-character serial in the generator remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys. If you want the setup to verify the Ed25519 signature of the full serial instead, that needs a cryptographic verifier shipped with the installer — say so and it can be added as a small helper executable.
+| Shape | Printed by | Expiry carried |
+| --- | --- | --- |
+| `7M2K4X` (6: 2 data + 3 day + 1 check) | generator 2.3.9 and later | the last valid day |
+| `ABC-123-456` (9: 5 data + 3 day + 1 check) | generator 2.3.6 – 2.3.8 | the last valid day |
+| `ABC-123-456-789` (12: 5 data + 3 day + 3 minute + 1 check) | the **10 Minutes** plan | the exact minute |
+| `WXYZ-1234-5678-9ABC` (16) | generator 2.3.2 | none — read as lifetime |
+
+The 6-character key is what the owner hands out: short enough to read over the
+telephone, and it still carries the date, so a 10-Day licence prints a key that
+says day 10. The 16-character shape was issued before keys carried a date, so it
+is read as lifetime, and a key made by an older generator still installs.
+`tests/installer.test.js` proves the setup and the generator agree about every
+shape. If the customer pastes the long serial by mistake, the setup still refuses
+it but adds a line saying the short install key is the one it wants.
+
+The key check is a self-check, not cryptography: NSIS has no crypto library, so `build/installer.nsh`, `license.js` and `TopInTech-LicenseGenerator/lib/setupkey.js` share one small arithmetic check (same alphabet, same salt, same modulus) that refuses a mistyped key. A 6-character key is short by design — about one random guess in thirty-two passes the check — so it stops copying, not a determined person. Use the Setup installer together with the signed serial if you need a real gate. It stops casual copying; the signed 170-character serial in the generator remains the real licence record, and `tests/installer.test.js` proves both files accept and refuse exactly the same keys. If you want the setup to verify the Ed25519 signature of the full serial instead, that needs a cryptographic verifier shipped with the installer — say so and it can be added as a small helper executable.
 
 The **Portable.exe** build is the same application without the setup wizard, so it does not ask for the key. Ship the Setup installer to customers and keep the portable build for your own testing on machines you control.
 

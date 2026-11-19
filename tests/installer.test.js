@@ -34,6 +34,8 @@ function nsisValidate(raw) {
   const expiryLength = Number(value('SETUP_EXPIRY_LENGTH'));
   const keyLength = Number(value('SETUP_KEY_LENGTH'));
   const shortLength = Number(value('SETUP_SHORT_KEY_LENGTH'));
+  const shortData = Number(value('SETUP_SHORT_DATA_LENGTH'));
+  const shortFold = Number(value('SETUP_SHORT_FOLD_LENGTH'));
   const legacyData = Number(value('SETUP_LEGACY_DATA_LENGTH'));
   const legacyLength = Number(value('SETUP_LEGACY_KEY_LENGTH'));
   const minuteKeyLength = Number(value('SETUP_MINUTE_KEY_LENGTH'));
@@ -86,8 +88,16 @@ function nsisValidate(raw) {
     return { valid: true, days, minutes };
   }
   if (key.length === shortLength) {
-    const a = fold(dataLength);
-    return { valid: a !== null && alphabet[a % 32] === key[dataLength], days: 0 };
+    // 7M2K4X: two data characters, three of the day, one check.
+    const a = fold(shortFold);
+    if (a === null || alphabet[a % 32] !== key[shortFold]) return { valid: false, days: 0 };
+    let days = 0;
+    for (const char of key.slice(shortData, shortData + expiryLength)) {
+      const index = indexOf(char);
+      if (index === 32) return { valid: false, days: 0 };
+      days = days * 32 + index;
+    }
+    return { valid: true, days };
   }
   if (key.length === legacyLength) {
     const a = fold(legacyData);
@@ -115,6 +125,9 @@ test('the fold is called with a length the macro cannot overwrite', () => {
 
   const calls = [...nsh.matchAll(/!insertmacro SetupKeyFold ([^\n]+)/g)].map(match => match[1].trim());
   assert.equal(calls.length, 4, 'the four key shapes each fold once');
+  // The six-character key folds five characters: two data and three of the day.
+  assert.equal(defines.SETUP_SHORT_FOLD_LENGTH, defines.SETUP_SHORT_KEY_LENGTH - 1);
+  assert.equal(defines.SETUP_SHORT_DATA_LENGTH + defines.SETUP_EXPIRY_LENGTH + 1, defines.SETUP_SHORT_KEY_LENGTH);
   for (const call of calls) {
     const literal = /^\d+$/.test(call);
     const define = /^\$\{(SETUP_[A-Z_]+)\}$/.exec(call);
@@ -133,17 +146,26 @@ test('the setup wizard asks for the serial key before anything is installed', ()
   assert.match(nsh, /!macro customWelcomePage/);
   assert.match(nsh, /!insertmacro MUI_PAGE_WELCOME/);
   assert.match(nsh, /Page custom ActivationPageShow ActivationPageLeave/);
-  // The form: title, label, input, Continue and Cancel.
+  // The form: title, the two labels, two inputs, Continue and Cancel.
   assert.match(nsh, /"Pharmacy Management Activation"/);
+  assert.match(nsh, /"Enter your Pharmacy Name"/, 'the pharmacy name is asked first');
   assert.match(nsh, /"Enter your serial key"/);
-  assert.match(nsh, /\$\{NSD_CreateText\}/, 'the serial key field');
+  assert.equal((nsh.match(/\$\{NSD_CreateText\}/g) || []).length, 2, 'one name field and one key field');
+  assert.match(nsh, /Pop \$ActivationNameField/, 'the name field is kept');
+  assert.match(nsh, /Pop \$ActivationField/, 'the key field is kept');
   assert.match(nsh, /STR:Continue/);
   assert.match(nsh, /STR:Cancel/);
   // One refusal message, word for word, for both an empty and a wrong key.
   assert.match(nsh, /!define SETUP_REFUSED "Invalid Serial Key!\$\\r\$\\nApplication Not Installed\."/);
   const leave = nsh.slice(nsh.indexOf('Function ActivationPageLeave'), nsh.indexOf('FunctionEnd', nsh.indexOf('Function ActivationPageLeave')));
-  assert.equal((leave.match(/Abort/g) || []).length, 1, 'a refused key stops the wizard on the page');
+  assert.equal((leave.match(/Abort/g) || []).length, 2, 'an empty name and a refused key each stop the wizard on the page');
   assert.match(leave, /\$\{NSD_SetText\} \$ActivationError "\$\{SETUP_REFUSED\}"/, 'the refusal is shown in the page');
+  // The name is required, and it is written into the licence for the app.
+  assert.match(leave, /\$\{NSD_GetText\} \$ActivationNameField \$1/);
+  assert.match(leave, /!insertmacro SetupNameClean \$1/);
+  assert.match(leave, /StrCpy \$LicenceName \$R0/);
+  assert.match(leave, /"Enter your pharmacy name\.\$\r\$\nApplication Not Installed\."/);
+  assert.match(nsh, /"pharmacy":"\$LicenceName"/, 'the name travels in the licence file');
   assert.match(leave, /StrCpy \$3 \$0/, 'an empty field is checked first');
   assert.match(leave, /!insertmacro SetupKeyValidate/, 'the typed key is validated');
 });
@@ -277,7 +299,7 @@ test('a pasted serial gets a hint about the short key', () => {
   assert.match(leave, /StrCpy \$6 \$5 4/, 'the first four characters are compared');
   assert.match(leave, /\$6 == "TIT1"/, 'a serial starts with TIT1');
   assert.match(leave, /\$7 > 20/, 'anything longer than a key is a serial');
-  assert.equal((leave.match(/Abort/g) || []).length, 1, 'either way the install is blocked');
+  assert.equal((leave.match(/Abort/g) || []).length, 2, 'the name and the key each block the install');
 });
 
 test('every run asks for the key and no earlier install can skip it', () => {

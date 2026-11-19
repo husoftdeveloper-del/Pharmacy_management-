@@ -181,27 +181,38 @@ The long serial is the licence; it is also 170 characters, so nobody types it
 into a setup wizard. Each license therefore also has a short **install key**:
 
 ```
-ABC-123-456        9 characters: 5 data + 3 expiry day + 1 check
+7M2K4X             6 characters: 2 data + 3 expiry day + 1 check   (handed out today)
+ABC-123-456        9 characters: 5 data + 3 expiry day + 1 check   (2.3.6 - 2.3.8)
 ABC-123-456-789   12 characters: 5 data + 3 day + 3 minute + 1 check
 ```
 
-The fourth group appears only for a licence that ends at a time — the **10
-Minutes** plan — and holds the minute of that day (UTC), so the customer gets
-exactly ten minutes rather than the rest of the day.
+The six-character key is what the owner gives a customer: short enough to read
+over the telephone or type on a phone keypad, and it still carries the date, so
+a 10-Day licence prints a key that says day 10 (for example `7M0681`: data `7M`,
+day `068`, check `1`). Letters and digits are mixed on purpose, so a key like
+`212328` or `12QW21` is a normal key and not a special case.
 
-* The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
+The 12-character shape appears only for a licence that ends at a time — the **10
+Minutes** plan — because six characters cannot hold a time of day. Its last
+group holds the minute of that day (UTC), so the customer gets exactly ten
+minutes rather than the rest of the day.
+
+* The data characters are a stable base32 slice of `sha256("install:" + serial)`,
   so one serial always produces the same key and a second license produces a
   different one.
-* The 3 middle characters are the last valid day, counted from 2025-01-01 (UTC)
+* The 3 expiry characters are the last valid day, counted from 2025-01-01 (UTC)
   in base32. `000` means a lifetime licence. The line under the key spells the
   date out: *The application stops at sign-in after 28 November 2026.*
 * The last character comes from a small arithmetic fold
   (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
   runs exactly the same arithmetic in `build/installer.nsh`, and the customer
   application re-reads the same number in `license.js` — the three agree.
-* A key issued before 2.3.6 has 6 characters (`ABC-123`) and a 2.3.2 key has 16
-  (`WXYZ-1234-5678-9ABC`). Neither carries a date, so both are read as lifetime
-  and still install.
+* A 2.3.2 key has 16 characters (`WXYZ-1234-5678-9ABC`) and carries no date, so
+  it is read as lifetime and still installs. The 9-character keys of 2.3.6 -
+  2.3.8 still install too and keep their date.
+* The setup also asks for the customer's **pharmacy name** on the same page and
+  writes it into `license.json`, so the application's first-run screen opens with
+  the name already filled in.
 * The result card shows the key under **Install key for the setup** with
   **Copy Install Key**; the licences table has a ⌨ button that copies it again
   for a key sold earlier.

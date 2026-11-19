@@ -99,6 +99,7 @@ jobs:
             'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
             'welcome page before the activation page' = ($welcome -ge 0 -and $welcome -lt $activation)
             'page title'                    = $output.Contains('Pharmacy Management Activation')
+            'pharmacy name label'           = $output.Contains('Enter your Pharmacy Name')
             'key label'                     = $output.Contains('Enter your serial key')
             'Continue button'               = $output.Contains('STR:Continue')
             'Cancel button'                 = $output.Contains('STR:Cancel')
@@ -158,16 +159,21 @@ jobs:
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
           if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
 
-          # Exactly what the generator's "Copy Install Key" button produces: a
-          # 9-character key whose last group carries the expiry day.
+          # Exactly what the generator's "Copy Install Key" button produces: six
+          # characters, two of data, three of the expiry day and one check.
           $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001','2026-12-31'))")
-          Write-Host "install key: $env:PHARMACY_SETUP_KEY"
+          $env:PHARMACY_SETUP_NAME = 'Kabul Care Pharmacy'
+          $wantedName = $env:PHARMACY_SETUP_NAME
+          Write-Host "install key: $env:PHARMACY_SETUP_KEY ($($env:PHARMACY_SETUP_KEY.Length) characters)"
+          if ($env:PHARMACY_SETUP_KEY.Length -ne 6) { Write-Error "the install key must be six characters, got $($env:PHARMACY_SETUP_KEY.Length)"; exit 1 }
           $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $process.WaitForExit(180000)
           if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
           Write-Host "installer exit code: $($process.ExitCode) (exited: $exited)"
           Start-Sleep -Seconds 8
+          $keyUsed = $env:PHARMACY_SETUP_KEY
           Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          Remove-Item Env:PHARMACY_SETUP_NAME -ErrorAction SilentlyContinue
 
           $appName = 'Pharmacy Management'
           $programs = @(
@@ -211,6 +217,11 @@ jobs:
           $licenceOk = @($licenceFiles | Where-Object {
             (Test-Path $_) -and ((Get-Content -Raw $_) -match '"days"\s*:\s*[0-9]+')
           }).Count -ge 1
+          # The pharmacy name the customer types into the setup travels in the same
+          # file, so the first-run screen opens with it already filled in.
+          $licenceText = if ($licenceOk) { Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json") } else { '' }
+          $nameWritten = $licenceText -match ('"pharmacy"\s*:\s*"' + [regex]::Escape($wantedName) + '"')
+          $keyWritten = $licenceText -match ('"key"\s*:\s*"' + [regex]::Escape($keyUsed) + '"')
           foreach ($path in $licenceFiles) { Write-Host "licence candidate: $path (exists: $(Test-Path $path))" }
           if ($licenceOk) {
             $written = Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json")
@@ -222,6 +233,8 @@ jobs:
           $required = [ordered]@{
             'the application is installed' = [bool]$exe
             'licence file written'         = $licenceOk
+            'install key written to the licence' = $keyWritten
+            'pharmacy name written to the licence' = $nameWritten
             'desktop shortcut'             = ($links.Count -ge 1)
             'single desktop shortcut'      = ($links.Count -eq 1)
             'start menu shortcut'          = ($startLinks.Count -ge 1)

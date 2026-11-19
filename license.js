@@ -6,12 +6,17 @@
 
        %APPDATA%\Pharmacy Management\license.json      (and the program folder)
 
-   {"version":1,"key":"ABC-123-456","days":1234}
+   {"version":1,"key":"7M2K4X","days":1234,"pharmacy":"Kabul Care Pharmacy"}
 
    `days` is the last day the licence is valid, counted from 2025-01-01 in UTC;
    0 means a lifetime licence. The key itself carries the same number, so the
    value in the file is only a convenience: `status()` always recomputes it from
    the key and ignores a hand-edited `days`.
+
+   `pharmacy` is the name the customer typed into the wizard, so the first-run
+   screen opens with the name already filled in. The application treats it as a
+   suggestion only: the name is stored in the database when the owner finishes
+   the setup, and it can be edited there at any time.
 
    This file only decides whether the sign-in screen is allowed. It never
    touches the database, and it is read, not written, by the application. The
@@ -28,13 +33,16 @@ const SALT = '7Q2M9K4X1B8T';
 const MODULUS = 100003;
 const DATA_LENGTH = 5;
 const EXPIRY_LENGTH = 3;
-const KEY_LENGTH = DATA_LENGTH + EXPIRY_LENGTH + 1;
+const KEY_LENGTH = DATA_LENGTH + EXPIRY_LENGTH + 1; // 9: ABC-123-456 (2.3.6+)
+// The key handed out today: six characters, 7M2K4X — two data characters, the
+// three of the expiry day, one check.
+const SHORT_DATA_LENGTH = 2;
+const SHORT_KEY_LENGTH = SHORT_DATA_LENGTH + EXPIRY_LENGTH + 1;
 // A licence shorter than a day ends at a time, so its key carries the minute of
 // that day as well: ABC-123-456-789 (5 data + 3 day + 3 minute + 1 check).
 const MINUTE_LENGTH = 3;
 const MINUTE_KEY_LENGTH = DATA_LENGTH + EXPIRY_LENGTH + MINUTE_LENGTH + 1;
 const MINUTES_PER_DAY = 1440;
-const SHORT_KEY_LENGTH = 6; // ABC-123, versions 2.3.3 - 2.3.5: no expiry
 const LEGACY_KEY_LENGTH = 16; // WXYZ-1234-5678-9ABC, version 2.3.2: no expiry
 const LEGACY_DATA_LENGTH = 12;
 const EPOCH = Date.UTC(2025, 0, 1); // day 0
@@ -72,12 +80,6 @@ function fold(text) {
 // day) and a number for ABC-123-456-789 (a licence that ends at a time).
 function parseKey(key) {
   const clean = normaliseKey(key);
-  if (clean.length === SHORT_KEY_LENGTH) {
-    const data = clean.slice(0, DATA_LENGTH);
-    const value = fold(data);
-    if (value === null || ALPHABET[value % 32] !== clean[DATA_LENGTH]) return null;
-    return { days: 0, minutes: null };
-  }
   if (clean.length === LEGACY_KEY_LENGTH) {
     const data = clean.slice(0, LEGACY_DATA_LENGTH);
     const a = fold(data);
@@ -87,7 +89,7 @@ function parseKey(key) {
       .map(index => ALPHABET[index]).join('');
     return expected === clean.slice(LEGACY_DATA_LENGTH) ? { days: 0, minutes: null } : null;
   }
-  if (clean.length !== KEY_LENGTH && clean.length !== MINUTE_KEY_LENGTH) return null;
+  if (clean.length !== SHORT_KEY_LENGTH && clean.length !== KEY_LENGTH && clean.length !== MINUTE_KEY_LENGTH) return null;
   const checkAt = clean.length - 1;
   const value = fold(clean.slice(0, checkAt));
   if (value === null) return null;
@@ -101,10 +103,14 @@ function parseKey(key) {
     }
     return result;
   };
-  const days = number(clean.slice(DATA_LENGTH, DATA_LENGTH + EXPIRY_LENGTH));
+  // Where the expiry day starts depends on the shape: after two characters in
+  // the six-character key, after five in the older nine- and twelve-character
+  // ones.
+  const dataLength = clean.length === SHORT_KEY_LENGTH ? SHORT_DATA_LENGTH : DATA_LENGTH;
+  const days = number(clean.slice(dataLength, dataLength + EXPIRY_LENGTH));
   if (days === null) return null;
-  if (clean.length === KEY_LENGTH) return { days, minutes: null };
-  const minutes = number(clean.slice(DATA_LENGTH + EXPIRY_LENGTH, DATA_LENGTH + EXPIRY_LENGTH + MINUTE_LENGTH));
+  if (clean.length !== MINUTE_KEY_LENGTH) return { days, minutes: null };
+  const minutes = number(clean.slice(dataLength + EXPIRY_LENGTH, dataLength + EXPIRY_LENGTH + MINUTE_LENGTH));
   if (minutes === null || minutes >= MINUTES_PER_DAY) return null;
   return { days, minutes };
 }
@@ -158,6 +164,15 @@ function readFile(file) {
   }
 }
 
+/* The pharmacy name the customer typed into the wizard, cleaned for display.
+   It is only a suggestion for the first-run screen: an empty value simply means
+   the wizard did not write one (an older install, or a portable copy). */
+function pharmacyName(record) {
+  const text = record && typeof record === 'object' ? record.pharmacy : '';
+  const clean = String(text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.slice(0, 120);
+}
+
 // The answer for one licence: a last valid day, plus the minute of that day
 // when the licence ends at a time.
 function fromDays(days, options) {
@@ -166,7 +181,7 @@ function fromDays(days, options) {
   const today = todayUtc(now);
   const ends = endsAt(days, minutes);
   return {
-    found: true, key: '', days, minutes,
+    found: true, key: '', pharmacy: '', days, minutes,
     expiresOn: expiresOn(days),
     // Empty for a lifetime licence; a full timestamp for a licence that ends
     // at a time of day (a 10-minute licence, for example).
@@ -204,10 +219,14 @@ function status(options = {}) {
       if (options.logger) options.logger(`[licence] ignored ${file}: the key does not check out`);
       continue;
     }
-    const candidate = { ...fromDays(parsed.days, { now, file, minutes: parsed.minutes }), key: record.key };
+    const candidate = {
+      ...fromDays(parsed.days, { now, file, minutes: parsed.minutes }),
+      key: record.key,
+      pharmacy: pharmacyName(record)
+    };
     if (!best || lastsLonger(candidate, best)) best = candidate;
   }
-  return best || { found: false, key: '', days: 0, minutes: null, expiresOn: '', expiresAt: '', daysLeft: null, minutesLeft: null, expired: false, file: '' };
+  return best || { found: false, key: '', pharmacy: '', days: 0, minutes: null, expiresOn: '', expiresAt: '', daysLeft: null, minutesLeft: null, expired: false, file: '' };
 }
 
 /* Which licence wins when two files disagree: the one that ends later.
@@ -251,8 +270,8 @@ function assertUsable(options = {}) {
 module.exports = {
   ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, KEY_LENGTH,
   MINUTE_LENGTH, MINUTE_KEY_LENGTH, MINUTES_PER_DAY,
-  SHORT_KEY_LENGTH, LEGACY_KEY_LENGTH, LEGACY_DATA_LENGTH,
+  SHORT_DATA_LENGTH, SHORT_KEY_LENGTH, LEGACY_KEY_LENGTH, LEGACY_DATA_LENGTH,
   EPOCH, DAY_MS, FILE_NAME, EXPIRED_MESSAGE,
-  normaliseKey, fold, parseKey, daysFromKey, endsAt, lastsLonger, expiresOn, todayUtc,
+  normaliseKey, pharmacyName, fold, parseKey, daysFromKey, endsAt, lastsLonger, expiresOn, todayUtc,
   candidateFiles, status, fromDays, resolve, assertUsable
 };

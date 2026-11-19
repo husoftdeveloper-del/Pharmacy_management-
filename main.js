@@ -262,6 +262,15 @@ function rememberLicence(state){
     if(licenceSetting('licence_minutes')!==String(minutes))save('licence_minutes',minutes);
   }catch{}
 }
+// The pharmacy name the customer typed into the Windows setup. It is offered to
+// the first-run screen as a suggestion, so nobody types the same name twice; the
+// name the owner confirms is what ends up in the database.
+function installerPharmacy(){
+  try{
+    const found=licence.status({files:licenceFiles()});
+    return found.found?String(found.pharmacy||'').slice(0,120):'';
+  }catch{ return ''; }
+}
 function assertLicence(){
   const found=licence.status({files:licenceFiles(),logger:message=>console.warn(message)});
   // A licence that checks out is written down once, so a later deletion of
@@ -279,7 +288,7 @@ async function dispatch(event, request) {
   if (!request || typeof request.channel !== 'string' || !/^[a-zA-Z]{1,30}$/.test(request.channel)) throw new Error('Invalid request.');
   const c=request.channel,p=request.payload;
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Invalid request payload.');
-  if (c==='bootstrap') return service.bootstrap();
+  if (c==='bootstrap') return {...service.bootstrap(),installerPharmacy:installerPharmacy()};
   // Public: the sign-in screen and the License tab show when the key ends.
   if (c==='licence') {
     const found=licence.status({files:licenceFiles()});

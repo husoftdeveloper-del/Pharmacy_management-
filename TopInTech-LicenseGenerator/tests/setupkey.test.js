@@ -11,18 +11,24 @@ const keys = require('../lib/setupkey');
 const serial = require('../lib/serial');
 const crypto = require('node:crypto');
 
-test('an install key is 9 characters: ABC-123-456, carrying the expiry', () => {
+test('an install key is six characters: 7M2K4X, carrying the expiry', () => {
   const key = keys.makeInstallKey('TIT1EXAMPLE.0123456789ABCDEF', '2026-11-28');
-  assert.match(key, /^[0-9A-Z]{3}-[0-9A-Z]{3}-[0-9A-Z]{3}$/);
-  assert.equal(key.replace(/-/g, '').length, 9);
-  assert.equal(keys.DATA_LENGTH, 5);
+  assert.match(key, /^[0-9A-Z]{6}$/);
+  assert.equal(key.length, 6);
+  assert.equal(keys.SHORT_DATA_LENGTH, 2);
   assert.equal(keys.EXPIRY_LENGTH, 3);
   assert.equal(keys.CHECK_LENGTH, 1);
-  // The middle group is the last valid day, so two licences that end on
-  // different days get different keys even from the same serial.
+  // The last three characters before the check are the last valid day, so two
+  // licences that end on different days get different keys from one serial.
   const later = keys.makeInstallKey('TIT1EXAMPLE.0123456789ABCDEF', '2027-01-28');
   assert.notEqual(key, later);
-  assert.equal(key.slice(0, 5), later.slice(0, 5), 'the same serial keeps the same data characters');
+  assert.equal(key.slice(0, 2), later.slice(0, 2), 'the same serial keeps the same two data characters');
+  assert.notEqual(key.slice(2, 5), later.slice(2, 5), 'a different day is a different expiry part');
+  // The owner asked for keys in the shape 212328 or 12QW21: letters and digits
+  // mixed, six characters, nothing else.
+  for (const serial of ['TIT1A.B', 'TIT1B.C', 'TIT1C.D', 'TIT1D.E', 'TIT1E.F']) {
+    assert.match(keys.makeInstallKey(serial, '2026-12-01'), /^[0-9A-Z]{6}$/);
+  }
 });
 
 test('a licence measured in minutes gets a 12-character key with the minute', () => {
@@ -35,9 +41,10 @@ test('a licence measured in minutes gets a 12-character key with the minute', ()
   assert.equal(result.minutes, 7 * 60 + 40, 'the minute of the day, in UTC');
   assert.equal(result.expiresOn, '2026-11-19');
   assert.equal(result.expiresAt, '2026-11-19T07:40:00Z');
-  // The same serial still starts with the same five data characters.
+  // A minute key keeps the older twelve-character shape, because six characters
+  // cannot hold a time of day.
   const dayKey = keys.makeInstallKey('TIT1CI-VERIFY.SERIAL-0001', '2026-11-19');
-  assert.equal(key.slice(0, 3), dayKey.slice(0, 3));
+  assert.equal(dayKey.length, 6, 'the same licence in whole days is a six-character key');
   assert.notEqual(key, dayKey, 'the two shapes are different keys');
   // The card prints the moment, not just the date.
   assert.equal(keys.expiryOfKey('2026-11-19T07:40:00Z'), '2026-11-19 07:40:00 UTC');
@@ -62,8 +69,8 @@ test('the expiry in the key is the licence expiry', () => {
   }
   // Day 0 is printed as 000: a lifetime licence.
   const lifetime = keys.makeInstallKey('TIT1AAA.BBB', '').replace(/-/g, '');
-  assert.equal(lifetime.slice(5, 8), '000', 'a lifetime key carries day 0');
-  assert.equal(lifetime.length, 9);
+  assert.equal(lifetime.slice(2, 5), '000', 'a lifetime key carries day 0');
+  assert.equal(lifetime.length, 6);
   // A date before the counter starts is refused instead of silently wrapped.
   assert.throws(() => keys.makeInstallKey('TIT1AAA.BBB', '2024-06-01'));
 });
@@ -87,6 +94,7 @@ test('a mistyped, invented or empty key is refused with the wizard message', () 
   const key = keys.makeInstallKey('TIT1SERIAL.FORSETUP');
   const flat = key.replace(/-/g, '');
   const wrongCheck = flat.slice(0, 5) + (flat.endsWith('Z') ? 'Y' : 'Z');
+  assert.equal(wrongCheck.length, 6);
   // One character of the data changed, the check character left alone.
   const typo = (flat[0] === 'A' ? 'B' : 'A') + flat.slice(1);
   const cases = [
@@ -133,13 +141,19 @@ test('a real serial from the generator produces a working install key', () => {
   assert.equal(serial.verifySerial(serial.formatSerial(signed), publicPem).valid, true, 'the signed serial stays valid');
 });
 
-test('a 6-character lifetime key from 2.3.3 - 2.3.5 is still accepted', () => {
-  const key = keys.shortMakeInstallKey('TIT1AAA.BBB');
-  assert.match(key, /^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
+test('a nine-character key from 2.3.6 - 2.3.8 is still accepted', () => {
+  // Five data characters, the three of the day and one check: ABC-123-456.
+  const body = 'ABCDE' + keys.encodeDays(keys.dayNumber('2026-11-28'));
+  const key = body + keys.checkGroups(body);
+  assert.equal(key.length, 9);
   const result = keys.verifyInstallKey(key);
   assert.equal(result.valid, true);
-  assert.equal(result.days, 0, 'the old shape has no expiry, so it never runs out');
-  assert.equal(result.expiresOn, '');
+  assert.equal(result.days, keys.dayNumber('2026-11-28'), 'the same expiry the new key carries');
+  assert.equal(result.expiresOn, '2026-11-28');
+  // Printed in groups, typed without them, or in lower case: the same key.
+  for (const typed of [keys.group(key), key, key.toLowerCase()]) {
+    assert.equal(keys.verifyInstallKey(typed).valid, true, `accepted: ${typed}`);
+  }
 });
 
 test('a 16-character key from version 2.3.2 is still accepted', () => {
@@ -152,6 +166,6 @@ test('a 16-character key from version 2.3.2 is still accepted', () => {
   // Damage it and it is refused, like any other key.
   const broken = (legacy[0] === 'A' ? 'B' : 'A') + legacy.slice(1);
   assert.equal(keys.verifyInstallKey(broken).valid, false);
-  // The current generator issues the 9-character key with the expiry in it.
-  assert.match(keys.makeInstallKey('TIT1OLD.SERIAL-0001', '2026-12-01'), /^[0-9A-Z]{3}-[0-9A-Z]{3}-[0-9A-Z]{3}$/);
+  // The current generator issues the six-character key with the expiry in it.
+  assert.match(keys.makeInstallKey('TIT1OLD.SERIAL-0001', '2026-12-01'), /^[0-9A-Z]{6}$/);
 });

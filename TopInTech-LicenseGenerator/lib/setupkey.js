@@ -3,17 +3,22 @@
 
    The owner generates a serial in this tool and hands the customer a short key
    to type into the setup wizard. Typing the full 170-character serial would be
-   impractical, so the wizard takes a 9-character key:
+   impractical, so the wizard takes a SIX-character key:
 
-       ABC-123-456
+       7M2K4X
 
-       ABC 12   five characters derived from the serial (which license)
-       3 45     three characters holding the expiry day (when it ends)
-       6        one check character (proves the rest was typed correctly)
+       7M       two characters derived from the serial (which license)
+       2K4      three characters holding the expiry day (when it ends)
+       X        one check character (proves the rest was typed correctly)
 
    The expiry is counted in whole days from 2025-01-01 (UTC); 000 means a
    lifetime licence that never expires. 999 base32 is 32767 days, so a key can
-   say "valid until" any day before 2114.
+   say "valid until" any day before 2114. Letters and digits are mixed on
+   purpose: a key like 212328 or 12QW21 is normal.
+
+   A licence shorter than a day (the 10 Minutes plan) adds the minute of that
+   day, so it needs a longer key: ABC-123-456-789 (5 data + 3 day + 3 minute +
+   1 check). The older nine- and sixteen-character keys are still accepted.
 
    The installer has no cryptography available (NSIS ships no crypto library),
    so the check is the same small arithmetic both sides run:
@@ -33,9 +38,17 @@ const crypto = require('node:crypto');
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32: no I, L, O, U
 const SALT = '7Q2M9K4X1B8T'; // identical in build/installer.nsh
 const MODULUS = 100003;
-const DATA_LENGTH = 5; // characters taken from the serial
 const EXPIRY_LENGTH = 3; // characters holding the last valid day
 const CHECK_LENGTH = 1; // characters that prove the rest was typed correctly
+// The key the owner hands out: six characters, no dashes. Two of them identify
+// the licence, three hold the last valid day and one proves the typing.
+const SHORT_DATA_LENGTH = 2;
+const SHORT_KEY_LENGTH = SHORT_DATA_LENGTH + EXPIRY_LENGTH + CHECK_LENGTH;
+const SHORT_GROUPS = 0; // printed as one run of six characters: 7M2K4X
+// The nine-character key of versions 2.3.6 - 2.3.8 (ABC-123-456). Still
+// accepted: an owner may reprint an older licence.
+const DATA_LENGTH = 5; // characters taken from the serial
+const KEY_LENGTH = DATA_LENGTH + EXPIRY_LENGTH + CHECK_LENGTH;
 const GROUPS = 3; // ABC-123-456, so nine characters read as three small pieces
 // A licence shorter than a day ends at a time, so its key adds a third piece:
 // the minute of that day. ABC-123-456-789: five data, three day, three minute,
@@ -47,11 +60,10 @@ const MINUTES_PER_DAY = 1440;
 const EPOCH = Date.UTC(2025, 0, 1); // day 0 of the expiry counter
 const DAY_MS = 86400000;
 
-// Older keys are still accepted by the setup, so they are still recognised here.
-const LEGACY_DATA_LENGTH = 12; // version 2.3.2: WXYZ-1234-5678-9ABC
+// The oldest key is still accepted by the setup, so it is still recognised
+// here: version 2.3.2 printed WXYZ-1234-5678-9ABC.
+const LEGACY_DATA_LENGTH = 12;
 const LEGACY_CHECK_LENGTH = 4;
-const SHORT_DATA_LENGTH = 5; // versions 2.3.3 - 2.3.5: ABC-123, no expiry
-const SHORT_CHECK_LENGTH = 1;
 
 // Alphabet index of one character; accepts the lower-case form and the usual
 // Crockford confusions (O -> 0, I/L -> 1) so a key read over the phone works.
@@ -169,20 +181,23 @@ function group(text, size = GROUPS) {
   return String(text || '').replace(new RegExp(`(.{${size}})(?=.)`, 'g'), '$1-');
 }
 
-/* The key the owner copies and the customer types: ABC-123-456.
+/* The key the owner copies and the customer types: six characters, 7M2K4X.
    Pass the licence expiry (YYYY-MM-DD) so the setup, and then the application,
-   know the last day the customer may use the software. No date = lifetime. */
+   know the last day the customer may use the software. No date = lifetime.
+
+   The one exception is a licence that ends at a time (the 10 Minutes plan): a
+   moment cannot be held in two characters, so those keys stay in the older
+   twelve-character shape, ABC-123-456-789, with the day and the minute. */
 function makeInstallKey(serial, expiresOn) {
-  const data = dataFor(serial);
   const minutes = minuteOfDay(expiresOn);
   if (minutes === null) {
-    // Whole-day (or lifetime) licence: ABC-123-456.
-    const body = data + encodeDays(dayNumber(expiresOn));
-    return group(body + checkGroups(body));
+    // Whole-day (or lifetime) licence: two data characters, the day, the check.
+    const body = dataSlice(serial, SHORT_DATA_LENGTH) + encodeDays(dayNumber(expiresOn));
+    return body + checkGroups(body); // 7M2K4X
   }
   // A licence that ends at a time: ABC-123-456-789, day and minute together.
   const day = dayNumber(String(expiresOn).slice(0, 10));
-  const body = data + encodeDays(day) + encodeMinutes(minutes);
+  const body = dataFor(serial) + encodeDays(day) + encodeMinutes(minutes);
   return group(body + checkGroups(body)); // ABC-123-456-789
 }
 
@@ -191,12 +206,6 @@ function makeInstallKey(serial, expiresOn) {
 function legacyMakeInstallKey(serial) {
   const data = dataSlice(serial, LEGACY_DATA_LENGTH);
   return (data + legacyCheckGroups(data)).replace(/(.{4})(?=.)/g, '$1-');
-}
-
-// The key exactly as versions 2.3.3 - 2.3.5 printed it: ABC-123, no expiry.
-function shortMakeInstallKey(serial) {
-  const data = dataFor(serial);
-  return group(data + checkGroups(data));
 }
 
 function normalise(key) {
@@ -234,10 +243,27 @@ function verifyInstallKey(key) {
         expiresAt: momentFromParts(days, minutes)
       };
     }
-    if (clean.length === SHORT_DATA_LENGTH + SHORT_CHECK_LENGTH) {
-      const data = clean.slice(0, SHORT_DATA_LENGTH);
-      if (checkGroups(data) !== clean.slice(SHORT_DATA_LENGTH)) return refuse;
-      return { valid: true, reason: '', days: 0, minutes: null, expiresOn: '', expiresAt: '' };
+    if (clean.length === KEY_LENGTH) {
+      // ABC-123-456, versions 2.3.6 - 2.3.8: five data, three day, one check.
+      const body = clean.slice(0, KEY_LENGTH - CHECK_LENGTH);
+      if (checkGroups(body) !== clean.slice(KEY_LENGTH - CHECK_LENGTH)) return refuse;
+      const days = decodeDays(clean.slice(DATA_LENGTH, DATA_LENGTH + EXPIRY_LENGTH));
+      return {
+        valid: true, reason: '', days, minutes: null,
+        expiresOn: isoFromDays(days),
+        expiresAt: days > 0 ? momentFromParts(days + 1, 0) : ''
+      };
+    }
+    if (clean.length === SHORT_KEY_LENGTH) {
+      // 7M2K4X: two data, three day, one check. The key handed out today.
+      const body = clean.slice(0, SHORT_KEY_LENGTH - CHECK_LENGTH);
+      if (checkGroups(body) !== clean.slice(SHORT_KEY_LENGTH - CHECK_LENGTH)) return refuse;
+      const days = decodeDays(clean.slice(SHORT_DATA_LENGTH, SHORT_DATA_LENGTH + EXPIRY_LENGTH));
+      return {
+        valid: true, reason: '', days, minutes: null,
+        expiresOn: isoFromDays(days),
+        expiresAt: days > 0 ? momentFromParts(days + 1, 0) : ''
+      };
     }
     if (clean.length === LEGACY_DATA_LENGTH + LEGACY_CHECK_LENGTH) {
       const data = clean.slice(0, LEGACY_DATA_LENGTH);
@@ -270,12 +296,13 @@ function expiryOfKey(expiresOn) {
 }
 
 module.exports = {
-  ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, CHECK_LENGTH, GROUPS,
+  ALPHABET, SALT, MODULUS, DATA_LENGTH, EXPIRY_LENGTH, CHECK_LENGTH, GROUPS, KEY_LENGTH,
+  SHORT_DATA_LENGTH, SHORT_KEY_LENGTH, SHORT_GROUPS,
   MINUTE_LENGTH, MINUTE_KEY_LENGTH, MINUTE_GROUPS, MINUTES_PER_DAY,
   EPOCH, DAY_MS, LEGACY_DATA_LENGTH, LEGACY_CHECK_LENGTH,
   indexOf, fold, checkGroups, legacyCheckGroups, dataFor, dataSlice, group,
   dayNumber, encodeDays, decodeDays, isoFromDays, daysFromIso,
   minuteOfDay, encodeMinutes, decodeMinutes, momentFromParts,
-  makeInstallKey, legacyMakeInstallKey, shortMakeInstallKey,
+  makeInstallKey, legacyMakeInstallKey,
   verifyInstallKey, expiryOfInstallKey, expiryOfKey, normalise
 };
