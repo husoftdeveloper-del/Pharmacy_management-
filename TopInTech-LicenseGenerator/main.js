@@ -452,7 +452,21 @@ async function backupKeys() {
 // written where the test can see it.
 async function runSmokeTest() {
   const say = value => process.stdout.write(`${value}\n`);
+  const evaluate = code => mainWindow.webContents.executeJavaScript(code);
+  // The page fills itself from the bridge asynchronously, so a check must wait
+  // for the value instead of reading whatever is on screen at load time.
+  const waitFor = async (expression, label, timeout = 8000) => {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      if (await evaluate(`Boolean(${expression})`)) return true;
+      if (Date.now() > deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  };
   try {
+    await waitFor("document.querySelector('#app-version').textContent.trim() !== '…'", 'the version badge');
+    await waitFor("document.querySelector('#key-id').textContent.trim() !== '…'", 'the key id');
+    await waitFor("document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')", 'the public key');
     const page = await mainWindow.webContents.executeJavaScript(`({
       title: document.title,
       // The tool must be open (signed in) and the sign-in form gone.
@@ -473,6 +487,7 @@ async function runSmokeTest() {
       return true;
     })()`);
     await new Promise(resolve => setTimeout(resolve, 150));
+    await waitFor("document.querySelector('#settings-folder').textContent.trim() !== '—'", 'the data folder');
     const settings = await mainWindow.webContents.executeJavaScript(`({
       open: document.querySelector('#settings-window').hidden === false,
       user: document.querySelector('#settings-user').textContent.trim(),
