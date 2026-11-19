@@ -7,6 +7,8 @@
  * temporary desktop folder), waits for the window to render, then checks:
  *   - the window title and version are shown;
  *   - the key badge is filled and the public key is displayed;
+ *   - the Settings window opens, shows the account, closes with Esc, and the
+ *     owner password can be changed and used to sign in again;
  *   - a serial can be generated, stored and verified again;
  *   - the desktop shortcut file is really written to disk.
  * Every check is printed, and a non-zero exit code fails the build.
@@ -17,14 +19,52 @@ const os = require('node:os');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
-const electron = require('electron');
-const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 90000);
 
+if (process.versions.electron) {
+  console.error('Run this file with Node, not Electron: node tests/electron-smoke.js');
+  process.exit(2);
+}
+
+const electron = require('electron');
+const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 60000);
+
+// A hung child must never hang the build: the process tree is killed first and
+// the failure is reported from the error file (the step log is not readable
+// from the runner while a job is still running).
 function fail(message, output) {
   console.error(`\nFAILED: ${message}`);
   if (output) console.error(output.split('\n').slice(-40).join('\n'));
-  fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), `${message}\n\n${output || ''}`);
+  try {
+    fs.mkdirSync(path.join(root, 'artifacts'), { recursive: true });
+    // The stored text starts with the reason and the failing check names: the
+    // workflow surfaces only the first part of it as an annotation.
+    const lines = String(output || '').split('\n').filter(line => !line.startsWith('SMOKE_RESULT '));
+    const failedChecks = lines.filter(line => line.startsWith('FAIL '));
+    const tail = lines.slice(-25).join('\n');
+    const body = [message, '', ...failedChecks, '', tail].join('\n');
+    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-error.txt'), body);
+  } catch (error) {
+    console.error('could not write artifacts/smoke-error.txt:', error.message);
+  }
   process.exit(1);
+}
+
+process.on('uncaughtException', error => fail(`the runner crashed: ${error.message}`, error.stack));
+process.on('unhandledRejection', error => fail(`the runner crashed: ${(error && error.message) || error}`));
+
+// Electron leaves GPU and renderer children behind on Windows, and those keep
+// the stdio pipes open, so 'close' would never fire after a plain kill.
+function killTree(child) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      require('node:child_process').execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      return;
+    } catch (error) {
+      console.error('taskkill failed:', error.message);
+    }
+  }
+  try { child.kill('SIGKILL'); } catch (error) { /* already gone */ }
 }
 
 const child = spawn(electron, ['.'], {
@@ -40,11 +80,17 @@ const child = spawn(electron, ['.'], {
 
 let stdout = '';
 let stderr = '';
-child.stdout.on('data', chunk => { stdout += chunk.toString(); });
-child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+child.stdout.on('data', chunk => {
+  stdout += chunk.toString();
+  process.stdout.write(chunk);
+});
+child.stderr.on('data', chunk => {
+  stderr += chunk.toString();
+  process.stderr.write(chunk);
+});
 
 const timer = setTimeout(() => {
-  child.kill();
+  killTree(child);
   fail(`the app did not finish its smoke run in ${timeoutMs} ms`, `${stdout}\n${stderr}`);
 }, timeoutMs);
 
@@ -71,9 +117,16 @@ child.on('close', code => {
   const checks = [
     ['the window loaded the page', result.page && result.page.title === 'Top In Tech License Generator'],
     ['the form is rendered', result.page && result.page.product === true],
-    ['the version badge shows 1.1.0', result.page && /^\d+\.\d+\.\d+$/.test(result.page.version)],
+    ['the version badge shows the build version', result.page && /^\d+\.\d+\.\d+$/.test(result.page.version)],
     ['the key id is shown', result.page && result.page.keyId.length >= 6],
     ['the public key is displayed', result.page && result.page.publicKey === true],
+    ['the Settings window opens from the gear icon', result.settings && result.settings.open === true],
+    ['Settings names the signed-in owner', result.settings && result.settings.user === 'smoke-owner'],
+    ['Settings shows the data folder', Boolean(result.settings && result.settings.folder && result.settings.folder !== '—' && /[\\/]/.test(result.settings.folder))],
+    ['Settings has the password, username and sign-out controls', result.settings && result.settings.hasPasswordForm === true && result.settings.hasUsernameForm === true && result.settings.hasSignOut === true],
+    ['Esc closes the Settings window', result.settings && result.settings.closedByEscape === true],
+    ['the password is changed through the guarded channel', result.settings && result.settings.changedBy === 'smoke-owner'],
+    ['the new password signs in', result.settings && result.settings.passwordChanged === true],
     ['a serial was generated', Boolean(result.generated && result.generated.serial)],
     ['the serial records a 1 year plan', result.generated && result.generated.plan === '1 Year'],
     ['the serial verifies again', result.verified && result.verified.valid === true],
@@ -85,16 +138,26 @@ child.on('close', code => {
   ];
 
   let failed = 0;
+  const report = [];
   for (const [name, ok] of checks) {
-    console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`);
+    report.push(`${ok ? 'ok  ' : 'FAIL'} ${name}`);
+    console.log(report[report.length - 1]);
     if (!ok) failed += 1;
+  }
+  // The report is written here, from the checks themselves, so a failure is
+  // always explainable even when the child's console output is not readable.
+  try {
+    fs.mkdirSync(path.join(root, 'artifacts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'artifacts', 'smoke-report.txt'), `${report.join('\n')}\n`);
+  } catch (error) {
+    console.error('could not write artifacts/smoke-report.txt:', error.message);
   }
   console.log(`\nDesktop folders checked: ${(result.shortcut.checked || []).join(', ')}`);
   console.log(`Shortcut written to    : ${(result.shortcut.paths || []).join(', ')}`);
   console.log(`Renderer version       : ${result.page.version}`);
 
   if (failed || code !== 0) {
-    fail(`${failed} smoke check(s) failed (exit code ${code})`, output);
+    fail(`${failed} smoke check(s) failed (exit code ${code})`, `${report.join('\n')}\n\n${output}`);
   }
   console.log('\nElectron smoke test passed.');
   process.exit(0);

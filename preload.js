@@ -4,7 +4,7 @@ let sessionToken = null;
 const devResume = process.argv.includes('--pharmacy-dev')
   ? ipcRenderer.invoke('pharmacy:dev-resume').then(result => { if (result && result.ok && result.data && result.data.token) sessionToken = result.data.token; }).catch(() => {})
   : Promise.resolve();
-const allowed = new Set(['bootstrap','setup','login','logout','session','preference','preferences','dashboard','customerBook','customerAccounts','customerStatement','medicineBook','inventoryBook','saveMedicine','priceList','updatePrice','labelBook','printLabels','purchaseBook','supplierBook','supplierAccounts','expenseBook','ledgerBook','reportOverview','reportBook','employeeBook','salaryBook','advanceBook','options','list','save','catalog','sale','purchase','documents','document','return','payment','expense','advance','salary','register','inventory','stockCount','savePrescription','prescriptionFile','cancelPrescription','saveUser','settings','profile','changePassword','notify','notificationSupport','report','generateBarcode','barcode','pdf','receipt','printBarcode','backup','restore','backupStatus','backupNow','backupChooseFolder','backupOpenFolder']);
+const allowed = new Set(['bootstrap','licence','setup','login','logout','session','preference','preferences','dashboard','customerBook','customerAccounts','customerStatement','medicineBook','inventoryBook','saveMedicine','priceList','updatePrice','labelBook','printLabels','purchaseBook','supplierBook','supplierAccounts','expenseBook','ledgerBook','reportOverview','reportBook','employeeBook','salaryBook','advanceBook','options','list','save','catalog','sale','purchase','documents','document','return','payment','expense','advance','salary','register','inventory','stockCount','savePrescription','prescriptionFile','cancelPrescription','saveUser','settings','profile','changePassword','notify','notificationSupport','report','generateBarcode','barcode','pdf','receipt','printBarcode','backup','restore','backupStatus','backupNow','backupChooseFolder','backupOpenFolder']);
 contextBridge.exposeInMainWorld('pharmacy', Object.freeze({
   invoke: async (channel, payload = {}) => {
     await devResume;
@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('pharmacy', Object.freeze({
       if (result.ok) sessionToken = result.data.token;
       else sessionToken = null;
     }
-    if (channel === 'logout' || result.code === 'SESSION_EXPIRED') sessionToken = null;
+    if (channel === 'logout' || result.code === 'SESSION_EXPIRED' || result.code === 'LICENSE_EXPIRED') sessionToken = null;
     if (!result.ok) { const error = new Error(result.error || 'Operation failed.'); error.code = result.code; throw error; }
     if (Array.isArray(result.data)) return result.data;
     const { token, ...data } = result.data || {};

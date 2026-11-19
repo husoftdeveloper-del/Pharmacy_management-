@@ -46,6 +46,15 @@ jobs:
       - name: Test signing, keys, database, wiring and renderer
         run: npm test
 
+      # A real Electron window on a real Windows desktop: the tool opens, the
+      # Settings window opens from the gear icon, the owner password is changed
+      # through the real form, and the new password signs in again.
+      - name: Real window smoke test, including the Settings window
+        # The runner gives up on its own after 60 s; this is the outer net so a
+        # wedged window can never hold the build open.
+        timeout-minutes: 4
+        run: npm run smoke
+
       # The tool opens locked. A wrong password must not reveal the tool, and the
       # password itself must never be written into the bundle in clear text.
       - name: Check the owner sign-in screen is wired into the app
@@ -343,6 +352,8 @@ jobs:
       - name: Show build failures in the run summary
         if: failure()
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -f artifacts/smoke-error.txt ]; then
             {
@@ -351,6 +362,15 @@ jobs:
               tail -c 4000 artifacts/smoke-error.txt
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            # The step log cannot be read from the runner while the job runs, so
+            # the failure text is also surfaced as an annotation.
+            summary=$(tr '\n' ' ' < artifacts/smoke-error.txt | tr -s ' ' | head -c 900)
+            echo "::error title=Smoke test::${summary}"
+            # The step log is not readable from the runner, so the whole smoke
+            # report is also posted as a commit comment, which is.
+            body=$(head -c 60000 artifacts/smoke-error.txt | sed 's/\r$//')
+            payload=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.stringify({body:"\`\`\`\n"+fs.readFileSync(0,"utf8")+"\n\`\`\`"}))' <<< "$body")
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" --input - <<< "$payload" > /dev/null || echo 'could not post the smoke report as a commit comment'
           fi
           if [ -f build.log ]; then
             tail -c 6000 build.log > failure-tail.txt

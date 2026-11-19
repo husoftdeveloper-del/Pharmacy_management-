@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { openDatabase, transaction, audit, backupDatabase, validateBackup } = require('./database/database');
 const { PharmacyService } = require('./database/service');
 const autoBackup = require('./database/autobackup');
+const licence = require('./license');
 const { escapeXml } = require('./database/barcode');
 const { renderPDF } = require('./database/pdf');
 const rendererTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.ico':'image/x-icon'};
@@ -208,6 +209,7 @@ function senderWindow(event) {
   return win;
 }
 function currentUser(event, token) {
+  assertLicence();
   const session = sessions.get(event.sender.id);
   if (!session || !token || token.length !== 64 || !crypto.timingSafeEqual(Buffer.from(session.token,'hex'),Buffer.from(token,'hex'))) { const e = new Error('Your session has expired. Please sign in again.'); e.code='SESSION_EXPIRED'; throw e; }
   if (Date.now() > session.expires) { sessions.delete(event.sender.id); const e=new Error('Session expired after inactivity.');e.code='SESSION_EXPIRED';throw e; }
@@ -221,13 +223,82 @@ function createSession(event,user) {
   sessions.set(event.sender.id,{token,userId:user.id,expires:Date.now()+lockSeconds*1000});
   return token;
 }
+/* ---- Licence written by the Windows setup --------------------------------
+   The setup asked for the serial key and wrote license.json beside the program
+   and in %APPDATA%\Pharmacy Management. It carries the last valid day, so the
+   sign-in screen can refuse a licence that has run out. Nothing here asks the
+   user for a key: the app never shows a key prompt. */
+function licenceFiles(){
+  const files=[];
+  // The setup writes the same file in both places; the program folder always
+  // exists, and the roaming folder survives a reinstall into a new folder.
+  try{files.push(path.join(path.dirname(process.execPath),licence.FILE_NAME));}catch{}
+  try{files.push(path.join(app.getPath('appData'),'Pharmacy Management',licence.FILE_NAME));}catch{}
+  try{files.push(path.join(app.getPath('userData'),licence.FILE_NAME));}catch{}
+  return files;
+}
+// The same last valid day, kept inside the pharmacy database. The setup's
+// license.json is easy to delete; the database is not (it holds every sale), so
+// this is what keeps a finished licence finished.
+function licenceSetting(key){
+  if(!db)return null;
+  try{ const row=db.prepare('SELECT value FROM settings WHERE key=?').get(key); return row?String(row.value):null; }catch{ return null; }
+}
+// The day, plus the minute of that day when the licence ends at a time (the
+// 10 Minutes plan). Stored when a valid licence is read, so deleting the JSON
+// file cannot restart a finished licence.
+function rememberedLicence(){
+  const days=licenceSetting('licence_days');
+  if(days===null||days==='')return null;
+  const minutes=licenceSetting('licence_minutes');
+  return {days:Number(days),minutes:minutes===null||minutes===''?null:Number(minutes)};
+}
+function rememberLicence(state){
+  if(!db)return;
+  try{
+    const save=(key,value)=>db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,String(value));
+    if(licenceSetting('licence_days')!==String(state.days))save('licence_days',state.days);
+    const minutes=state.minutes===null||state.minutes===undefined?'':state.minutes;
+    if(licenceSetting('licence_minutes')!==String(minutes))save('licence_minutes',minutes);
+  }catch{}
+}
+// The pharmacy name the customer typed into the Windows setup. It is offered to
+// the first-run screen as a suggestion, so nobody types the same name twice; the
+// name the owner confirms is what ends up in the database.
+function installerPharmacy(){
+  try{
+    const found=licence.status({files:licenceFiles()});
+    return found.found?String(found.pharmacy||'').slice(0,120):'';
+  }catch{ return ''; }
+}
+function assertLicence(){
+  const found=licence.status({files:licenceFiles(),logger:message=>console.warn(message)});
+  // A licence that checks out is written down once, so a later deletion of
+  // license.json is harmless; a lifetime licence is stored as 0.
+  if(found.found)rememberLicence(found);
+  const state=licence.assertUsable({
+    state:found,
+    remembered:found.found?null:rememberedLicence(),
+    logger:message=>console.warn(message)
+  });
+  if(state.found)console.log(`[licence] valid${state.expiresOn?` until ${state.expiresOn}`:' for life'}`);
+  return state;
+}
 async function dispatch(event, request) {
   if (!request || typeof request.channel !== 'string' || !/^[a-zA-Z]{1,30}$/.test(request.channel)) throw new Error('Invalid request.');
   const c=request.channel,p=request.payload;
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Invalid request payload.');
-  if (c==='bootstrap') return service.bootstrap();
-  if (c==='setup') { const result=service.setup(p);return {...result,token:createSession(event,result.user)}; }
+  if (c==='bootstrap') return {...service.bootstrap(),installerPharmacy:installerPharmacy()};
+  // Public: the sign-in screen and the License tab show when the key ends.
+  if (c==='licence') {
+    const found=licence.status({files:licenceFiles()});
+    return licence.resolve(found,found.found?null:rememberedLicence());
+  }
+  if (c==='setup') { assertLicence();const result=service.setup(p);return {...result,token:createSession(event,result.user)}; }
   if (c==='login') {
+    // A licence that has run out stops here, before the password is checked, so
+    // the customer sees "expired" instead of "wrong password".
+    assertLicence();
     const key=String(p.username||'').toLowerCase().slice(0,40),now=Date.now(),attempt=attempts.get(key)||{count:0,until:0};
     if(attempt.until>now)throw new Error('Too many sign-in attempts. Try again in one minute.');
     try { const result=service.login(p);attempts.delete(key);return {...result,token:createSession(event,result.user)}; }

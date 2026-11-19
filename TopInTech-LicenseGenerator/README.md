@@ -134,13 +134,40 @@ backup offline: without `private.pem` no new keys can be made for that key id.
 > git repository, or e-mailed. Only `public.pem` may travel.
 > `.gitignore` blocks `*.pem` as a second line of defence.
 
+## Settings
+
+The gear icon in the top bar (or **Ctrl ,**) opens **Settings**. Everything in
+it is local to this computer:
+
+| Section | What you can do |
+| --- | --- |
+| Owner account | See which account is open and when it was created; **change the password** — current password, new password, confirmation; the new password needs 6–128 characters, must differ from the old one and from the username |
+| Username | Rename the account. Your password is required, because the username is half of the credentials the sign-in screen asks for |
+| Data and keys | See exactly where the licenses and the signing key live, how many licenses of each status exist, open the data folder, back up the keys, re-create the desktop icon |
+| About | Version, Electron and Node of this build, and **Sign out** |
+
+Both changes require the **current password**, so an already-unlocked window on
+an unattended desk is not enough to take the tool over. The password is stored
+only as a fresh scrypt hash; changing it also clears any lockout left by wrong
+attempts, and every change is written to the license_events audit trail (without
+the password). **Sign out** locks the window again immediately.
+
+Losing the owner password means editing the generator's SQLite database by hand
+(delete `owner_password_hash` and restart to create the account again) — the
+tool never stores a second copy of it anywhere.
+
 ## Serial keys
 
 * Format: `TIT1<payload>.<signature>`, shown in groups of five.
 * Alphabet: Crockford base32 — no `I`, `L`, `O`, `U`, so `O` reads as `0` and
   `I`/`L` read as `1` when someone types a key by hand.
 * Payload: `{v, k, id, pr, d, i, x}` — version, key id, license id, product,
-  duration (`L` lifetime / `Y` 1 year / `H` 6 months), issue date, expiry date.
+  duration (`L` lifetime / `Y` 1 year / `H` 6 months / `M` 1 month / `F` 15
+  days / `T` 10 days / `Q` 10 minutes), issue date, expiry.
+* `x` is a date (`2026-11-28`) for every plan measured in days or months — the
+  licence is valid through that whole day — and a full moment
+  (`2026-11-19T07:40:00Z`) for **10 Minutes**, so the short plan really ends
+  ten minutes after it was issued instead of at midnight.
 * Signature: Ed25519 over the exact payload bytes. Editing one character breaks
   the signature; a key signed by another pair fails the key-id check.
 * A serial issued as *Lifetime* has an empty expiry and never expires.
@@ -154,15 +181,38 @@ The long serial is the licence; it is also 170 characters, so nobody types it
 into a setup wizard. Each license therefore also has a short **install key**:
 
 ```
-ABC-123        6 characters: 5 data + 1 check
+7M2K4X             6 characters: 2 data + 3 expiry day + 1 check   (handed out today)
+ABC-123-456        9 characters: 5 data + 3 expiry day + 1 check   (2.3.6 - 2.3.8)
+ABC-123-456-789   12 characters: 5 data + 3 day + 3 minute + 1 check
 ```
 
-* The 5 data characters are a stable base32 slice of `sha256("install:" + serial)`,
+The six-character key is what the owner gives a customer: short enough to read
+over the telephone or type on a phone keypad, and it still carries the date, so
+a 10-Day licence prints a key that says day 10 (for example `7M0681`: data `7M`,
+day `068`, check `1`). Letters and digits are mixed on purpose, so a key like
+`212328` or `12QW21` is a normal key and not a special case.
+
+The 12-character shape appears only for a licence that ends at a time — the **10
+Minutes** plan — because six characters cannot hold a time of day. Its last
+group holds the minute of that day (UTC), so the customer gets exactly ten
+minutes rather than the rest of the day.
+
+* The data characters are a stable base32 slice of `sha256("install:" + serial)`,
   so one serial always produces the same key and a second license produces a
   different one.
-* The 1 check character comes from a small arithmetic fold
+* The 3 expiry characters are the last valid day, counted from 2025-01-01 (UTC)
+  in base32. `000` means a lifetime licence. The line under the key spells the
+  date out: *The application stops at sign-in after 28 November 2026.*
+* The last character comes from a small arithmetic fold
   (`lib/setupkey.js`), because NSIS has no crypto library. The Pharmacy setup
-  runs exactly the same arithmetic in `build/installer.nsh`.
+  runs exactly the same arithmetic in `build/installer.nsh`, and the customer
+  application re-reads the same number in `license.js` — the three agree.
+* A 2.3.2 key has 16 characters (`WXYZ-1234-5678-9ABC`) and carries no date, so
+  it is read as lifetime and still installs. The 9-character keys of 2.3.6 -
+  2.3.8 still install too and keep their date.
+* The setup also asks for the customer's **pharmacy name** on the same page and
+  writes it into `license.json`, so the application's first-run screen opens with
+  the name already filled in.
 * The result card shows the key under **Install key for the setup** with
   **Copy Install Key**; the licences table has a ⌨ button that copies it again
   for a key sold earlier.
@@ -173,6 +223,10 @@ ABC-123        6 characters: 5 data + 1 check
 * The setup asks on **every** run: a repair, a reinstall, an upgrade or an
   install after an uninstall on the same computer all need the key again. The
   installer stores no activation record, so an old installation cannot open it.
+* The setup writes the accepted key to `license.json` next to the program and in
+  `%APPDATA%\Pharmacy Management`. The customer application reads it at sign-in
+  and, after the last valid day, refuses to sign anyone in until you issue a new
+  key. Selling a 10-Day licence therefore really ends after ten days.
 
 This check stops casual copying; it is not the security boundary. The signed
 serial is: verify it in the customer app with `public.pem`, as described in

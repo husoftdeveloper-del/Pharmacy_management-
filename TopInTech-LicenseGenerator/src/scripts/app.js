@@ -10,7 +10,8 @@ const state = {
   search: '',
   status: '',
   busy: false,
-  lockTimer: 0
+  lockTimer: 0,
+  settings: null
 };
 
 let toastTimer = 0;
@@ -145,7 +146,7 @@ function renderRows() {
 
     const expires = document.createElement('td');
     expires.className = 'muted';
-    expires.textContent = row.expires_on || 'Never';
+    expires.textContent = row.expiresLabel || row.expires_on || 'Never';
 
     const status = document.createElement('td');
     const select = document.createElement('select');
@@ -286,13 +287,20 @@ async function generate(event) {
 function showResult(license) {
   $('#result').hidden = false;
   $('#result-serial').value = license.formatted;
-  const expiry = license.expires_on ? `expires ${license.expires_on}` : 'never expires';
+  const expiry = license.expires_on ? `expires ${license.expiresLabel || license.expires_on}` : 'never expires';
   $('#result-meta').textContent = `${license.product} · ${license.planLabel} · ${expiry}`;
   const pillHost = $('#result-status');
   pillHost.className = `status-pill${license.status === 'unused' ? '' : ` ${license.status}`}`;
   pillHost.textContent = statusLabel(license.status);
   $('#result-serial').scrollTop = 0;
   $('#result-install-key').textContent = license.installKey || '—';
+  // The key carries the last valid day: say it plainly, because this is when the
+  // customer's application will stop signing in until the licence is renewed.
+  // A minute licence prints its clock time too (2026-11-19 07:40 UTC), so
+  // nobody has to work out what "10 Minutes" means in their own time zone.
+  $('#result-install-expiry').textContent = license.installKeyExpires
+    ? `The application stops at sign-in after ${license.installKeyExpires}.`
+    : 'Lifetime key: the application never stops at sign-in.';
 }
 
 /* ---- Verify ----------------------------------------------------------- */
@@ -399,6 +407,163 @@ function wire() {
   });
 }
 
+/* ---- Settings ----------------------------------------------------------
+   One window for the owner: the account (password and username), where the data
+   and keys live, and the running version. Nothing here writes a file directly:
+   the current password is checked by the main process on every change.       */
+
+function settingsError(id, message) {
+  const slot = $(id);
+  if (slot) slot.textContent = message || '';
+}
+
+function settingsOpen() {
+  return $('#settings-window').hidden === false;
+}
+
+async function loadSettings() {
+  const info = await call('settingsInfo', {});
+  state.settings = info;
+  $('#settings-user').textContent = info.username || info.signedInAs || '—';
+  $('#settings-created').textContent = info.createdAt
+    ? `· account created ${String(info.createdAt).slice(0, 10)}`
+    : '';
+  $('#account-name').textContent = info.signedInAs || info.username || 'Owner';
+  $('#settings-folder').textContent = info.dataFolder || '—';
+  const kb = info.databaseBytes ? ` · ${(info.databaseBytes / 1024).toFixed(0)} KB` : '';
+  $('#settings-database').textContent = `${info.databaseFile || '—'}${kb}`;
+  const counts = info.counts || {};
+  $('#settings-counts').textContent = `${counts.total || 0} total · ${counts.unused || 0} unused · ${counts.assigned || 0} assigned · ${counts.used || 0} used`;
+  $('#settings-key').textContent = info.keyId || '—';
+  $('#settings-version').textContent = `${info.version || '—'} · Electron ${info.electron || '—'} · Node ${info.node || '—'}`;
+  $('#settings-platform').textContent = info.platform || '—';
+  $('#password-hint').textContent = `${info.passwordMin || 6}–${info.passwordMax || 128} characters, and not the same as the username.`;
+  return info;
+}
+
+async function openSettings() {
+  settingsError('#password-error', '');
+  settingsError('#username-error', '');
+  for (const selector of ['#current-password', '#new-password', '#confirm-password', '#username-password']) {
+    $(selector).value = '';
+  }
+  $('#settings-window').hidden = false;
+  try {
+    const info = await loadSettings();
+    $('#new-username').value = info.username || '';
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+  $('#current-password').focus();
+}
+
+function closeSettings() {
+  $('#settings-window').hidden = true;
+  settingsError('#password-error', '');
+  settingsError('#username-error', '');
+}
+
+async function savePassword(event) {
+  event.preventDefault();
+  const button = $('#save-password');
+  const current = $('#current-password').value;
+  const password = $('#new-password').value;
+  const confirm = $('#confirm-password').value;
+  settingsError('#password-error', '');
+  if (!current) { settingsError('#password-error', 'Enter your current password.'); $('#current-password').focus(); return; }
+  if (!password) { settingsError('#password-error', 'Enter a new password.'); $('#new-password').focus(); return; }
+  if (password !== confirm) { settingsError('#password-error', 'The two new passwords do not match.'); $('#confirm-password').focus(); return; }
+  button.disabled = true;
+  try {
+    await call('changePassword', { current, password, confirm });
+    for (const selector of ['#current-password', '#new-password', '#confirm-password']) $(selector).value = '';
+    toast('Password changed — use the new one next time');
+    await loadSettings();
+  } catch (error) {
+    settingsError('#password-error', error.message);
+    $('#current-password').select();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function saveUsername(event) {
+  event.preventDefault();
+  const button = $('#save-username');
+  const username = $('#new-username').value.trim();
+  const password = $('#username-password').value;
+  settingsError('#username-error', '');
+  if (!username) { settingsError('#username-error', 'Enter a username.'); $('#new-username').focus(); return; }
+  if (!password) { settingsError('#username-error', 'Enter your password to confirm.'); $('#username-password').focus(); return; }
+  button.disabled = true;
+  try {
+    const result = await call('changeUsername', { username, password });
+    $('#username-password').value = '';
+    toast(result.changed ? `Username changed to ${result.username}` : 'That is already your username');
+    await loadSettings();
+  } catch (error) {
+    settingsError('#username-error', error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function signOutFromSettings() {
+  try {
+    await call('signOut', {});
+  } catch (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  closeSettings();
+  auth = { ...auth, signedIn: false };
+  state.licenses = [];
+  renderRows();
+  showLogin({ configured: true, signedIn: false });
+  $('#login-password').value = '';
+  toast('Signed out');
+}
+
+function wireSettings() {
+  $('#settings-button').addEventListener('click', openSettings);
+  $('#account-chip').addEventListener('click', openSettings);
+  $('#settings-close').addEventListener('click', closeSettings);
+  $('#settings-window').addEventListener('mousedown', event => {
+    // Clicking the dark area outside the card closes the window; clicks inside
+    // it are left alone.
+    if (event.target === $('#settings-window')) closeSettings();
+  });
+  $('#password-form').addEventListener('submit', savePassword);
+  $('#username-form').addEventListener('submit', saveUsername);
+  $('#settings-signout').addEventListener('click', signOutFromSettings);
+  $('#settings-open-folder').addEventListener('click', async () => {
+    try { await call('openDataFolder', {}); } catch (error) { toast(error.message, 'error'); }
+  });
+  $('#settings-backup-keys').addEventListener('click', async () => {
+    try {
+      const saved = await call('backupKeys', {});
+      if (saved?.path) toast(`Keys backed up to ${saved.path}`);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+  $('#settings-shortcut').addEventListener('click', async () => {
+    try {
+      const result = await call('createShortcut', {});
+      if (result.created) toast(`Desktop icon created in ${result.path}`);
+      else if (result.reason === 'portable') toast('The portable copy does not add a desktop icon');
+      else toast(`The desktop icon is already in ${result.path || 'place'}`);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && settingsOpen()) { event.preventDefault(); closeSettings(); }
+    // Ctrl+, is the usual Settings shortcut on Windows applications.
+    if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); if (!settingsOpen()) openSettings(); }
+  });
+}
+
 /* ---- Owner sign-in ------------------------------------------------------
    The window opens locked. Until signIn/register succeeds the main process
    refuses every other operation, so hiding the tool here is only the visible
@@ -458,6 +623,8 @@ async function enterTool() {
   try {
     await loadStatus();
     await refresh();
+    // The top bar shows who is signed in, so the owner never wonders.
+    try { const info = await call('settingsInfo', {}); $('#account-name').textContent = info.signedInAs || info.username || 'Owner'; } catch {}
     // The installer may have written the icon into a Desktop folder Windows no
     // longer shows (OneDrive redirects it), so make sure it exists.
     const shortcut = await call('createShortcut', {});
@@ -514,6 +681,7 @@ function wireLogin() {
 async function boot() {
   wire();
   wireLogin();
+  wireSettings();
   let stateInfo = { configured: true, signedIn: false };
   try {
     stateInfo = await call('authState', {});

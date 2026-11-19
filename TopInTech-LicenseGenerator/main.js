@@ -74,9 +74,15 @@ function decorate(row) {
     planLabel: planId ? serial.PLANS[planId].label : (row.plan || ''),
     formatted: serial.formatSerial(row.serial),
     plain: row.serial,
-    // The short key the customer types into the setup wizard: derived from the
-    // serial, so the same row always shows the same key.
-    installKey: setupkey.makeInstallKey(row.serial)
+    // The key the customer types into the setup wizard: derived from the serial,
+    // so the same row always shows the same key, and carrying the licence's last
+    // valid day so the application can stop at sign-in once it has passed.
+    installKey: setupkey.makeInstallKey(row.serial, row.expires_on),
+    // A moment (a 10-minute licence) is shown as a moment; a date stays a date.
+    installKeyExpires: setupkey.expiryOfKey(row.expires_on),
+    // The table and the CSV show the same reading as the card.
+    expiresLabel: setupkey.expiryOfKey(row.expires_on),
+    installKeyMoment: String(row.expires_on || '').includes('T')
   };
 }
 
@@ -91,6 +97,9 @@ function newLicenseId() {
    Desktop folder that exists, and can use PowerShell as a fallback.          */
 function desktopCandidates() {
   const os = require('node:os');
+  // An unattended smoke run must not litter the runner's real desktops: it can
+  // only see the throwaway folder it was given.
+  if (SMOKE) return [app.getPath('desktop')];
   const home = os.homedir();
   const list = [];
   // 1. The folder Windows itself reports: this is the one the user sees.
@@ -106,8 +115,8 @@ function desktopCandidates() {
   const publicRoot = process.env.PUBLIC || 'C:\\Users\\Public';
   list.push(path.join(publicRoot, 'Desktop'));
   try { list.push(path.join(app.getPath('appData'), '..', '..', 'Public', 'Desktop')); } catch { /* not reported */ }
-  // 5. The Start menu, so the app can always be found even without an icon.
-  try { list.push(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs')); } catch { /* not reported */ }
+  // The Start menu is deliberately absent: the setup wizard owns that entry, so
+  // the tool must never add a second one next to it.
   // Folders that do not exist are skipped inside ensureDesktopShortcut().
   return list;
 }
@@ -299,8 +308,44 @@ const inner = {
   signOut: () => {
     session = { signedIn: false, username: '' };
     return { signedIn: false };
+  },
+
+  /* --- Settings -------------------------------------------------------- */
+  /* Everything the Settings window needs in one call: the owner account, the
+     places the tool keeps its data, and the build that is running. */
+  settingsInfo: () => ({
+    ...account.info(store, db),
+    signedInAs: session.username,
+    version: app.getVersion(),
+    dataFolder,
+    databaseFile: dbFile,
+    databaseBytes: (() => { try { return fs.statSync(dbFile).size; } catch { return 0; } })(),
+    keyId: keys.describe(keyFolder).keyId,
+    counts: counts(),
+    platform: `${process.platform} ${process.arch}`,
+    electron: process.versions.electron,
+    node: process.versions.node
+  }),
+
+  // Both of these require the current password, so an unlocked window is not
+  // enough to take the tool over.
+  changePassword: async payload => {
+    const result = await account.changePassword(store, db, payload || {});
+    return { ...settingsResult(), ...result };
+  },
+
+  changeUsername: async payload => {
+    const result = await account.changeUsername(store, db, payload || {});
+    // Keep the session and the window title in step with the new name.
+    if (result.changed) session = { signedIn: true, username: result.username };
+    return { ...settingsResult(), ...result };
   }
 };
+
+// The account after a change, in the shape the Settings window already renders.
+function settingsResult() {
+  return { ...account.state(store, db), signedIn: session.signedIn, signedInAs: session.username };
+}
 
 // Every other operation goes through this guard.
 const channels = new Proxy(inner, {
@@ -410,7 +455,21 @@ async function backupKeys() {
 // written where the test can see it.
 async function runSmokeTest() {
   const say = value => process.stdout.write(`${value}\n`);
+  const evaluate = code => mainWindow.webContents.executeJavaScript(code);
+  // The page fills itself from the bridge asynchronously, so a check must wait
+  // for the value instead of reading whatever is on screen at load time.
+  const waitFor = async (expression, label, timeout = 8000) => {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      if (await evaluate(`Boolean(${expression})`)) return true;
+      if (Date.now() > deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  };
   try {
+    await waitFor("document.querySelector('#app-version').textContent.trim() !== '…'", 'the version badge');
+    await waitFor("document.querySelector('#key-id').textContent.trim() !== '…'", 'the key id');
+    await waitFor("document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')", 'the public key');
     const page = await mainWindow.webContents.executeJavaScript(`({
       title: document.title,
       // The tool must be open (signed in) and the sign-in form gone.
@@ -423,6 +482,34 @@ async function runSmokeTest() {
       publicKey: document.querySelector('#public-key').value.includes('BEGIN PUBLIC KEY')
     })`);
 
+    // The Settings window, in the real window: the gear icon opens it, it shows
+    // the owner account, and Esc closes it. The page script is plain and
+    // synchronous on purpose — a smoke run must never be able to hang the build.
+    const opened = await mainWindow.webContents.executeJavaScript(`(() => {
+      document.querySelector('#settings-button').click();
+      return true;
+    })()`);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await waitFor("document.querySelector('#settings-folder').textContent.trim() !== '—'", 'the data folder');
+    const settings = await mainWindow.webContents.executeJavaScript(`({
+      open: document.querySelector('#settings-window').hidden === false,
+      user: document.querySelector('#settings-user').textContent.trim(),
+      folder: document.querySelector('#settings-folder').textContent.trim(),
+      hasPasswordForm: Boolean(document.querySelector('#password-form')),
+      hasUsernameForm: Boolean(document.querySelector('#username-form')),
+      hasSignOut: Boolean(document.querySelector('#settings-signout'))
+    })`);
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      return true;
+    })()`);
+    settings.closedByEscape = await mainWindow.webContents.executeJavaScript("document.querySelector('#settings-window').hidden === true");
+
+    // The password change itself through the same channel the form uses, then a
+    // real sign-in with the new password against the real database.
+    const changedVia = await channels.changePassword({ current: SMOKE_PASSWORD, password: 'smoke-Changed1', confirm: 'smoke-Changed1' });
+    const changed = await account.signIn(store, db, { username: SMOKE_USER, password: 'smoke-Changed1' });
+
     const generated = await channels.generate({ product: 'Pharmacy Management', plan: '1y' });
     const verified = await channels.verify({ serial: generated.license.formatted });
     const shortcut = ensureDesktopShortcut();
@@ -430,6 +517,7 @@ async function runSmokeTest() {
 
     say(`SMOKE_RESULT ${JSON.stringify({
       page,
+      settings: { ...settings, opened: opened === true, passwordChanged: changed.username === SMOKE_USER, changedBy: changedVia?.username || '' },
       generated: { serial: generated.license.formatted, plan: generated.license.planLabel, id: generated.license.id },
       verified: { valid: verified.valid, product: verified.product },
       shortcut: { created: shortcut.created, paths: shortcut.paths, checked: shortcut.checked, reason: shortcut.reason || '' },

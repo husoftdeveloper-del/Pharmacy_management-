@@ -14,10 +14,18 @@ const crypto = require('node:crypto');
 
 const PREFIX = 'TIT1';
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+// The single letter in the payload is what older generators read, so the three
+// original letters never change; the short plans use letters nobody used before.
 const PLANS = {
   lifetime: { key: 'L', label: 'Lifetime', months: 0 },
   '1y': { key: 'Y', label: '1 Year', months: 12 },
-  '6m': { key: 'H', label: '6 Months', months: 6 }
+  '6m': { key: 'H', label: '6 Months', months: 6 },
+  '1m': { key: 'M', label: '1 Month', months: 1 },
+  '15d': { key: 'F', label: '15 Days', days: 15 },
+  '10d': { key: 'T', label: '10 Days', days: 10 },
+  // Shorter than a day, so its expiry is a time, not a date. Used to try the
+  // expiry end to end without waiting ten days.
+  '10min': { key: 'Q', label: '10 Minutes', minutes: 10 }
 };
 const PLAN_BY_KEY = Object.fromEntries(Object.entries(PLANS).map(([id, plan]) => [plan.key, { id, ...plan }]));
 
@@ -68,6 +76,20 @@ function addMonths(date, months) {
   return copy;
 }
 
+// Short plans count whole days, so 10 and 15 days land on the same clock time
+// as the issue moment, not on a rounded month.
+function addDays(date, days) {
+  const copy = new Date(date.getTime());
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
+// A duration measured in minutes keeps the exact moment; the licence then ends
+// at a time of day, not at midnight.
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60000);
+}
+
 function planDetails(planId) {
   const plan = PLANS[planId];
   if (!plan) throw new Error('Choose a license duration.');
@@ -82,7 +104,9 @@ function buildPayload({ product, plan, licenseId, issuedAt = new Date(), kid }) 
   if (!kid) throw new Error('The signing key is missing.');
   const details = planDetails(plan);
   const issued = new Date(issuedAt);
-  const expires = details.months ? addMonths(issued, details.months) : null;
+  const expires = details.minutes
+    ? addMinutes(issued, details.minutes)
+    : (details.days ? addDays(issued, details.days) : (details.months ? addMonths(issued, details.months) : null));
   return {
     v: 1,
     k: kid,
@@ -90,7 +114,9 @@ function buildPayload({ product, plan, licenseId, issuedAt = new Date(), kid }) 
     pr: name,
     d: details.key,
     i: issued.toISOString().slice(0, 10),
-    x: expires ? expires.toISOString().slice(0, 10) : ''
+    // Day and month plans end with their last day (a date); a minute plan ends
+    // at an exact moment, so it keeps the time as well.
+    x: expires ? (details.minutes ? expires.toISOString().slice(0, 19) + 'Z' : expires.toISOString().slice(0, 10)) : ''
   };
 }
 
@@ -129,10 +155,13 @@ function verifySerial(serial, publicKeyPem, now = new Date()) {
     const ok = crypto.verify(null, payloadBytes(payload), crypto.createPublicKey(publicKeyPem), signature);
     if (!ok) return { valid: false, reason: 'The signature does not match. The key was edited or forged.', payload };
     if (payload.x) {
-      const today = now.toISOString().slice(0, 10);
-      if (payload.x < today) return { valid: false, reason: `This license expired on ${payload.x}.`, payload };
+      // A timestamp ends mid-day; a plain date is valid through that whole day.
+      const expired = payload.x.includes('T')
+        ? now.getTime() >= Date.parse(payload.x)
+        : now.toISOString().slice(0, 10) > payload.x;
+      if (expired) return { valid: false, reason: `This license expired on ${payload.x}.`, payload };
     }
-    const plan = PLAN_BY_KEY[payload.d] || { id: 'unknown', label: 'Unknown', months: 0 };
+    const plan = PLAN_BY_KEY[payload.d] || { id: 'unknown', label: 'Unknown', months: 0, days: 0 };
     return { valid: true, reason: '', payload, plan };
   } catch (error) {
     return { valid: false, reason: error.message, payload: null };
@@ -156,5 +185,5 @@ function unformatSerial(serial) {
 module.exports = {
   PREFIX, ALPHABET, PLANS, PLAN_BY_KEY,
   base32Encode, base32Decode, keyId, buildPayload, payloadBytes,
-  signPayload, parseSerial, verifySerial, formatSerial, unformatSerial, planDetails, addMonths
+  signPayload, parseSerial, verifySerial, formatSerial, unformatSerial, planDetails, addMonths, addDays, addMinutes
 };

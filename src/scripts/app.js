@@ -14,11 +14,15 @@ const app=document.querySelector('#app');
 let currentPageCleanup=null,navigateTimer=null;
 function brand(){return `<div class="brand"><div class="brand-mark">${icon('plus',28)}</div><div class="brand-name">Pharmaca<small>MANAGEMENT SYSTEM</small></div></div>`;}
 function languageButtons(){return `<div class="auth-language">${[['en','English'],['ps','پښتو'],['fa-AF','دری']].map(([value,label])=>`<button data-lang="${value}" class="${getLanguage()===value?'active':''}">${label}</button>`).join('')}</div>`;}
-async function authScreen(setup=false){
+async function authScreen(setup=false,suggestedPharmacy=''){
   state.user=null;state.permissions=[];
   app.innerHTML=`<main class="auth-screen"><section class="auth-art">${brand()}<div class="auth-art-copy"><div class="eyebrow" data-i18n="${setup?'firstRun':'secure'}"></div><h1 data-i18n="${setup?'setupTitle':'loginTitle'}"></h1><p data-i18n="${setup?'setupSubtitle':'loginSubtitle'}"></p><div class="auth-illustration"><div class="auth-cross">${icon('plus',65)}</div></div></div><div class="auth-art-bottom"><span>${icon('shield',16)}<span data-i18n="offline"></span></span><span>${icon('lock',16)}<span data-i18n="localData"></span></span></div></section><section class="auth-panel"><div class="auth-form-wrap"><div class="eyebrow" data-i18n="${setup?'firstRun':'welcome'}"></div><h2 data-i18n="${setup?'setup':'loginTitle'}"></h2><p data-i18n="${setup?'setupSubtitle':'loginSubtitle'}"></p><form id="auth-form"><div class="form-grid">${setup?`<label class="field"><span data-i18n="pharmacyName"></span><input name="pharmacyName" required maxlength="120"></label><label class="field"><span data-i18n="name"></span><input name="name" required maxlength="100" autocomplete="name"></label>`:''}<label class="field"><span data-i18n="username"></span><input name="username" required minlength="3" maxlength="40" autocomplete="username" pattern="[A-Za-z0-9._\\-]+"></label><label class="field"><span data-i18n="password"></span><input name="password" type="password" required minlength="${setup?10:1}" maxlength="128" autocomplete="${setup?'new-password':'current-password'}">${setup?'<small>At least 10 characters. There is no default password.</small>':''}</label></div><div class="form-error" role="alert"></div><div class="form-footer"><button class="btn btn-primary" type="submit"><span data-i18n="${setup?'setup':'login'}"></span>${icon('arrow',18)}</button></div></form>${languageButtons()}<div class="auth-privacy">${icon('shield')}<span data-i18n="privacy"></span><small class="app-build">${APP_BUILD}</small></div></div></section></main>`;
   translatePage(app);
-  app.querySelectorAll('[data-lang]').forEach(b=>b.onclick=()=>{setLanguage(b.dataset.lang);authScreen(setup);});
+  // The Windows setup already asked for the pharmacy name: offer it here so the
+  // first-run screen only needs the administrator account. It stays editable.
+  const nameField=app.querySelector('[name=pharmacyName]');
+  if(nameField&&suggestedPharmacy)nameField.value=suggestedPharmacy;
+  app.querySelectorAll('[data-lang]').forEach(b=>b.onclick=()=>{setLanguage(b.dataset.lang);authScreen(setup,suggestedPharmacy);});
   app.querySelector('form').onsubmit=async ev=>{ev.preventDefault();const form=ev.currentTarget,button=form.querySelector('button');button.disabled=true;try{const data=Object.fromEntries(new FormData(form));const result=await api(setup?'setup':'login',data);await startSession(result);}catch(error){form.querySelector('.form-error').textContent=error.message;button.disabled=false;}};
 }
 async function startSession(result){
@@ -68,10 +72,30 @@ export async function navigate(page,params={}){
   const module=await import(`../pages/${page}.js`);if(state.page!==requested)return;
   const root=content.querySelector('[data-page-root]')||content.firstElementChild;
   currentPageCleanup=await module.render(root,params)||null;
- }catch(error){content.innerHTML=`<div class="card"><div class="empty-state"><h3>${e(t('error'))}</h3><p>${e(error.message)}</p></div></div>`;if(error.code==='SESSION_EXPIRED')authScreen(false);}
+ }catch(error){content.innerHTML=`<div class="card"><div class="empty-state"><h3>${e(t('error'))}</h3><p>${e(error.message)}</p></div></div>`;if(error.code==='SESSION_EXPIRED')authScreen(false);else if(error.code==='LICENSE_EXPIRED')licenceEnded(error.message);}
 }
 window.addEventListener('session-expired',()=>authScreen(false));
 document.addEventListener('keydown',ev=>{if((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ev.preventDefault();app.querySelector('#global-search')?.focus();}if(ev.key==='F2'&&state.user)navigate('pos');});
-async function boot(){try{const info=await api('bootstrap');if(!info.initialized){await authScreen(true);return;}try{const session=await api('session');await startSession(session);}catch{await authScreen(false);}}catch(error){app.innerHTML=`<main class="auth-panel"><div class="auth-form-wrap"><h2>Pharmacy Management</h2><p>${e(error.message)}</p><p>Install dependencies with npm install, then launch with npm start.</p></div></main>`;}}
+/* The setup's key has run out: back to the sign-in screen, where nothing can be
+   typed until the owner issues a new key. The moment it ended is shown under
+   the sentence, so "expired" is never mistaken for a broken program: a 10
+   Minutes key really does end ten minutes after it was issued. */
+async function licenceEnded(message){
+  await authScreen(false);
+  const slot=app.querySelector('#auth-form .form-error');
+  if(!slot)return;
+  slot.textContent=message||'Your Serial key has expired, please Renew Serial key on the Owner.';
+  try{
+    const info=await api('licence');
+    if(!info||!info.found||!info.expiresAt)return;
+    const when=info.expiresAt.replace('T',' ').replace(/\.000Z$/,'').replace(/Z$/,'');
+    const line=document.createElement('small');
+    line.className='licence-ended';
+    // The key that expired, so the owner can match it to the licence record.
+    line.textContent=`${t('licenceEndedAt')} ${when} UTC${info.key?` · ${t('licenceKeyUsed')} ${info.key}`:''}`;
+    slot.after(line);
+  }catch{}
+}
+async function boot(){try{const info=await api('bootstrap');if(!info.initialized){await authScreen(true,info.installerPharmacy||'');return;}try{const session=await api('session');await startSession(session);}catch(error){if(error.code==='LICENSE_EXPIRED'){await licenceEnded(error.message);return;}await authScreen(false);}}catch(error){app.innerHTML=`<main class="auth-panel"><div class="auth-form-wrap"><h2>Pharmacy Management</h2><p>${e(error.message)}</p><p>Install dependencies with npm install, then launch with npm start.</p></div></main>`;}}
 boot();
 window.addEventListener('navigate',event=>{const detail=event.detail;if(detail&&typeof detail==='object'&&detail.page)navigate(detail.page,detail.params||{});else navigate(detail);});

@@ -99,6 +99,7 @@ jobs:
             'activation page in the wizard' = $output.Contains('Page custom ActivationPageShow ActivationPageLeave')
             'welcome page before the activation page' = ($welcome -ge 0 -and $welcome -lt $activation)
             'page title'                    = $output.Contains('Pharmacy Management Activation')
+            'pharmacy name label'           = $output.Contains('Enter your Pharmacy Name')
             'key label'                     = $output.Contains('Enter your serial key')
             'Continue button'               = $output.Contains('STR:Continue')
             'Cancel button'                 = $output.Contains('STR:Cancel')
@@ -158,15 +159,21 @@ jobs:
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
           if (-not $setup) { Write-Error 'No setup executable was produced'; exit 1 }
 
-          # Exactly what the generator's "Copy Install Key" button produces.
-          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
-          Write-Host "install key: $env:PHARMACY_SETUP_KEY"
+          # Exactly what the generator's "Copy Install Key" button produces: six
+          # characters, two of data, three of the expiry day and one check.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001','2026-12-31'))")
+          $env:PHARMACY_SETUP_NAME = 'Kabul Care Pharmacy'
+          $wantedName = $env:PHARMACY_SETUP_NAME
+          Write-Host "install key: $env:PHARMACY_SETUP_KEY ($($env:PHARMACY_SETUP_KEY.Length) characters)"
+          if ($env:PHARMACY_SETUP_KEY.Length -ne 6) { Write-Error "the install key must be six characters, got $($env:PHARMACY_SETUP_KEY.Length)"; exit 1 }
           $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $process.WaitForExit(180000)
           if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
           Write-Host "installer exit code: $($process.ExitCode) (exited: $exited)"
           Start-Sleep -Seconds 8
+          $keyUsed = $env:PHARMACY_SETUP_KEY
           Remove-Item Env:PHARMACY_SETUP_KEY -ErrorAction SilentlyContinue
+          Remove-Item Env:PHARMACY_SETUP_NAME -ErrorAction SilentlyContinue
 
           $appName = 'Pharmacy Management'
           $programs = @(
@@ -201,8 +208,33 @@ jobs:
             (Test-Path (Join-Path $env:LOCALAPPDATA 'Top In Tech\Pharmacy Management\activated.txt'))
           ) -contains $true
 
+          # The setup writes the licence beside the app and in the roaming folder,
+          # so the application can read its expiry without asking for the key.
+          $licenceFiles = @(
+            $(if ($installDir) { Join-Path $installDir 'license.json' }),
+            (Join-Path $env:APPDATA "$appName\license.json")
+          ) | Where-Object { $_ }
+          $licenceOk = @($licenceFiles | Where-Object {
+            (Test-Path $_) -and ((Get-Content -Raw $_) -match '"days"\s*:\s*[0-9]+')
+          }).Count -ge 1
+          # The pharmacy name the customer types into the setup travels in the same
+          # file, so the first-run screen opens with it already filled in.
+          $licenceText = if ($licenceOk) { Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json") } else { '' }
+          $nameWritten = $licenceText -match ('"pharmacy"\s*:\s*"' + [regex]::Escape($wantedName) + '"')
+          $keyWritten = $licenceText -match ('"key"\s*:\s*"' + [regex]::Escape($keyUsed) + '"')
+          foreach ($path in $licenceFiles) { Write-Host "licence candidate: $path (exists: $(Test-Path $path))" }
+          if ($licenceOk) {
+            $written = Get-Content -Raw (Join-Path $env:APPDATA "$appName\license.json")
+            Write-Host "licence written: $written"
+          } else {
+            if ($installDir) { Get-ChildItem $installDir -Filter '*.json' | ForEach-Object { Write-Host "program folder file: $($_.Name) $($_.Length) bytes" } }
+          }
+
           $required = [ordered]@{
             'the application is installed' = [bool]$exe
+            'licence file written'         = $licenceOk
+            'install key written to the licence' = $keyWritten
+            'pharmacy name written to the licence' = $nameWritten
             'desktop shortcut'             = ($links.Count -ge 1)
             'single desktop shortcut'      = ($links.Count -eq 1)
             'start menu shortcut'          = ($startLinks.Count -ge 1)
@@ -233,7 +265,7 @@ jobs:
       # The rule the owner asked for last: uninstalling does not unlock anything.
       # After a real uninstall, a setup run without a key must be refused, and a
       # run with a valid key must ask again and install once.
-      - name: Uninstall, then reinstall asks for the key again
+      - name: Uninstall, then reinstall asks for the key again (with a 2.3.2 key)
         shell: pwsh
         run: |
           $setup = Get-ChildItem -Path 'release' -Filter '*-x64.exe' | Select-Object -First 1
@@ -271,8 +303,11 @@ jobs:
             exit 1
           }
 
-          # Two: the same setup with a valid key installs again, once.
-          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').makeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          # Two: the same setup with a valid key installs again, once. This run uses
+          # the 16-character key that generator 2.3.2 printed, because an older key
+          # the owner already handed out must keep working.
+          $env:PHARMACY_SETUP_KEY = (node -e "console.log(require('./TopInTech-LicenseGenerator/lib/setupkey').legacyMakeInstallKey('TIT1CI-VERIFY.SERIAL-0001'))")
+          Write-Host "legacy install key: $env:PHARMACY_SETUP_KEY"
           $again = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
           $exited = $again.WaitForExit(180000)
           if (-not $exited) { Write-Warning 'the installer did not exit within 3 minutes' }
@@ -322,6 +357,12 @@ jobs:
           if [ -f artifacts/windows-build.log ]; then
             message=$(tail -c 50000 artifacts/windows-build.log)
             echo "::error title=Windows build failure::${message//$'\n'/%0A}"
+            # The NSIS compiler explains itself on one line, and the step log is
+            # not readable from the runner: surface those lines one by one.
+            grep -n -i -E "error in script|aborting|invalid command|macro named|unknown variable|!insertmacro|line [0-9]+ \(" artifacts/windows-build.log |
+              tail -n 10 | while IFS= read -r line; do
+                echo "::error title=NSIS compiler::${line:0:900}"
+              done
           fi
           if [ -f artifacts/electron-smoke-error.txt ]; then
             message=$(head -c 50000 artifacts/electron-smoke-error.txt)

@@ -13,6 +13,12 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'pharmacy-electron-'));
 app.setPath('userData',directory);
 app.setPath('sessionData',path.join(directory,'session'));
 const artifacts=path.join(__dirname,'..','artifacts');fs.mkdirSync(artifacts,{recursive:true});
+// A licence exactly as the Windows setup writes it: a lifetime key plus the
+// pharmacy name the customer typed into the wizard. The first-run screen must
+// open with that name already in the field.
+const setupkey=require('../TopInTech-LicenseGenerator/lib/setupkey');
+const WIZARD_NAME='Kabul Care Pharmacy';
+fs.writeFileSync(path.join(directory,'license.json'),JSON.stringify({version:1,key:setupkey.makeInstallKey('TIT1SMOKE.SERIAL', ''),days:0,pharmacy:WIZARD_NAME}));
 require('../main');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,label){let last;for(let i=0;i<100;i++){try{if(await fn())return;}catch(error){last=error.message;}await pause(100);}let body='';try{body=await BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript('document.body.innerText')}catch{}throw new Error('Timed out: '+label+'; '+last+'; '+body);}
@@ -27,6 +33,8 @@ app.whenReady().then(async()=>{
   const build=fs.readFileSync(path.join(__dirname,'..','src','scripts','version.js'),'utf8').match(/APP_BUILD='([^']+)'/)?.[1];
   assert.ok(build,'the app declares a build label');
   assert.ok(await run(`return document.body.innerText.includes('${build}')`),'visible build label '+build);
+  // The name from the wizard is offered, so the customer does not type it twice.
+  assert.equal(await run("return document.querySelector('[name=pharmacyName]').value"),WIZARD_NAME,'the setup form is prefilled with the wizard name');
   await run("document.querySelector('[name=pharmacyName]').value='Kabul Care Pharmacy';document.querySelector('[name=name]').value='Test Administrator';document.querySelector('[name=username]').value='admin';document.querySelector('[name=password]').value='SmokeTestPassword123!';document.querySelector('#auth-form').requestSubmit();return true;");
   await until(()=>win.webContents.executeJavaScript("!!document.querySelector('.app-shell')"),'shell');
   await run("const api=window.pharmacy.invoke;await api('save',{entity:'categories',record:{name:'Analgesics',active:1}});const m=await api('save',{entity:'medicines',record:{name:'Paracetamol 500mg',generic_name:'Acetaminophen',sku:'PAR-500',barcode:'PAR50001',unit:'tablet',price:10,cost:6,reorder_level:5,active:1}});const s=await api('save',{entity:'suppliers',record:{name:'Kabul Health Supplies',active:1}});await api('register',{action:'open',opening:1000});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-1001',paymentMethod:'credit',items:[{medicineId:m.id,batchNo:'B-1001',expiry:'2030-12-31',quantity:100,cost:6,locationId:1}]});await api('expense',{category:'Rent',description:'Shop rent',amount:250,method:'cash',accountId:1});const soon=new Date(Date.now()+9*86400000).toISOString().slice(0,10);const low=await api('save',{entity:'medicines',record:{name:'Amoxicillin 250mg',sku:'AMO-250',unit:'capsule',price:15,cost:8,reorder_level:10,active:1}});await api('save',{entity:'medicines',record:{name:'Empty Shelf',sku:'EMP-000',unit:'tablet',price:3,cost:2,reorder_level:5,active:1}});await api('purchase',{supplierId:s.id,invoiceNo:'PUR-LOW',paymentMethod:'credit',items:[{medicineId:low.id,batchNo:'B-LOW',expiry:soon,quantity:4,cost:8,locationId:1}]});await api('sale',{items:[{medicineId:m.id,quantity:2}],paymentMethod:'cash',accountId:1});return true;");
@@ -101,6 +109,14 @@ app.whenReady().then(async()=>{
     const tabText=await run("return document.querySelector('#settings-body').innerText");
     assert.ok(tabText.toLowerCase().includes(needle.toLowerCase()),tabKey+' tab renders '+needle+': '+tabText.slice(0,160));
   }
+  // License tab: the app reads the key the setup wrote and shows when it ends.
+  await run("document.querySelector('[data-tab=license]').click();return true;");
+  await pause(220);
+  assert.equal(await run("return document.querySelectorAll('.license-grid > div').length"),8,'the license card lists eight rows, expiry and key included');
+  assert.ok(await run("return document.querySelector('#license-until').textContent.length>0"),'the licence expiry row is filled');
+  // The key this computer holds is shown, so "which key is used" is answerable
+  // from inside the app. A smoke run has no setup licence, so it stays "—".
+  assert.ok(await run("return document.querySelector('#license-key').textContent.length>0"),'the install-key row is filled');
   // Appearance tab: three theme cards and three language rows.
   await run("document.querySelector('[data-tab=appearance]').click();return true;");
   await pause(220);

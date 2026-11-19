@@ -124,3 +124,106 @@ test('the signed-in state survives a restart of the app', async () => {
     second.db.close();
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
+
+/* ---- Settings: changing the password and the username ------------------ */
+test('the owner can change the password, and the old one stops working', async () => {
+  const app = fresh();
+  try {
+    await account.register(store, app.db, OWNER);
+    const before = store.getSetting(app.db, account.SETTING_HASH);
+
+    const changed = await account.changePassword(store, app.db, {
+      current: OWNER.password, password: 'newSecret-2026', confirm: 'newSecret-2026'
+    });
+    assert.equal(changed.changed, true);
+
+    // A fresh salt: the same password would produce a different hash anyway,
+    // and the old hash is gone.
+    const after = store.getSetting(app.db, account.SETTING_HASH);
+    assert.notEqual(after, before);
+    assert.ok(after.startsWith('scrypt$'));
+
+    // The old password no longer signs in; the new one does.
+    await assert.rejects(account.signIn(store, app.db, { username: OWNER.username, password: OWNER.password }), /Wrong username or password/);
+    const signed = await account.signIn(store, app.db, { username: OWNER.username, password: 'newSecret-2026' });
+    assert.equal(signed.username, OWNER.username);
+
+    // The change is in the audit trail, without the password itself.
+    const events = app.db.prepare('SELECT action, detail FROM license_events WHERE action=?').all('password_changed');
+    assert.equal(events.length, 1);
+    const text = JSON.stringify(events);
+    assert.match(text, /password_changed/);
+    assert.doesNotMatch(text, /newSecret-2026/);
+  } finally { app.close(); }
+});
+
+test('changing the password needs the current one, a match and a new value', async () => {
+  const app = fresh();
+  try {
+    await account.register(store, app.db, OWNER);
+    const hash = store.getSetting(app.db, account.SETTING_HASH);
+    await assert.rejects(account.changePassword(store, app.db, { current: '', password: 'abcdef1', confirm: 'abcdef1' }), /current password/i);
+    await assert.rejects(account.changePassword(store, app.db, { current: 'wrong-one', password: 'abcdef1', confirm: 'abcdef1' }), /current password is not correct/i);
+    await assert.rejects(account.changePassword(store, app.db, { current: OWNER.password, password: 'abcdef1', confirm: 'abcdef2' }), /do not match/i);
+    await assert.rejects(account.changePassword(store, app.db, { current: OWNER.password, password: 'abc', confirm: 'abc' }), /at least 6 characters/i);
+    // Reusing the same password is refused, so "change" always changes something.
+    await assert.rejects(account.changePassword(store, app.db, { current: OWNER.password, password: OWNER.password, confirm: OWNER.password }), /different from the current one/i);
+    // Nothing changed, and the account still works.
+    assert.equal(store.getSetting(app.db, account.SETTING_HASH), hash);
+    assert.equal((await account.signIn(store, app.db, { username: OWNER.username, password: OWNER.password })).username, OWNER.username);
+  } finally { app.close(); }
+});
+
+test('a password change also clears a lockout left by wrong attempts', async () => {
+  const app = fresh();
+  try {
+    await account.register(store, app.db, OWNER);
+    for (let i = 0; i < 5; i += 1) {
+      await assert.rejects(account.signIn(store, app.db, { username: OWNER.username, password: `wrong-${i}` }));
+    }
+    assert.equal(account.state(store, app.db).locked, true);
+    await account.changePassword(store, app.db, { current: OWNER.password, password: 'freshPass1', confirm: 'freshPass1' });
+    assert.equal(account.state(store, app.db).locked, false, 'the owner is not locked out of their own tool');
+    assert.equal((await account.signIn(store, app.db, { username: OWNER.username, password: 'freshPass1' })).username, OWNER.username);
+  } finally { app.close(); }
+});
+
+test('the username can be changed with the password, and sign-in follows', async () => {
+  const app = fresh();
+  try {
+    await account.register(store, app.db, OWNER);
+    const renamed = await account.changeUsername(store, app.db, { username: 'kabul-owner', password: OWNER.password });
+    assert.equal(renamed.changed, true);
+    assert.equal(renamed.username, 'kabul-owner');
+    assert.equal(account.state(store, app.db).username, 'kabul-owner');
+
+    // The old name no longer works; the new one does, with the same password.
+    await assert.rejects(account.signIn(store, app.db, { username: OWNER.username, password: OWNER.password }), /Wrong username or password/);
+    assert.equal((await account.signIn(store, app.db, { username: 'kabul-owner', password: OWNER.password })).username, 'kabul-owner');
+
+    // Changing it to the same name is a no-op rather than an error.
+    assert.equal((await account.changeUsername(store, app.db, { username: 'Kabul-Owner', password: OWNER.password })).changed, false);
+
+    // Bad input is refused and changes nothing.
+    await assert.rejects(account.changeUsername(store, app.db, { username: 'x', password: OWNER.password }), /3–40 characters/);
+    await assert.rejects(account.changeUsername(store, app.db, { username: 'bad name', password: OWNER.password }), /3–40 characters/);
+    await assert.rejects(account.changeUsername(store, app.db, { username: 'someone', password: 'nope-nope' }), /password is not correct/i);
+    await assert.rejects(account.changeUsername(store, app.db, { username: 'other', password: '' }), /Enter your password/i);
+    assert.equal(account.state(store, app.db).username, 'kabul-owner');
+  } finally { app.close(); }
+});
+
+test('the settings information never includes the password or its hash', async () => {
+  const app = fresh();
+  try {
+    await account.register(store, app.db, OWNER);
+    const info = account.info(store, app.db);
+    assert.equal(info.username, OWNER.username);
+    assert.match(info.createdAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(info.maxAttempts, 5);
+    const text = JSON.stringify(info);
+    assert.doesNotMatch(text, /scrypt/);
+    assert.doesNotMatch(text, /HKDEVELOPER2/);
+    assert.deepEqual(Object.keys(info).sort(), ['createdAt', 'maxAttempts', 'passwordMax', 'passwordMin', 'username']);
+  } finally { app.close(); }
+});

@@ -184,7 +184,7 @@ test('the fields the table reads exist on a decorated license row', () => {
     .map(match => match[1] || match[2]));
   assert.ok(columns.has('issued_on'), 'the schema must keep issued_on');
   assert.ok(columns.has('expires_on'), 'the schema must keep expires_on');
-  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey']);
+  const decorated = new Set(['planId', 'planLabel', 'formatted', 'plain', 'installKey', 'installKeyExpires', 'expiresLabel', 'installKeyMoment']);
   const referenced = new Set([...renderer.matchAll(/\b(?:row|license)\.([a-z_]+)/gi)].map(match => match[1]));
   assert.ok(referenced.size > 4);
   for (const field of referenced) {
@@ -430,4 +430,81 @@ test('the install key for the Pharmacy setup is shown, copyable and reachable la
     'the copy button must be wired');
   // A license sold earlier can still be looked up in the table.
   assert.match(renderer, /copyText\(row\.installKey/, 'the licences table must offer the install key again');
+});
+
+test('the duration menu offers every plan the signer knows', () => {
+  const serial = require('../lib/serial');
+  const select = html.slice(html.indexOf('id="plan"'), html.indexOf('</select>', html.indexOf('id="plan"')));
+  const offered = [...select.matchAll(/<option value="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(offered, Object.keys(serial.PLANS),
+    'every plan must be selectable, and nothing may be offered that the signer rejects');
+  for (const planId of offered) {
+    assert.ok(serial.PLANS[planId], `the page offers ${planId}, which lib/serial.js does not know`);
+  }
+  // The short durations the owner asked for are there, in order, with their labels.
+  for (const [planId, label] of [['1m', '1 Month'], ['15d', '15 Days'], ['10d', '10 Days'], ['10min', '10 Minutes']]) {
+    assert.match(select, new RegExp(`<option value="${planId}">${label}</option>`));
+  }
+});
+
+/* ---- The Settings window ---------------------------------------------- */
+test('the settings window is wired through the guarded bridge', () => {
+  const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
+  for (const channel of ['settingsInfo', 'changePassword', 'changeUsername', 'signOut']) {
+    assert.ok(preload.includes(`'${channel}'`), `${channel} is allowed by the preload`);
+  }
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  for (const channel of ['settingsInfo:', 'changePassword:', 'changeUsername:']) {
+    assert.ok(main.includes(channel), `${channel} has a handler in the main process`);
+  }
+  // The settings channels are NOT public: they need a signed-in owner.
+  const publics = /PUBLIC_CHANNELS = new Set\(\[([^\]]*)\]\)/.exec(main);
+  assert.ok(publics, 'the public channel list is there');
+  for (const channel of ['settingsInfo', 'changePassword', 'changeUsername']) {
+    assert.equal(publics[1].includes(channel), false, `${channel} must require sign-in`);
+  }
+  // The password hash never leaves the main process.
+  assert.doesNotMatch(main, /passwordHash|SETTING_HASH/, 'main.js must not hand the hash to the page');
+});
+
+test('the settings window in the page has every control the renderer drives', () => {
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+  for (const id of [
+    'settings-button', 'account-chip', 'settings-window', 'settings-close',
+    'settings-user', 'settings-created', 'settings-folder', 'settings-database',
+    'settings-counts', 'settings-key', 'settings-version', 'settings-platform',
+    'password-form', 'current-password', 'new-password', 'confirm-password',
+    'password-error', 'password-hint', 'save-password', 'new-username',
+    'username-password', 'username-form', 'username-error', 'save-username',
+    'settings-open-folder', 'settings-backup-keys', 'settings-shortcut', 'settings-signout'
+  ]) {
+    assert.ok(ids.includes(id), `the page has #${id}`);
+  }
+  // The gear button sits in the top bar, next to the key badge.
+  const topbar = html.slice(html.indexOf('<header class="topbar">'), html.indexOf('</header>', html.indexOf('<header class="topbar">')));
+  assert.ok(topbar.includes('id="settings-button"'), 'the gear is in the top bar');
+  assert.ok(topbar.indexOf('settings-button') > topbar.indexOf('key-badge'), 'and follows the key badge');
+  // It is a real dialog, and it starts closed.
+  assert.match(html, /<div class="modal-backdrop" id="settings-window" hidden>/);
+  assert.match(html, /role="dialog" aria-modal="true"/);
+});
+
+test('the settings styles are separate rules, not inline styles', () => {
+  const css = fs.readFileSync(path.join(root, 'src', 'styles', 'app.css'), 'utf8');
+  for (const rule of ['.modal-backdrop', '.modal', '.settings-card', '.settings-list', '.icon-btn', '.account-chip']) {
+    assert.ok(css.includes(`${rule}{`), `${rule} has a rule`);
+  }
+  assert.match(css, /\.modal-backdrop\[hidden\]\{display:none\}/, 'a closed window is really hidden');
+});
+
+test('the tool creates a desktop icon only, never a second Start menu entry', () => {
+  const main = read('main.js');
+  const shortcut = read('lib/shortcut.js');
+  // The setup wizard writes the single Start menu entry for an installed copy;
+  // a shortcut written by the app itself would sit next to it as a duplicate.
+  assert.doesNotMatch(main, /Start Menu/, 'the app must not target the Start menu');
+  assert.doesNotMatch(shortcut, /Start Menu/, 'the shortcut helper must not target the Start menu');
+  // The desktop is still covered, including the all-users desktop.
+  assert.match(main, /OneDrive/);
+  assert.match(main, /'Desktop'/);
 });
