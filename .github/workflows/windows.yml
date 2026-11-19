@@ -45,53 +45,21 @@ jobs:
       # a module, so a release once shipped without license.js and every customer
       # saw "Cannot find module './license'" on launch. This checks the real
       # payload, not the source.
+      # The installed application is one app.asar built from package.json's
+      # "files" list. Reading the source tree passes even when that list forgets a
+      # module, so a release once shipped without license.js and every customer
+      # saw "Cannot find module './license'" on launch. This opens the real
+      # payload and compares it with the modules the application loads.
       - name: Check the packaged app contains every module it loads
         shell: bash
         run: |
           set -euo pipefail
-          asar=release/win-unpacked/resources/app.asar
-          if [ ! -f "$asar" ]; then
-            echo "::error title=Missing app.asar::$asar was not produced by the build"
+          payload=release/win-unpacked/resources/app.asar
+          if [ ! -f "$payload" ]; then
+            echo "::error title=Missing app.asar::$payload was not produced by the build"
             exit 1
           fi
-          # The installed app is one app.asar; reading the source tree passes even
-          # when package.json's "files" list forgets a module, which is how a
-          # release once shipped without license.js and every customer saw
-          # "Cannot find module './license'" on launch. List the real payload.
-          if ! npx --yes --package @electron/asar@3.2.10 asar list "$asar" > asar-raw.txt 2> asar-error.txt; then
-            echo "::warning title=asar list unavailable::could not list the payload, the unit test still guards build.files"
-            tail -n 5 asar-error.txt || true
-            exit 0
-          fi
-          # asar list joins paths with the platform separator, so Windows writes
-          # \database\service.js: compare everything as forward slashes.
-          tr '\\' '/' < asar-raw.txt | sed '/^$/d' > asar-list.txt
-          count=$(wc -l < asar-list.txt)
-          echo "payload entries: $count"
-          if [ "$count" -lt 5 ]; then
-            echo "::error title=Unreadable payload::asar list returned $count entries, so the check cannot be trusted"
-            head -n 20 asar-raw.txt || true
-            exit 1
-          fi
-          echo 'first entries:'
-          head -n 15 asar-list.txt
-          failed=0
-          for file in /main.js /license.js /preload.js /package.json /database/service.js /database/database.js /src/index.html /src/scripts/app.js /src/styles/base.css; do
-            if grep -qx "$file" asar-list.txt; then
-              echo "ok   $file"
-            else
-              echo "FAIL $file"
-              echo "::error title=Missing from app.asar::$file is loaded at runtime but electron-builder left it out of package.json build.files"
-              failed=$((failed + 1))
-            fi
-          done
-          if [ "$failed" -gt 0 ]; then
-            echo 'payload listing:'
-            cat asar-list.txt
-            echo "::error::$failed file(s) missing from the installed payload"
-            exit 1
-          fi
-          echo "The installed payload holds every module the application loads."
+          node scripts/payload-check.js "$payload"
 
       # The setup asks the customer for the install key the owner generates in
       # Top In Tech License Generator, and refuses anything else. The page lives

@@ -114,3 +114,39 @@ test('a missing module shows a sentence, not Electron’s error box', () => {
   assert.match(main, /requireLocal\('\.\/license'\)/, 'the licence module goes through it');
   assert.match(main, /incomplete|reinstall|run the setup again/i, 'the message tells the customer what to do');
 });
+
+test('the payload checker reads a real asar and names a missing module', () => {
+  // The checker parses the asar header itself, so this pins the format rather
+  // than trusting a reviewer to remember it. A tiny archive is written here in
+  // the same layout electron-builder produces.
+  const os = require('node:os');
+  const { readAsarHeader, listPayload } = require('../scripts/payload-check.js');
+  const header = {
+    files: {
+      'main.js': { size: 4, offset: '0' },
+      'src': { files: { 'pages': { files: { 'index.html': { size: 2, offset: '4' } } } } }
+    }
+  };
+  const json = Buffer.from(JSON.stringify(header), 'utf8');
+  const padding = (4 - (json.length % 4)) % 4;
+  const headerSize = 4 + json.length + padding;
+  const prefix = Buffer.alloc(16);
+  prefix.writeUInt32LE(4, 0);
+  prefix.writeUInt32LE(headerSize, 4);
+  prefix.writeUInt32LE(headerSize - 4, 8);
+  prefix.writeUInt32LE(json.length, 12);
+  const file = path.join(os.tmpdir(), `payload-check-${process.pid}.asar`);
+  fs.writeFileSync(file, Buffer.concat([prefix, json, Buffer.alloc(padding), Buffer.from('node'), Buffer.from('{}')]));
+  try {
+    assert.deepEqual(listPayload(readAsarHeader(file)).sort(), ['/main.js', '/src/pages/index.html']);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+  // A file that is not an asar is reported, not guessed at.
+  fs.writeFileSync(file, 'not an asar');
+  try {
+    assert.throws(() => readAsarHeader(file));
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
