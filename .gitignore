@@ -15,7 +15,4 @@ artifacts/
 # Downloaded installer files live here, never in git (each one is ~100 MB).
 /installer/*.exe
 /installer/*.yml
-<<<<<<< HEAD
-=======
 /installer/old/*.exe
->>>>>>> cc8ca70 (Name the downloaded files like the folder already does, two latest only)
