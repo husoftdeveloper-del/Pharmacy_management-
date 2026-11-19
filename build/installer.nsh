@@ -87,6 +87,7 @@
 !define SETUP_LICENSE_DIR "Pharmacy Management"
 ; The one message a refused key shows, word for word.
 !define SETUP_REFUSED "Invalid Serial Key!$\r$\nApplication Not Installed."
+!define SETUP_NO_NAME "Enter your pharmacy name.$\r$\nApplication Not Installed."
 ; Shown when the customer pastes the long serial instead of the short key.
 !define SETUP_REFUSED_SERIAL "Invalid Serial Key!$\r$\nApplication Not Installed.$\r$\n$\r$\nThat looks like the serial key. The setup needs the short install key, for example 7M2K4X, shown in the key generator."
 
@@ -423,10 +424,8 @@ Function ActivationPageLeave
   ${NSD_GetText} $ActivationNameField $1
   !insertmacro SetupNameClean $1
   StrCpy $LicenceName $R0
-  StrLen $4 $LicenceName
-  ${If} $4 < 2
-    ${NSD_SetText} $ActivationError "Enter your pharmacy name.$$
-Application Not Installed."
+  ${If} $LicenceName == ""
+    ${NSD_SetText} $ActivationError "${SETUP_NO_NAME}"
     Abort
   ${EndIf}
 

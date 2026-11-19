@@ -164,7 +164,8 @@ test('the setup wizard asks for the serial key before anything is installed', ()
   assert.match(leave, /\$\{NSD_GetText\} \$ActivationNameField \$1/);
   assert.match(leave, /!insertmacro SetupNameClean \$1/);
   assert.match(leave, /StrCpy \$LicenceName \$R0/);
-  assert.match(leave, /"Enter your pharmacy name\.\$\r\$\nApplication Not Installed\."/);
+  assert.match(nsh, /!define SETUP_NO_NAME "Enter your pharmacy name\.\$\\r\$\\nApplication Not Installed\."/, 'the empty-name message is one define, the same shape as the key refusal');
+  assert.match(leave, /\$\{NSD_SetText\} \$ActivationError "\$\{SETUP_NO_NAME\}"/);
   assert.match(nsh, /"pharmacy":"\$LicenceName"/, 'the name travels in the licence file');
   assert.match(leave, /StrCpy \$3 \$0/, 'an empty field is checked first');
   assert.match(leave, /!insertmacro SetupKeyValidate/, 'the typed key is validated');
