@@ -362,9 +362,8 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             # The step log cannot be read from the runner while the job runs, so
             # the failure text is also surfaced as an annotation.
-            head -c 1600 artifacts/smoke-error.txt | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=Smoke test::${line:0:600}"
-            done
+            summary=$(tr '\n' ' ' < artifacts/smoke-error.txt | tr -s ' ' | head -c 900)
+            echo "::error title=Smoke test::${summary}"
           fi
           if [ -f build.log ]; then
             tail -c 6000 build.log > failure-tail.txt
